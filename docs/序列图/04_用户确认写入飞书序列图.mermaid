@@ -1,0 +1,50 @@
+sequenceDiagram
+    actor 用户
+    participant 用户端 as 用户端 Web
+    participant 后端 as Spring Boot 后端
+    participant 数据库 as 业务数据库
+    participant AI as 大模型服务
+    participant MCP as 飞书 MCP 服务
+    participant 飞书 as 飞书文档或多维表格
+
+    用户->>用户端: 点击确认写入
+    用户端->>后端: POST /api/record-sessions/{id}/confirm
+
+    后端->>数据库: 检查 clientConfirmId 是否已处理
+    后端->>数据库: 锁定 RECORD_SESSION 状态为 confirming
+    后端->>数据库: 锁定当前 RECORD_DRAFT
+    后端->>数据库: 创建 DAILY_RECORD
+    后端->>数据库: 读取飞书 Schema 和 Prompt 配置
+
+    后端->>AI: 发送最终草稿和飞书 Schema
+    AI-->>后端: 返回飞书 MCP Payload
+
+    loop 最多修正 2 次
+        后端->>后端: 校验目标位置、字段、类型、权限
+
+        alt Payload 校验失败
+            后端->>AI: 发送校验错误，要求修正 Payload
+            AI-->>后端: 返回修正后的 Payload
+        else Payload 校验通过
+            后端->>数据库: 创建 FEISHU_SYNC，状态为 pending
+            后端->>MCP: 调用飞书 MCP 写入
+            MCP->>飞书: 写入记录
+            飞书-->>MCP: 返回写入结果
+            MCP-->>后端: 返回飞书记录 ID
+        end
+    end
+
+    alt 飞书写入成功
+        后端->>数据库: 更新 FEISHU_SYNC 为 success
+        后端->>数据库: 更新 DAILY_RECORD 为 success
+        后端->>数据库: 生成或更新 RECORD_DISPLAY
+        后端->>数据库: 更新 RECORD_SESSION 为 confirmed
+        后端-->>用户端: 返回写入成功、chatReply、displayRecord
+        用户端-->>用户: 在对话中显示成功消息，并刷新最近记录
+    else 校验或写入失败
+        后端->>数据库: 保存 payload、失败原因和状态
+        后端->>数据库: 更新 DAILY_RECORD 为 sync_failed 或 blocked
+        后端->>数据库: 生成失败状态的 RECORD_DISPLAY
+        后端-->>用户端: 返回本地已保存但同步失败的 chatReply
+        用户端-->>用户: 在对话中显示失败说明，并刷新最近记录状态
+    end

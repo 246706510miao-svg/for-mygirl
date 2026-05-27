@@ -1,0 +1,19 @@
+sequenceDiagram
+    actor 管理员
+    participant 管理端 as 管理员端 Web
+    participant 后端 as Spring Boot 后端
+    participant 数据库 as 业务数据库
+
+    管理员->>管理端: 打开每日内容配置页
+    管理端->>后端: GET /api/admin/daily-contents
+
+    后端->>数据库: 查询 DAILY_CONTENT
+    后端-->>管理端: 返回当前每日内容配置
+
+    管理员->>管理端: 编辑文案、主题、预设背景、引导语
+    管理端->>后端: PUT /api/admin/daily-contents
+
+    后端->>数据库: 保存或更新 DAILY_CONTENT
+    后端-->>管理端: 返回保存成功
+
+    管理端-->>管理员: 显示配置成功

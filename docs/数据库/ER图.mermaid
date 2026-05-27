@@ -1,0 +1,133 @@
+erDiagram
+    APP_PERSON ||--o{ RECORD_SESSION : owns
+    APP_PERSON ||--o{ DAILY_RECORD : owns
+    APP_PERSON ||--o{ DAILY_CONTENT : target_user
+    APP_PERSON ||--o{ RESOURCE_FILE : uploads
+
+    RECORD_SESSION ||--o{ RECORD_MESSAGE : contains
+    RECORD_SESSION ||--o{ RECORD_DRAFT : produces
+    RECORD_SESSION ||--o| DAILY_RECORD : confirms
+
+    RECORD_DRAFT ||--o| DAILY_RECORD : final_version
+
+    DAILY_RECORD ||--|| RECORD_DISPLAY : has
+    DAILY_RECORD ||--o{ FEISHU_SYNC : syncs
+
+    DAILY_CONTENT }o--o| RESOURCE_FILE : uses
+    APP_CONFIG ||--o{ FEISHU_SYNC : provides_rule
+
+    APP_PERSON {
+        string id PK
+        string role "USER or ADMIN"
+        string display_name
+        boolean enabled
+        datetime created_at
+    }
+
+    RECORD_SESSION {
+        string id PK
+        string user_id FK
+        string status "editing previewing confirmed cancelled"
+        string current_draft_id
+        datetime created_at
+        datetime updated_at
+    }
+
+    RECORD_MESSAGE {
+        string id PK
+        string session_id FK
+        string sender "user ai system"
+        string input_type "text voice"
+        text content
+        text asr_text
+        int sequence_no
+        datetime created_at
+    }
+
+    RECORD_DRAFT {
+        string id PK
+        string session_id FK
+        int version_no
+        json draft_json
+        text preview_text
+        string status "active replaced confirmed"
+        datetime created_at
+    }
+
+    DAILY_RECORD {
+        string id PK
+        string user_id FK
+        string session_id FK
+        string final_draft_id FK
+        date record_date
+        text final_text
+        text ai_summary
+        int ai_score
+        json tags_json
+        string status "success sync_failed blocked"
+        datetime confirmed_at
+        datetime created_at
+    }
+
+    RECORD_DISPLAY {
+        string id PK
+        string record_id FK
+        string title
+        text summary
+        int score
+        string display_status
+        json admin_content_json
+        json display_json
+        datetime updated_at
+    }
+
+    DAILY_CONTENT {
+        string id PK
+        string target_user_id FK
+        string created_by FK
+        date content_date
+        string content_type "text background card reminder feedback"
+        string display_area "home record_page recent_records"
+        json content_json
+        string resource_id FK
+        boolean enabled
+        datetime created_at
+        datetime updated_at
+    }
+
+    RESOURCE_FILE {
+        string id PK
+        string uploaded_by FK
+        string file_type "image audio video other"
+        string usage_type "background record_audio attachment"
+        string file_name
+        string file_url
+        string storage_path
+        string mime_type
+        long file_size
+        datetime created_at
+    }
+
+    FEISHU_SYNC {
+        string id PK
+        string record_id FK
+        string config_id FK
+        string target_type "doc bitable"
+        string target_id
+        json payload_json
+        string feishu_ref_id
+        string sync_status "pending success failed"
+        text error_message
+        int retry_count
+        datetime last_sync_at
+        datetime created_at
+    }
+
+    APP_CONFIG {
+        string id PK
+        string config_key
+        string config_type "feishu_schema prompt display model"
+        json config_value
+        boolean enabled
+        datetime updated_at
+    }

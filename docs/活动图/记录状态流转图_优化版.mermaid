@@ -1,0 +1,23 @@
+stateDiagram-v2
+    [*] --> editing: 用户输入中
+
+    editing --> previewing: AI 生成草稿预览
+    previewing --> editing: 用户继续修改
+    previewing --> confirmed: 用户确认写入
+
+    confirmed --> generating_payload: AI 生成 MCP payload
+    generating_payload --> validating: 后端校验 payload
+
+    validating --> generating_payload: 需要 AI 修正
+    validating --> blocked: 安全或权限异常
+    validating --> syncing: 校验通过
+
+    syncing --> success: 飞书写入成功
+    syncing --> sync_failed: 飞书写入失败
+
+    sync_failed --> syncing: 管理员或系统重试
+
+    success --> displayed: 用户端展示
+    blocked --> displayed: 展示异常状态
+
+    displayed --> [*]
