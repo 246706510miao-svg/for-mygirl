@@ -8,3 +8,4 @@
 - UI 页面流程图：[ui/页面流程图.mermaid](./ui/页面流程图.mermaid)
 - 架构设计：[docs/架构图/codex.md](./docs/架构图/codex.md)
 - 总架构图：[docs/架构图/01_总架构图.mermaid](./docs/架构图/01_总架构图.mermaid)
+- 数据库：[docs/数据库/codex.md](./docs/数据库/codex.md)
