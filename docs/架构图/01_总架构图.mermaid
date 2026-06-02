@@ -1,54 +1,62 @@
 flowchart TB
-    subgraph A["访问端"]
-        A1["用户端：iPhone 浏览器或 PWA"]
-        A2["管理员端：电脑浏览器"]
+    subgraph Client["访问设备"]
+        C1["用户：iPhone 浏览器或 PWA"]
+        C2["管理员：PC 浏览器"]
     end
 
-    subgraph B["前端应用：TypeScript Web"]
-        B1["用户端记录界面"]
-        B2["管理员管理界面"]
+    subgraph Frontend["前端应用：TypeScript Web"]
+        F1["登录页"]
+        F2["用户端页面"]
+        F3["管理员端页面"]
     end
 
-    subgraph C["Spring Boot 后端：Java"]
-        C1["身份识别模块"]
-        C2["记录会话模块"]
-        C3["AI 编排模块"]
-        C4["飞书 MCP 编排模块"]
-        C5["每日内容配置模块"]
-        C6["记录展示模块"]
-        C7["异常与重试模块"]
-        C8["系统配置模块"]
-        C9["语音处理模块"]
+    subgraph Backend["后端服务：Java Spring Boot"]
+        B0["API 入口"]
+        B1["登录认证模块"]
+        B2["记录业务模块"]
+        B3["每日内容模块"]
+        B4["展示查询模块"]
+        B5["外部服务适配模块"]
     end
 
-    subgraph D["本地数据与配置"]
+    subgraph Local["本地数据与配置"]
         D1["业务数据库"]
-        D2["外部配置文件或环境变量"]
-        D3["同步日志和异常信息"]
+        D2["外部配置或环境变量"]
+        D3["日志与异常信息"]
     end
 
-    subgraph E["外部服务"]
+    subgraph ThirdParty["第三方服务"]
         E1["大模型服务"]
         E2["语音识别服务"]
         E3["飞书 MCP 服务"]
         E4["飞书文档或多维表格"]
     end
 
-    A1 --> B1
-    A2 --> B2
-    B1 --> C
-    B2 --> C
+    C1 --> F1
+    C2 --> F1
 
-    C1 --> D2
-    C2 --> D1
-    C3 --> E1
-    C4 --> E3
-    C5 --> D1
-    C6 --> D1
-    C7 --> D1
-    C8 --> D2
-    C9 --> E2
-    C4 --> D3
-    C7 --> D3
+    F1 --> B0
+    B0 --> B1
 
+    B1 --> F2
+    B1 --> F3
+
+    F2 --> B0
+    F3 --> B0
+
+    B0 --> B2
+    B0 --> B3
+    B0 --> B4
+
+    B1 --> D2
+    B2 --> D1
+    B3 --> D1
+    B4 --> D1
+
+    B2 --> B5
+    B5 --> E1
+    B5 --> E2
+    B5 --> E3
     E3 --> E4
+
+    B5 --> D3

@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>自律记录项目 UI 原型</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">For My Girl</p>
+      <h1>自律记录 UI 原型</h1>
+    </div>
+    <nav class="mode-switch" aria-label="端切换">
+      <button class="mode-btn active" type="button" data-mode="user">用户端</button>
+      <button class="mode-btn" type="button" data-mode="admin">管理员端</button>
+    </nav>
+  </header>
+
+  <main>
+    <section class="workspace active user-workspace" data-workspace="user">
+      <aside class="flow-panel" aria-label="用户端页面流程">
+        <p class="flow-title">用户端页面</p>
+        <button class="flow-step active" data-user-page="home">用户首页</button>
+        <button class="flow-step" data-user-page="chat-empty">记录对话 - 初始态</button>
+        <button class="flow-step" data-user-page="chat-draft">记录对话 - 草稿卡片</button>
+        <button class="flow-step" data-user-page="chat-confirm">记录对话 - 写入结果</button>
+        <button class="flow-step" data-user-page="recent">最近记录</button>
+        <p class="flow-note">说明：新增记录页和对话式记录页已合并。草稿预览、确认写入返回都作为对话消息里的卡片展示，不再跳新页面。</p>
+      </aside>
+
+      <div class="phone-shell">
+        <div class="phone-status">
+          <span>9:41</span>
+          <span>5G 100%</span>
+        </div>
+
+        <section class="phone-page active" data-user-view="home">
+          <div class="mobile-hero">
+            <p class="date">2026.05.27 周三</p>
+            <h2>今天也认真照顾自己</h2>
+            <p>把完成过的小事写下来，慢慢看到自己的节奏。</p>
+          </div>
+          <div class="quick-actions">
+            <button class="primary-btn" data-user-go="chat-empty">开始记录</button>
+            <button class="ghost-btn" data-user-go="recent">最近记录</button>
+          </div>
+          <article class="record-card">
+            <span class="score">92</span>
+            <div>
+              <h3>昨天很稳</h3>
+              <p>睡前整理房间，情绪更稳定。</p>
+            </div>
+          </article>
+        </section>
+
+        <section class="phone-page chat-page" data-user-view="chat-empty">
+          <div class="chat-head">
+            <button class="icon-btn" data-user-go="home" aria-label="返回首页">‹</button>
+            <div>
+              <p class="eyebrow">新增记录 / 对话式记录</p>
+              <h2>今天想记录什么？</h2>
+            </div>
+            <button class="text-link" data-user-go="recent">最近</button>
+          </div>
+          <div class="chat-list">
+            <div class="bubble ai">我会帮你把零散内容整理成记录草稿。可以先随便写，不需要一次说完整。</div>
+            <div class="prompt-card">
+              <h3>今日记录引导</h3>
+              <p>从这三件事里任选一个开始：完成了什么、遇到什么阻力、明天想怎么调整。</p>
+            </div>
+            <div class="bubble me">今天完成了晨间拉伸，也按时吃了早餐。下午有点累，但还是把计划里的阅读做完了。</div>
+          </div>
+          <div class="chat-composer">
+            <button class="round-btn" aria-label="语音输入">◉</button>
+            <input value="继续补充今天的状态">
+            <button class="send-btn" data-user-go="chat-draft">发送</button>
+          </div>
+        </section>
+
+        <section class="phone-page chat-page" data-user-view="chat-draft">
+          <div class="chat-head">
+            <button class="icon-btn" data-user-go="home" aria-label="返回首页">‹</button>
+            <div>
+              <p class="eyebrow">同一对话页效果示例</p>
+              <h2>草稿在聊天中出现</h2>
+            </div>
+            <button class="text-link" data-user-go="recent">最近</button>
+          </div>
+          <div class="chat-list">
+            <div class="bubble me">今天完成了拉伸、早餐和 35 分钟阅读。</div>
+            <div class="bubble ai">我整理了一版草稿，你可以直接确认，也可以继续告诉我怎么改。</div>
+            <article class="chat-card draft-in-chat">
+              <div class="card-title-row">
+                <div>
+                  <p class="eyebrow">记录草稿预览</p>
+                  <h3>今日自律记录</h3>
+                </div>
+                <span class="tag">v2</span>
+              </div>
+              <p>今天完成了晨间拉伸、按时吃早餐，并坚持阅读 35 分钟。下午虽然有些疲惫，但还是把计划里的事情慢慢推进了。</p>
+              <div class="mini-grid">
+                <span>评分 <b>92</b></span>
+                <span>标签 <b>坚持 / 阅读</b></span>
+              </div>
+              <div class="card-actions">
+                <button class="primary-btn" data-user-go="chat-confirm">确认写入</button>
+                <button class="ghost-btn" data-user-go="chat-draft">继续修改</button>
+                <button class="quiet-btn" data-user-go="home">放弃</button>
+              </div>
+            </article>
+          </div>
+          <div class="chat-composer">
+            <button class="round-btn" aria-label="语音输入">◉</button>
+            <input value="继续修改：语气再温柔一点">
+            <button class="send-btn">发送</button>
+          </div>
+        </section>
+
+        <section class="phone-page chat-page" data-user-view="chat-confirm">
+          <div class="chat-head">
+            <button class="icon-btn" data-user-go="home" aria-label="返回首页">‹</button>
+            <div>
+              <p class="eyebrow">同一对话页效果示例</p>
+              <h2>确认结果仍在对话中</h2>
+            </div>
+            <button class="text-link" data-user-go="recent">最近</button>
+          </div>
+          <div class="chat-list">
+            <article class="chat-card draft-in-chat compact-card">
+              <div class="card-title-row">
+                <h3>今日自律记录</h3>
+                <span class="tag">已确认</span>
+              </div>
+              <p>完成拉伸、早餐和阅读。疲惫时仍推进计划。</p>
+            </article>
+            <div class="bubble me">确认写入。</div>
+            <article class="chat-card success-card">
+              <div class="success-row">
+                <span class="success-mark">✓</span>
+                <div>
+                  <p class="eyebrow">确认写入返回信息</p>
+                  <h3>已写入记录</h3>
+                </div>
+              </div>
+              <p>记录已保存，飞书同步状态为 success。下面这段回复会作为对话消息继续保留。</p>
+              <div class="reply-box">今天的完成度很好，尤其是疲惫时仍然保持阅读。明天可以继续关注下午精力。</div>
+              <button class="ghost-btn full" data-user-go="recent">查看最近记录</button>
+            </article>
+          </div>
+          <div class="chat-composer">
+            <button class="round-btn" aria-label="语音输入">◉</button>
+            <input value="继续聊明天怎么安排">
+            <button class="send-btn">发送</button>
+          </div>
+        </section>
+
+        <section class="phone-page" data-user-view="recent">
+          <div class="chat-head">
+            <button class="icon-btn" data-user-go="home" aria-label="返回首页">‹</button>
+            <div>
+              <p class="eyebrow">最近记录</p>
+              <h2>这几天的自己</h2>
+            </div>
+          </div>
+          <div class="timeline">
+            <article class="timeline-item">
+              <span class="dot success"></span>
+              <h3>今天</h3>
+              <p>完成拉伸、早餐和 35 分钟阅读。</p>
+              <b>92 分</b>
+            </article>
+            <article class="timeline-item">
+              <span class="dot success"></span>
+              <h3>昨天</h3>
+              <p>睡前整理房间，情绪更稳定。</p>
+              <b>88 分</b>
+            </article>
+            <article class="timeline-item">
+              <span class="dot warning"></span>
+              <h3>周一</h3>
+              <p>同步暂时失败，管理员处理中。</p>
+              <b>sync_failed</b>
+            </article>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="workspace admin-workspace" data-workspace="admin">
+      <aside class="admin-sidebar" aria-label="管理员导航">
+        <div class="brand-block">
+          <b>Admin</b>
+          <span>后台管理</span>
+        </div>
+        <button class="nav-item active" data-admin-page="home">首页</button>
+        <button class="nav-item" data-admin-page="daily">每日内容配置</button>
+        <button class="nav-item" data-admin-page="list">用户最近记录</button>
+      </aside>
+
+      <div class="admin-canvas">
+        <section class="admin-page active" data-admin-view="home">
+          <div class="admin-head">
+            <div>
+              <p class="eyebrow">首页</p>
+              <h2>今日待办</h2>
+            </div>
+          </div>
+          <div class="summary-strip">
+            <div><span>用户今日记录条数</span><b>3</b></div>
+            <div><span>待反馈条数</span><b>2</b></div>
+            <div><span>异常条数</span><b>1</b></div>
+          </div>
+        </section>
+
+        <section class="admin-page" data-admin-view="daily">
+          <div class="admin-head">
+            <div>
+              <p class="eyebrow">每日内容配置</p>
+              <h2>配置用户端首页内容</h2>
+            </div>
+            <button class="primary-btn">保存配置</button>
+          </div>
+          <div class="daily-config-layout">
+            <article class="panel form-panel">
+              <label class="field"><span>首页文案</span><textarea rows="8">今天也认真照顾自己，记录一点完成过的事。</textarea></label>
+              <label class="field"><span>背景选项</span><select><option>sunset 暖色日落</option><option>forest 清晨森林</option><option>paper 纸张浅色</option></select></label>
+            </article>
+            <article class="panel preview-panel">
+              <h3>用户端预览</h3>
+              <div class="phone-mini-preview">
+                <div class="mini-phone-status"><span>9:41</span><span>100%</span></div>
+                <div class="mini-phone-screen">
+                  <p>2026.05.31</p>
+                  <h3>今天也认真照顾自己</h3>
+                  <span>开始记录</span>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="admin-page" data-admin-view="list">
+          <div class="admin-head">
+            <div>
+              <p class="eyebrow">用户最近记录</p>
+              <h2>记录列表</h2>
+            </div>
+            <button class="ghost-btn">只看异常</button>
+          </div>
+          <div class="filter-row records-filter">
+            <label>日期 <input value="2026-05-31"></label>
+            <button class="primary-btn">查询</button>
+          </div>
+          <div class="table-card">
+            <div class="table-row records-row table-head"><span>日期</span><span>摘要</span><span>状态</span><span>评分</span><span></span></div>
+            <div class="table-row records-row"><span>05-31</span><span>完成拉伸、早餐和阅读 35 分钟</span><span class="pill ok">success</span><span>92</span><button data-admin-go="detail">详情</button></div>
+            <div class="table-row records-row"><span>05-30</span><span>睡前整理房间，完成复盘</span><span class="pill ok">success</span><span>88</span><button data-admin-go="detail">详情</button></div>
+            <div class="table-row records-row"><span>05-29</span><span>晚间计划已生成，飞书同步失败</span><span class="pill bad">sync_failed</span><span>70</span><button data-admin-go="detail">详情</button></div>
+          </div>
+        </section>
+
+        <section class="admin-page" data-admin-view="detail">
+          <div class="admin-head">
+            <div>
+              <p class="eyebrow">2026-05-31</p>
+              <h2>飞书状态：success</h2>
+            </div>
+            <div class="head-actions">
+              <button class="ghost-btn" data-admin-go="list">返回</button>
+              <button class="primary-btn">再次尝试提交</button>
+            </div>
+          </div>
+          <div class="detail-layout">
+            <article class="panel">
+              <h3>最终正文</h3>
+              <p>今天完成了晨间拉伸、按时吃早餐，并坚持阅读 35 分钟。下午虽然有些疲惫，但还是把计划里的事情慢慢推进了。</p>
+            </article>
+            <article class="panel">
+              <h3>结构化结果</h3>
+              <div class="result-grid">
+                <span>摘要：疲惫状态下仍保持计划执行</span>
+                <span>标签：坚持、阅读、作息</span>
+                <span>AI 评分：92</span>
+              </div>
+            </article>
+            <article class="panel feedback-panel">
+              <label class="field"><span>备注</span><textarea rows="5">今天完成度稳定，可以继续鼓励下午精力管理。</textarea></label>
+              <label class="field"><span>打分</span><input value="92"></label>
+            </article>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <script src="./app.js"></script>
+</body>
+</html>

@@ -4,10 +4,226 @@
 
 ## 这个模块解决什么问题
 
+- 表说明
 - 一次日常记录从输入、草稿、确认、飞书同步到首页展示分别落在哪些表。
-- 哪些表是 MVP 必须实现，哪些可以后置。
 - 状态字段、关系和关键数据不变量是什么。
 - 业务数据库与外部配置、飞书、AI、ASR 的边界在哪里。
+
+## 表说明
+
+### APP_PERSON
+
+保存系统中的使用者。
+
+虽然目前只有用户和管理员两个人，但保留这张表可以让记录归属更清楚。
+
+| 字段 | 说明 |
+|---|---|
+| id | 主键，人员 ID |
+| role | USER 或 ADMIN |
+| display_name | 显示名称 |
+| enabled | 是否启用 |
+| created_at | 创建时间 |
+
+### RECORD_SESSION
+
+保存一次对话式记录过程。
+
+用户还没确认写入之前，文本输入、语音输入、修改指令都属于同一个 session。
+
+| 字段 | 说明 |
+|---|---|
+| id | 主键，会话 ID |
+| user_id | 外键，属于哪个用户 |
+| status | editing、previewing、confirmed、cancelled |
+| current_draft_id | 当前草稿 ID |
+| created_at | 创建时间 |
+| updated_at | 更新时间 |
+
+### RECORD_MESSAGE
+
+保存一次记录会话里的消息。
+
+包括：
+
+- 用户文本输入
+- 用户语音识别结果
+- 用户修改指令
+- AI 回复或系统消息
+
+| 字段 | 说明 |
+|---|---|
+| id | 主键，消息 ID |
+| session_id | 外键，属于哪次记录会话 |
+| sender | user、ai、system |
+| input_type | text、voice |
+| content | 消息内容 |
+| asr_text | 语音识别后的文本 |
+| sequence_no | 消息顺序 |
+| created_at | 创建时间 |
+
+### RECORD_DRAFT
+
+保存 AI 生成的草稿版本。
+
+它存在的原因是：大模型 API 每次调用本身不会自动记住之前的上下文。如果用户说“还是刚刚那个版本好”，后端必须能找到之前的草稿版本，并把相关内容重新加入 prompt。
+
+| 字段 | 说明 |
+|---|---|
+| id | 主键，草稿 ID |
+| session_id | 外键，属于哪次记录会话 |
+| version_no | 草稿版本号 |
+| draft_json | 草稿结构化内容 |
+| preview_text | 用户可读预览文本 |
+| status | active、replaced、confirmed |
+| created_at | 创建时间 |
+
+### DAILY_RECORD
+
+保存用户确认后的正式记录。
+
+这张表表示记录已经成立，可以进入飞书写入流程，也可以在用户端最近记录中展示。
+
+| 字段 | 说明 |
+|---|---|
+| id | 主键，正式记录 ID |
+| user_id | 外键，属于哪个用户 |
+| session_id | 外键，来自哪次记录会话 |
+| final_draft_id | 外键，用户最终确认的草稿 |
+| record_date | 记录日期 |
+| final_text | 最终确认文本 |
+| ai_summary | AI 摘要 |
+| ai_score | AI 评分 |
+| tags_json | 标签 |
+| status | success、sync_failed、blocked |
+| confirmed_at | 用户确认时间 |
+| created_at | 创建时间 |
+
+### RECORD_DISPLAY
+
+保存用户端最近记录页面真正展示的数据。
+
+用户端不直接预览飞书，而是读取本地展示数据。
+
+这张表可以包含管理员评论或每日内容合成后的展示结果。
+
+| 字段 | 说明 |
+|---|---|
+| id | 主键，展示记录 ID |
+| record_id | 外键，对应哪条正式记录 |
+| title | 展示标题 |
+| summary | 展示摘要 |
+| score | 展示评分 |
+| display_status | 展示状态 |
+| admin_content_json | 管理员附加展示内容 |
+| display_json | 最终展示结构 |
+| updated_at | 更新时间 |
+
+### DAILY_CONTENT
+
+保存管理员配置的每日内容。
+
+名称使用“每日内容配置”，不叫“每日文案配置”，因为它不局限于文字。
+
+它可以控制：
+
+- 每日提示
+- 今日关注点
+- 用户端背景图
+- 用户端展示卡片
+- 记录页默认引导
+- 管理员反馈
+- 特殊提醒
+
+| 字段 | 说明 |
+|---|---|
+| id | 主键，每日内容 ID |
+| target_user_id | 外键，给哪个用户展示 |
+| created_by | 外键，谁创建的，通常是管理员 |
+| content_date | 哪一天展示 |
+| content_type | text、background、card、reminder、feedback |
+| display_area | home、record_page、recent_records |
+| content_json | 具体展示内容 |
+| resource_id | 外键，关联图片或文件 |
+| enabled | 是否启用 |
+| created_at | 创建时间 |
+| updated_at | 更新时间 |
+
+### RESOURCE_FILE
+
+保存上传文件的元信息。
+
+文件本体不建议直接塞进数据库。更合理的是把文件保存在服务器目录、对象存储或图床中，然后数据库保存文件路径和访问地址。
+
+例如：
+
+```text
+/uploads/backgrounds/2026-05-26.jpg
+```
+
+| 字段 | 说明 |
+|---|---|
+| id | 主键，资源 ID |
+| uploaded_by | 外键，谁上传的 |
+| file_type | image、audio、video、other |
+| usage_type | background、record_audio、attachment |
+| file_name | 原始文件名 |
+| file_url | 文件访问地址 |
+| storage_path | 服务器保存路径 |
+| mime_type | 文件类型 |
+| file_size | 文件大小 |
+| created_at | 上传时间 |
+
+### FEISHU_SYNC
+
+保存飞书同步状态。
+
+飞书写入失败时，本地记录不能丢，所以需要保存 payload、失败原因和重试次数。
+
+| 字段 | 说明 |
+|---|---|
+| id | 主键，同步记录 ID |
+| record_id | 外键，对应哪条正式记录 |
+| config_id | 外键，使用哪份飞书配置或 Schema |
+| target_type | doc 或 bitable |
+| target_id | 飞书目标文档或表格 ID |
+| payload_json | 实际写入飞书的 payload |
+| feishu_ref_id | 飞书返回的记录 ID |
+| sync_status | pending、success、failed |
+| error_message | 失败原因 |
+| retry_count | 重试次数 |
+| last_sync_at | 最近同步时间 |
+| created_at | 创建时间 |
+
+### APP_CONFIG
+
+保存非敏感系统配置。
+
+适合保存：
+
+- 飞书字段 Schema
+- Prompt 模板
+- 展示配置
+- MCP Payload 规范
+
+不适合保存：
+
+- API Key
+- 飞书 Token
+- 模型密钥
+
+敏感配置应该放环境变量或外部配置文件。
+
+| 字段 | 说明 |
+|---|---|
+| id | 主键，配置 ID |
+| config_key | 配置名 |
+| config_type | feishu_schema、prompt、display、model |
+| config_value | 配置内容 |
+| enabled | 是否启用 |
+| updated_at | 更新时间 |
+
+---
 
 ## 核心数据流
 
@@ -146,17 +362,3 @@ DAILY_CONTENT
 - `payload_json`、`draft_json`、`display_json`、`content_json`、`tags_json` 可以使用数据库 JSON 类型；没有 JSON 类型时再退化为 text。
 - `record_date`、`content_date` 使用日期类型；时间字段统一使用服务端时间。
 - `retry_count` 要有限制，不能通过数据库状态驱动无限重试。
-
-## 文件索引
-
-| 文件 | 什么时候读 | 重点 |
-|---|---|---|
-| [数据库说明.md](./数据库说明.md) | 需要完整表说明和字段含义时 | 表用途、字段解释、MVP 优先级 |
-| [ER图.mermaid](./ER图.mermaid) | 需要看关系结构时 | 表关系、PK、FK、核心字段 |
-| [codex.md](./codex.md) | Codex 快速判断和实现时 | 本模块权威入口 |
-
-## 相关模块入口
-
-- 架构边界看 [../架构图/codex.md](../架构图/codex.md)。
-- API 合同看 [../接口定义/codex.md](../接口定义/codex.md)。
-- 确认写入和异常重试顺序看 [../序列图/04_用户确认写入飞书序列图.mermaid](../序列图/04_用户确认写入飞书序列图.mermaid) 与 [../序列图/07_管理员查看和处理异常序列图.mermaid](../序列图/07_管理员查看和处理异常序列图.mermaid)。
