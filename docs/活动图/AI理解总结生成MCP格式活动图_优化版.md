@@ -1,3 +1,4 @@
+```mermaid
 flowchart TD
     A([用户确认记录草稿]) --> B[后端锁定本次记录草稿]
 
@@ -39,3 +40,4 @@ flowchart TD
     N --> Y([结束])
     U --> Y
     X --> Y
+```

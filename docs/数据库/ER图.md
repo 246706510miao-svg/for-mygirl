@@ -1,3 +1,4 @@
+```mermaid
 erDiagram
     APP_PERSON ||--o{ RECORD_SESSION : owns
     APP_PERSON ||--o{ DAILY_RECORD : owns
@@ -131,3 +132,4 @@ erDiagram
         boolean enabled
         datetime updated_at
     }
+```
