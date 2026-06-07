@@ -1,4 +1,4 @@
-"""飞书多维表格真实读取客户端。"""
+"""tool_ReadFeishuBitable 使用的飞书多维表格真实读取客户端。"""
 
 from __future__ import annotations
 
@@ -8,10 +8,13 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from ..shared.config import ThirdServiceConfig
+try:
+    from ..agents.shared.config import ThirdServiceConfig
+except ImportError:
+    from agents.shared.config import ThirdServiceConfig
 
 
-# 这一段定义内部 operator 到飞书合法 operator 的兼容映射，防止 LLM 输出常见别名导致飞书 400。
+# 这一段定义内部 operator 到飞书合法 operator 的兼容映射，防止模型输出常见别名导致飞书 400。
 FEISHU_OPERATOR_ALIASES = {
     "=": "is",
     "==": "is",
@@ -55,7 +58,7 @@ FEISHU_OPERATOR_ALIASES = {
 VALUELESS_OPERATORS = {"isEmpty", "isNotEmpty"}
 
 
-# 这个异常表示飞书接口调用或响应解析失败，Read Agent 会捕获并输出到结果里。
+# 这个异常表示飞书接口调用或响应解析失败，Tool 会捕获并交给 finagent 总结。
 class FeishuClientError(RuntimeError):
     pass
 
@@ -103,7 +106,7 @@ class FeishuBitableClient:
         items = response.get("data", {}).get("items", [])
         return [_normalize_feishu_record(item) for item in items]
 
-    # 这个方法调用飞书列出字段接口，读取真实表字段定义，用于 Router 和 Read 共用字段上下文。
+    # 这个方法调用飞书列出字段接口，读取真实表字段定义，用于 Tool 整理请求。
     def list_field_definitions(self, app_token: str, table_id: str) -> list[dict[str, Any]]:
         fields: list[dict[str, Any]] = []
         page_token = None
@@ -123,7 +126,7 @@ class FeishuBitableClient:
                 return fields
             page_token = data.get("page_token") or data.get("next_page_token")
 
-    # 这个方法返回飞书真实字段名列表，主要给 Read Agent 查询前校验使用。
+    # 这个方法返回飞书真实字段名列表，主要给查询前校验使用。
     def list_fields(self, app_token: str, table_id: str) -> list[str]:
         return [field["field_name"] for field in self.list_field_definitions(app_token, table_id)]
 
@@ -210,7 +213,7 @@ def _to_feishu_filter(filter_config: dict[str, Any] | None) -> dict[str, Any] | 
     }
 
 
-# 这个函数从前置字段上下文里取出真实字段名，避免 Read Agent 重复调用字段接口。
+# 这个函数从字段上下文里取出真实字段名，避免 Tool 重复调用字段接口。
 def _field_names_from_context(table_fields: dict[str, Any] | None) -> list[str]:
     if not table_fields or table_fields.get("source") != "feishu":
         return []
@@ -362,7 +365,7 @@ def _to_feishu_condition(condition: dict[str, Any]) -> dict[str, Any] | None:
     return converted
 
 
-# 这个函数把 equals、not_empty 等内部或 LLM 常见表达映射为飞书合法 operator。
+# 这个函数把 equals、not_empty 等内部或模型常见表达映射为飞书合法 operator。
 def _normalize_operator(operator: Any) -> str:
     normalized = str(operator or "is").strip()
     return FEISHU_OPERATOR_ALIASES.get(normalized, "is")
@@ -396,7 +399,7 @@ def _with_query(url: str, params: dict[str, Any]) -> str:
     return f"{url}?{urlencode(params)}"
 
 
-# 这个函数把飞书 record 响应归一化成 Read Agent 的标准记录结构。
+# 这个函数把飞书 record 响应归一化成标准记录结构。
 def _normalize_feishu_record(record: dict[str, Any]) -> dict[str, Any]:
     return {
         "record_id": record.get("record_id"),
@@ -448,3 +451,4 @@ def _format_http_error(status_code: int, body: str) -> str:
         description = violation.get("description")
         details.append(f"{field}={value}，{description}")
     return f"飞书 HTTP {status_code}：code={code}, msg={message}；字段校验失败：{'；'.join(details)}"
+

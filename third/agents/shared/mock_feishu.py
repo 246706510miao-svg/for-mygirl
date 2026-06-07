@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 
-# 这一段模拟飞书 records 接口返回的记录结构，便于无凭证时验证 Router 和 Read 的联动。
+# 这一段模拟飞书 records 接口返回的记录结构，便于无凭证时验证 finagent 和 Tool 的联动。
 MOCK_RECORDS: list[dict[str, Any]] = [
     {
         "record_id": "rec_mock_001",
@@ -50,4 +50,3 @@ MOCK_RECORDS: list[dict[str, Any]] = [
         },
     },
 ]
-

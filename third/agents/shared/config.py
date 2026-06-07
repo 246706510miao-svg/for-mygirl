@@ -14,7 +14,7 @@ DEFAULT_TABLE_ID = "tbl_mock_records"
 DEFAULT_TABLE_NAME = "项目记录"
 
 
-# 这个数据类集中管理飞书读取和 Router LLM 所需配置，避免配置散落在各个 Agent 文件里。
+# 这个数据类集中管理飞书读取和 finagent LLM 所需配置，避免配置散落在各个文件里。
 @dataclass(frozen=True)
 class ThirdServiceConfig:
     feishu_app_id: str
@@ -27,8 +27,8 @@ class ThirdServiceConfig:
     feishu_user_id_type: str
     feishu_use_real: bool
     openai_api_key: str
-    router_use_llm: bool
-    router_model: str
+    finagent_use_llm: bool
+    finagent_model: str
     feishu_field_name_map: dict[str, str]
 
     # 这个属性判断真实飞书读取是否具备最小配置。
@@ -51,7 +51,7 @@ class ThirdServiceConfig:
             missing.extend(["THIRD_FEISHU_APP_ID", "THIRD_FEISHU_APP_SECRET"])
         return missing
 
-    # 这个属性给 Router Agent 使用，提供默认表格上下文。
+    # 这个属性给 Tool 使用，提供默认表格上下文。
     @property
     def table_context(self) -> dict[str, str]:
         return {
@@ -77,8 +77,8 @@ def load_config() -> ThirdServiceConfig:
         feishu_user_id_type=os.getenv("THIRD_FEISHU_USER_ID_TYPE", "open_id"),
         feishu_use_real=_read_bool("THIRD_FEISHU_USE_REAL", default=False),
         openai_api_key=os.getenv("OPENAI_API_KEY", ""),
-        router_use_llm=_read_bool("THIRD_AGENT_USE_LLM", default=False),
-        router_model=os.getenv("THIRD_ROUTER_MODEL", "gpt-4o-mini"),
+        finagent_use_llm=_read_bool("THIRD_FINAGENT_USE_LLM", default=False),
+        finagent_model=os.getenv("THIRD_FINAGENT_MODEL") or os.getenv("THIRD_ROUTER_MODEL", "gpt-4o-mini"),
         feishu_field_name_map=_read_json_map("THIRD_FEISHU_FIELD_NAME_MAP"),
     )
 
@@ -106,7 +106,7 @@ def _load_env_files() -> None:
         _load_env_file(env_path)
 
 
-# 这个函数解析简单 KEY=VALUE 格式的 .env 文件，不依赖额外包。
+# 这个函数解析简单 KEY=VALUE 格式的 .env 文件；已有非空系统环境变量保持最高优先级。
 def _load_env_file(env_path: Path) -> None:
     if not env_path.exists():
         return
@@ -118,7 +118,7 @@ def _load_env_file(env_path: Path) -> None:
         key, value = line.split("=", 1)
         key = key.strip()
         value = _strip_env_value(value.strip())
-        if key and key not in os.environ:
+        if key and (key not in os.environ or os.environ.get(key, "") == ""):
             os.environ[key] = value
 
 

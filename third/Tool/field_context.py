@@ -1,16 +1,22 @@
-"""飞书多维表格字段上下文读取服务。"""
+"""tool_ReadFeishuBitable 使用的飞书字段上下文读取服务。"""
 
 from __future__ import annotations
 
 from typing import Any
 
-from ..shared.config import ThirdServiceConfig, load_config
-from ..shared.mock_feishu import MOCK_RECORDS
-from ..shared.time_utils import now_iso
+try:
+    from ..agents.shared.config import ThirdServiceConfig, load_config
+    from ..agents.shared.mock_feishu import MOCK_RECORDS
+    from ..agents.shared.time_utils import now_iso
+except ImportError:
+    from agents.shared.config import ThirdServiceConfig, load_config
+    from agents.shared.mock_feishu import MOCK_RECORDS
+    from agents.shared.time_utils import now_iso
+
 from .feishu_client import FeishuBitableClient, FeishuClientError
 
 
-# 这个函数是字段上下文入口，LangGraph 会在 Router Agent 之前调用它。
+# 这个函数是字段上下文入口，Tool 会先读取当前表字段再整理查询请求。
 def load_table_fields_context() -> dict[str, Any]:
     config = load_config()
     table_context = config.table_context

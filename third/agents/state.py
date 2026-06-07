@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from typing import TypedDict
 
 
-# 这个类型定义 LangGraph 节点之间传递的状态字段。
+# 这个类型定义 content 的单段文本结构，当前只使用 content[0].text。
+class ContentPart(TypedDict, total=False):
+    text: str
+
+
+# 这个类型定义 LangGraph 节点之间传递的状态字段，公开输入输出都只关注 content。
 class ThirdServiceState(TypedDict, total=False):
-    input: str
-    table_fields: dict[str, Any]
-    route: dict[str, Any]
-    read_request: dict[str, Any]
-    read_result: dict[str, Any]
-    output: str
-    error: str
+    content: list[ContentPart]

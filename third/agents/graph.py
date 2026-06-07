@@ -7,89 +7,47 @@ from typing import Any
 from langgraph.graph import END, StateGraph
 
 try:
-    from .read.field_context import load_table_fields_context
-    from .read.agent import run_read_agent
-    from .router.agent import route_user_input
+    from .finagent.agent import READ_TOOL_NAME, is_tool_call_for, run_finagent
     from .state import ThirdServiceState
+    from ..Tool.tool_ReadFeishuBitable import run_tool_ReadFeishuBitable
 except ImportError:
-    from agents.read.field_context import load_table_fields_context
-    from agents.read.agent import run_read_agent
-    from agents.router.agent import route_user_input
+    from Tool.tool_ReadFeishuBitable import run_tool_ReadFeishuBitable
+    from agents.finagent.agent import READ_TOOL_NAME, is_tool_call_for, run_finagent
     from agents.state import ThirdServiceState
 
 
-# 这个节点在 Router Agent 之前读取当前飞书表字段，给路由提供真实字段上下文。
-def load_table_fields_node(state: ThirdServiceState) -> dict[str, Any]:
-    return {
-        "input": _extract_input(state),
-        "table_fields": load_table_fields_context(),
-    }
+# 这个节点调用 finagent，由它决定调用工具或生成最终 answer。
+def finagent_node(state: ThirdServiceState) -> dict[str, Any]:
+    return run_finagent(state)
 
 
-# 这个节点调用 Router Agent，把用户自然语言整理成结构化路由结果。
-def router_node(state: ThirdServiceState) -> dict[str, Any]:
-    user_input = _extract_input(state)
-    route = route_user_input(user_input, table_fields=state.get("table_fields"))
-    update: dict[str, Any] = {
-        "input": user_input,
-        "route": route,
-    }
-    if route.get("read_request"):
-        update["read_request"] = route["read_request"]
-    return update
+# 这个节点调用飞书读取工具，工具结果仍以 content[0].text 交还给 finagent。
+def tool_read_feishu_bitable_node(state: ThirdServiceState) -> dict[str, Any]:
+    return run_tool_ReadFeishuBitable(state)
 
 
-# 这个节点调用 Read Agent，读取真实或 mock 飞书多维表格记录。
-def read_node(state: ThirdServiceState) -> dict[str, Any]:
-    read_request = dict(state.get("read_request", {}))
-    if state.get("table_fields"):
-        read_request["table_fields"] = state["table_fields"]
-    return run_read_agent(read_request, original_input=state.get("input", ""))
-
-
-# 这个节点处理尚未实现的写入、修改、删除和澄清意图。
-def unsupported_node(state: ThirdServiceState) -> dict[str, Any]:
-    route = state.get("route", {})
-    intent = route.get("intent", "clarify")
-    reason = route.get("reason", "当前输入无法进入读取流程。")
-    output = f"当前只实现 Router Agent 与 Read Agent，无法执行 `{intent}` 意图。{reason}"
-    return {"output": output}
-
-
-# 这个函数决定 Router Agent 之后进入 Read Agent 还是未支持意图处理节点。
+# 这个函数决定 finagent 之后进入工具节点还是结束图。
 def choose_next_node(state: ThirdServiceState) -> str:
-    route = state.get("route", {})
-    if route.get("intent") == "read":
-        return "read_agent"
-    return "unsupported"
+    if is_tool_call_for(state, READ_TOOL_NAME):
+        return READ_TOOL_NAME
+    return "answer"
 
 
-# 这个函数从 LangGraph 状态中取出用户输入。
-def _extract_input(state: ThirdServiceState) -> str:
-    if state.get("input"):
-        return str(state["input"])
-    return ""
-
-
-# 这一段定义第三方服务主图，先读取字段上下文，再串联 Router Agent 和 Read Agent。
+# 这一段定义第三方服务主图，只有 finagent 可以作为最终返回节点。
 workflow = StateGraph(ThirdServiceState)
-workflow.add_node("load_table_fields", load_table_fields_node)
-workflow.add_node("router_agent", router_node)
-workflow.add_node("read_agent", read_node)
-workflow.add_node("unsupported", unsupported_node)
+workflow.add_node("finagent", finagent_node)
+workflow.add_node(READ_TOOL_NAME, tool_read_feishu_bitable_node)
 
-workflow.set_entry_point("load_table_fields")
-workflow.add_edge("load_table_fields", "router_agent")
+workflow.set_entry_point("finagent")
 workflow.add_conditional_edges(
-    "router_agent",
+    "finagent",
     choose_next_node,
     {
-        "read_agent": "read_agent",
-        "unsupported": "unsupported",
+        READ_TOOL_NAME: READ_TOOL_NAME,
+        "answer": END,
     },
 )
-workflow.add_edge("read_agent", END)
-workflow.add_edge("unsupported", END)
+workflow.add_edge(READ_TOOL_NAME, "finagent")
 
 # 这个对象是 LangGraph / LangSmith 读取的编译后图实例。
 graph = workflow.compile()

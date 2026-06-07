@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 
-# 这一段记录 Router Agent 需要整理给 Read Agent 的字段，字段名贴近飞书查询记录接口。
+# 这一段记录 Tool 需要整理的读取字段，字段名贴近飞书查询记录接口。
 FEISHU_READ_FIELD_SCHEMA: dict[str, Any] = {
     "path_params": {
         "app_token": "多维表格 app token，来自飞书多维表格 URL 或配置。",
@@ -48,7 +48,7 @@ FEISHU_READ_FIELD_SCHEMA: dict[str, Any] = {
 }
 
 
-# 这一段是项目当前 mock 表格的字段别名，Router 会用它把自然语言整理成字段名。
+# 这一段是项目当前 mock 表格的字段别名，Tool 会用它把自然语言整理成字段名。
 KNOWN_FIELD_ALIASES: dict[str, tuple[str, ...]] = {
     "标题": ("标题", "主题", "事项", "任务", "名称", "名字"),
     "内容": ("内容", "详情", "描述", "备注", "正文"),

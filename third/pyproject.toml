@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "for-mygirl-third-service"
 version = "0.1.0"
-description = "LangGraph agents for the third-party service module."
+description = "LangGraph finagent and tools for the third-party service module."
 requires-python = ">=3.10"
 dependencies = [
     "langgraph>=0.2.0",
@@ -14,4 +14,7 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["agents*"]
+include = ["agents*", "Tool*", "Prompt*"]
+
+[tool.setuptools.package-data]
+Prompt = ["*.yaml"]
