@@ -3,6 +3,7 @@
 当前实现范围：
 
 - `agents/router/`：Router Agent，将自然语言整理成飞书读取请求。
+- `agents/read/field_context.py`：字段上下文读取，先读取当前飞书表真实字段，再交给 Router。
 - `agents/read/`：Read Agent，按读取请求查询真实飞书多维表格；配置不完整时使用 mock 数据。
 - `agents/shared/`：配置、飞书字段 schema、mock 数据和通用工具。
 - `agents/graph.py`：LangGraph 主图，串联 Router Agent 和 Read Agent。
@@ -19,7 +20,7 @@
 - `THIRD_FEISHU_TABLE_ID`：多维表格 table id。
 - `THIRD_FEISHU_VIEW_ID`：可选，指定视图读取。
 - `THIRD_FEISHU_USER_ID_TYPE`：可选，默认 `open_id`。
-- `THIRD_FEISHU_FIELD_NAME_MAP`：可选，把项目语义字段映射到真实飞书列名。
+- `THIRD_FEISHU_FIELD_NAME_MAP`：可选兜底配置。正常流程会自动读取真实字段，不要求你本地确定字段。
 
 如果你已经有可用的 `tenant_access_token`，也可以直接填 `THIRD_FEISHU_TENANT_ACCESS_TOKEN`，此时可以不填 `APP_ID/APP_SECRET`。
 
@@ -37,7 +38,6 @@ THIRD_FEISHU_APP_ID=cli_xxx
 THIRD_FEISHU_APP_SECRET=xxx
 THIRD_FEISHU_APP_TOKEN=app_xxx
 THIRD_FEISHU_TABLE_ID=tbl_xxx
-THIRD_FEISHU_FIELD_NAME_MAP={"标题":"事件","状态":"进度","截止时间":"日期"}
 
 THIRD_AGENT_USE_LLM=1
 OPENAI_API_KEY=sk-xxx
@@ -80,7 +80,7 @@ langgraph dev
 }
 ```
 
-输出状态中的 `route` 可检查 Router Agent 整理出的字段，`read_request` 可检查传给 Read Agent 的飞书读取请求，`read_result` 可检查真实或 mock 读取结果。
+输出状态中的 `table_fields` 可检查系统读取到的真实表字段，`route` 可检查 Router Agent 整理出的字段，`read_request` 可检查传给 Read Agent 的飞书读取请求，`read_result` 可检查真实或 mock 读取结果。
 
 ## 常见报错理解
 

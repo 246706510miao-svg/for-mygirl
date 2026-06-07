@@ -77,7 +77,7 @@ class FeishuBitableClient:
     def search_records(self, request: dict[str, Any]) -> list[dict[str, Any]]:
         app_token = request["app_token"]
         table_id = request["table_id"]
-        available_fields = self.list_fields(app_token, table_id)
+        available_fields = _field_names_from_context(request.get("table_fields")) or self.list_fields(app_token, table_id)
         _prepare_request_fields_for_real_table(request, available_fields, self.config.feishu_field_name_map)
         query = _clean_query_params(
             {
@@ -103,9 +103,9 @@ class FeishuBitableClient:
         items = response.get("data", {}).get("items", [])
         return [_normalize_feishu_record(item) for item in items]
 
-    # 这个方法调用飞书列出字段接口，读取真实表字段名，用于查询前校验字段。
-    def list_fields(self, app_token: str, table_id: str) -> list[str]:
-        field_names: list[str] = []
+    # 这个方法调用飞书列出字段接口，读取真实表字段定义，用于 Router 和 Read 共用字段上下文。
+    def list_field_definitions(self, app_token: str, table_id: str) -> list[dict[str, Any]]:
+        fields: list[dict[str, Any]] = []
         page_token = None
         while True:
             query = _clean_query_params({"page_size": 100, "page_token": page_token})
@@ -116,12 +116,16 @@ class FeishuBitableClient:
             response = self._get_json(url, with_auth=True)
             data = response.get("data", {})
             for item in data.get("items", []):
-                field_name = item.get("field_name")
-                if field_name:
-                    field_names.append(str(field_name))
+                normalized = _normalize_field_definition(item)
+                if normalized:
+                    fields.append(normalized)
             if not data.get("has_more"):
-                return field_names
-            page_token = data.get("page_token")
+                return fields
+            page_token = data.get("page_token") or data.get("next_page_token")
+
+    # 这个方法返回飞书真实字段名列表，主要给 Read Agent 查询前校验使用。
+    def list_fields(self, app_token: str, table_id: str) -> list[str]:
+        return [field["field_name"] for field in self.list_field_definitions(app_token, table_id)]
 
     # 这个方法调用飞书检索单条记录接口，用于用户明确给出 record_id 的场景。
     def get_record(self, request: dict[str, Any]) -> dict[str, Any] | None:
@@ -204,6 +208,14 @@ def _to_feishu_filter(filter_config: dict[str, Any] | None) -> dict[str, Any] | 
         "conjunction": filter_config.get("conjunction", "and"),
         "conditions": conditions,
     }
+
+
+# 这个函数从前置字段上下文里取出真实字段名，避免 Read Agent 重复调用字段接口。
+def _field_names_from_context(table_fields: dict[str, Any] | None) -> list[str]:
+    if not table_fields or table_fields.get("source") != "feishu":
+        return []
+    field_names = table_fields.get("field_names") or []
+    return [str(field_name) for field_name in field_names if field_name]
 
 
 # 这个函数根据真实飞书字段名校验并改写读取请求，避免 FieldNameNotFound。
@@ -389,6 +401,19 @@ def _normalize_feishu_record(record: dict[str, Any]) -> dict[str, Any]:
     return {
         "record_id": record.get("record_id"),
         "fields": record.get("fields", {}),
+    }
+
+
+# 这个函数把飞书字段接口响应归一化成简洁字段定义。
+def _normalize_field_definition(field: dict[str, Any]) -> dict[str, Any] | None:
+    field_name = field.get("field_name")
+    if not field_name:
+        return None
+    return {
+        "field_id": field.get("field_id"),
+        "field_name": str(field_name),
+        "type": field.get("type"),
+        "property": field.get("property", {}),
     }
 
 

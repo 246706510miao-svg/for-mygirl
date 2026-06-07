@@ -8,6 +8,7 @@ from typing import Any, TypedDict
 # 这个类型定义 LangGraph 节点之间传递的状态字段。
 class ThirdServiceState(TypedDict, total=False):
     input: str
+    table_fields: dict[str, Any]
     route: dict[str, Any]
     read_request: dict[str, Any]
     read_result: dict[str, Any]
