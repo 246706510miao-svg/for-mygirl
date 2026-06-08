@@ -15,6 +15,16 @@ except ImportError:
 
 # 这一段定义 finagent 可以调用的工具名称，后续新增工具时统一扩展这里。
 READ_TOOL_NAME = "tool_ReadFeishuBitable"
+CREATE_TOOL_NAME = "tool_CreateFeishuBitableRecord"
+UPDATE_TOOL_NAME = "tool_UpdateFeishuBitableRecord"
+DELETE_TOOL_NAME = "tool_DeleteFeishuBitableRecord"
+ALLOWED_TOOL_NAMES = {READ_TOOL_NAME, CREATE_TOOL_NAME, UPDATE_TOOL_NAME, DELETE_TOOL_NAME}
+TOOL_NAME_BY_INTENT = {
+    "read": READ_TOOL_NAME,
+    "write": CREATE_TOOL_NAME,
+    "update": UPDATE_TOOL_NAME,
+    "delete": DELETE_TOOL_NAME,
+}
 
 
 # 这一段定义 finagent 的轻量规则关键词，LLM 不可用时仍能稳定决策。
@@ -62,6 +72,15 @@ def is_tool_call_for(state: dict[str, Any], tool_name: str) -> bool:
     )
 
 
+# 这个函数读取当前 finagent 输出的 tool_name，供 LangGraph 多工具路由使用。
+def get_tool_call_name(state: dict[str, Any]) -> str | None:
+    payload = _load_json_object(_extract_content_text(state))
+    if not isinstance(payload, dict) or payload.get("type") != "tool_call":
+        return None
+    tool_name = str(payload.get("tool_name") or "")
+    return tool_name if tool_name in ALLOWED_TOOL_NAMES else None
+
+
 # 这个函数从标准 content 数组里提取 text，兼容外部误传 input 的调试场景。
 def _extract_content_text(state: dict[str, Any]) -> str:
     content = state.get("content") or []
@@ -84,7 +103,7 @@ def _load_tool_result(text: str) -> dict[str, Any] | None:
         return None
     if payload.get("type") != "tool_result":
         return None
-    if payload.get("tool_name") != READ_TOOL_NAME:
+    if payload.get("tool_name") not in ALLOWED_TOOL_NAMES:
         return None
     return payload
 
@@ -92,13 +111,11 @@ def _load_tool_result(text: str) -> dict[str, Any] | None:
 # 这个函数在没有 LLM 或模型不可用时，按规则决定调用工具还是直接回答。
 def _rule_based_decision(input_text: str) -> str:
     intent = _detect_intent(input_text)
-    if intent == "read":
-        return _tool_call_text(input_text)
-    if intent in {"write", "update", "delete"}:
-        return "当前已接入的工具只支持读取飞书多维表格；新增、修改、删除工具尚未接入。"
+    if intent in TOOL_NAME_BY_INTENT:
+        return _tool_call_text(TOOL_NAME_BY_INTENT[intent], input_text)
     if intent == "irrelevant":
-        return "当前模块只处理飞书多维表格读取相关问题。"
-    return "请补充要查询的飞书多维表格内容，例如要查哪些记录或字段。"
+        return "当前模块只处理飞书多维表格记录的读取、新增、更新和删除。"
+    return "请补充要操作的飞书多维表格内容，例如要查询、新增、修改或删除哪条记录。"
 
 
 # 这个函数根据关键词判断用户意图，当前只有 read 会触发工具。
@@ -133,11 +150,11 @@ def _looks_like_feishu_read_question(input_text: str) -> bool:
 
 
 # 这个函数把工具调用包装成 content[0].text 内的 JSON 字符串。
-def _tool_call_text(tool_input_text: str) -> str:
+def _tool_call_text(tool_name: str, tool_input_text: str) -> str:
     return json.dumps(
         {
             "type": "tool_call",
-            "tool_name": READ_TOOL_NAME,
+            "tool_name": tool_name,
             "content": [{"text": tool_input_text}],
         },
         ensure_ascii=False,
@@ -147,9 +164,10 @@ def _tool_call_text(tool_input_text: str) -> str:
 # 这个函数把 LLM 输出归一化成图可以理解的 content[0].text。
 def _normalize_llm_decision(decision: dict[str, Any], fallback_input: str) -> str:
     decision_type = decision.get("type")
-    if decision_type == "tool_call" and decision.get("tool_name") == READ_TOOL_NAME:
+    tool_name = str(decision.get("tool_name") or "")
+    if decision_type == "tool_call" and tool_name in ALLOWED_TOOL_NAMES:
         tool_text = _extract_content_text(decision) or fallback_input
-        return _tool_call_text(tool_text)
+        return _tool_call_text(tool_name, tool_text)
 
     if decision_type == "answer":
         answer_text = _extract_content_text(decision)
@@ -180,12 +198,13 @@ def _run_strict_llm_decision(input_text: str, config: ThirdServiceConfig) -> str
 def _normalize_strict_llm_decision(decision: dict[str, Any]) -> str:
     decision_type = decision.get("type")
     if decision_type == "tool_call":
-        if decision.get("tool_name") != READ_TOOL_NAME:
+        tool_name = str(decision.get("tool_name") or "")
+        if tool_name not in ALLOWED_TOOL_NAMES:
             return _strict_error("LLM 决策输出了不允许的 tool_name。")
         tool_text = _extract_content_text(decision)
         if not tool_text:
             return _strict_error("LLM 的 tool_call 缺少 content[0].text。")
-        return _tool_call_text(tool_text)
+        return _tool_call_text(tool_name, tool_text)
 
     if decision_type == "answer":
         answer_text = _extract_content_text(decision)
@@ -259,7 +278,7 @@ def _extract_yaml_block(raw_prompt: str, key: str) -> str:
 def _default_system_prompt() -> str:
     return (
         "你是第三方服务模块的 finagent。"
-        "需要读取飞书多维表格时输出 tool_ReadFeishuBitable 的 tool_call JSON；"
+        "需要操作飞书多维表格时输出允许工具的 tool_call JSON；"
         "拿到 tool_result 或无需工具时输出 answer JSON。"
     )
 
@@ -348,7 +367,15 @@ def _strict_error(message: str) -> str:
 # 这个函数在无 LLM 时把 tool_result 转换成稳定可读的最终答案。
 def _rule_based_tool_summary(tool_result: dict[str, Any]) -> str:
     if tool_result.get("error"):
-        return f"读取失败：{tool_result['error']}"
+        lines = [f"操作失败：{tool_result['error']}"]
+        warnings = tool_result.get("warnings") or []
+        if warnings:
+            lines.append(f"提示：{'；'.join(str(warning) for warning in warnings)}")
+        return "\n".join(lines)
+
+    operation = str(tool_result.get("operation") or "")
+    if operation in {"create_record", "update_record", "delete_record"}:
+        return _rule_based_write_summary(tool_result)
 
     records = tool_result.get("records") or []
     record_count = int(tool_result.get("record_count") or len(records))
@@ -366,6 +393,30 @@ def _rule_based_tool_summary(tool_result: dict[str, Any]) -> str:
             lines.append(f"{index}. record_id：{record.get('record_id', '')}")
     if record_count > 10:
         lines.append(f"还有 {record_count - 10} 条记录未在当前答案中展开。")
+    return "\n".join(lines)
+
+
+# 这个函数在无 LLM 时把写入类 tool_result 转换成稳定可读的最终答案。
+def _rule_based_write_summary(tool_result: dict[str, Any]) -> str:
+    operation = str(tool_result.get("operation") or "")
+    operation_label = {
+        "create_record": "新增",
+        "update_record": "更新",
+        "delete_record": "删除",
+    }.get(operation, "操作")
+    source = "真实飞书多维表格" if tool_result.get("backend") == "feishu" else "mock 飞书表"
+    record = tool_result.get("record") or {}
+    record_id = record.get("record_id") or tool_result.get("request", {}).get("record_id") or ""
+    fields = record.get("fields") or {}
+
+    lines = [f"{operation_label}成功。数据来源：{source}。"]
+    if record_id:
+        lines.append(f"record_id：{record_id}")
+    if fields:
+        lines.append(f"字段：{_format_record_fields(fields)}")
+    warnings = tool_result.get("warnings") or []
+    if warnings:
+        lines.append(f"提示：{'；'.join(str(warning) for warning in warnings)}")
     return "\n".join(lines)
 
 

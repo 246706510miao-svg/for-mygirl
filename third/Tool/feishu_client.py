@@ -144,6 +144,50 @@ class FeishuBitableClient:
         record = response.get("data", {}).get("record")
         return _normalize_feishu_record(record) if record else None
 
+    # 这个方法调用飞书新增记录接口，fields 必须已经由 Tool 校验成真实字段名。
+    def create_record(self, request: dict[str, Any]) -> dict[str, Any]:
+        app_token = request["app_token"]
+        table_id = request["table_id"]
+        query = _clean_query_params({"user_id_type": request.get("user_id_type") or self.config.feishu_user_id_type})
+        url = _with_query(
+            f"https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records",
+            query,
+        )
+        response = self._post_json(url, {"fields": request.get("fields", {})}, with_auth=True)
+        record = response.get("data", {}).get("record")
+        if not record:
+            raise FeishuClientError(f"飞书新增记录响应缺少 record：{response}")
+        return _normalize_feishu_record(record)
+
+    # 这个方法调用飞书更新记录接口，record_id 必须由 Tool 提前唯一定位。
+    def update_record(self, request: dict[str, Any]) -> dict[str, Any]:
+        app_token = request["app_token"]
+        table_id = request["table_id"]
+        record_id = request["record_id"]
+        query = _clean_query_params({"user_id_type": request.get("user_id_type") or self.config.feishu_user_id_type})
+        url = _with_query(
+            f"https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records/{record_id}",
+            query,
+        )
+        response = self._put_json(url, {"fields": request.get("fields", {})}, with_auth=True)
+        record = response.get("data", {}).get("record")
+        if not record:
+            raise FeishuClientError(f"飞书更新记录响应缺少 record：{response}")
+        return _normalize_feishu_record(record)
+
+    # 这个方法调用飞书删除记录接口，返回被删除的 record_id。
+    def delete_record(self, request: dict[str, Any]) -> dict[str, Any]:
+        app_token = request["app_token"]
+        table_id = request["table_id"]
+        record_id = request["record_id"]
+        query = _clean_query_params({"user_id_type": request.get("user_id_type") or self.config.feishu_user_id_type})
+        url = _with_query(
+            f"https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records/{record_id}",
+            query,
+        )
+        self._delete_json(url, with_auth=True)
+        return {"record_id": record_id, "fields": {}}
+
     # 这个方法获取 tenant_access_token；如果你直接配置了 token，就不会再请求飞书鉴权接口。
     def _tenant_access_token(self) -> str:
         if self.config.feishu_tenant_access_token:
@@ -167,6 +211,23 @@ class FeishuBitableClient:
             headers["Authorization"] = f"Bearer {self._tenant_access_token()}"
         data = json.dumps(body, ensure_ascii=False).encode("utf-8")
         request = Request(url=url, data=data, headers=headers, method="POST")
+        return self._open_json(request)
+
+    # 这个方法发送 PUT JSON 请求，并统一检查飞书 code。
+    def _put_json(self, url: str, body: dict[str, Any], with_auth: bool) -> dict[str, Any]:
+        headers = {"Content-Type": "application/json; charset=utf-8"}
+        if with_auth:
+            headers["Authorization"] = f"Bearer {self._tenant_access_token()}"
+        data = json.dumps(body, ensure_ascii=False).encode("utf-8")
+        request = Request(url=url, data=data, headers=headers, method="PUT")
+        return self._open_json(request)
+
+    # 这个方法发送 DELETE 请求，并统一检查飞书 code。
+    def _delete_json(self, url: str, with_auth: bool) -> dict[str, Any]:
+        headers = {"Content-Type": "application/json; charset=utf-8"}
+        if with_auth:
+            headers["Authorization"] = f"Bearer {self._tenant_access_token()}"
+        request = Request(url=url, headers=headers, method="DELETE")
         return self._open_json(request)
 
     # 这个方法发送 GET 请求，并统一检查飞书 code。
@@ -451,4 +512,3 @@ def _format_http_error(status_code: int, body: str) -> str:
         description = violation.get("description")
         details.append(f"{field}={value}，{description}")
     return f"飞书 HTTP {status_code}：code={code}, msg={message}；字段校验失败：{'；'.join(details)}"
-

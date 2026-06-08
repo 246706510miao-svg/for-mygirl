@@ -39,6 +39,11 @@ class ThirdServiceConfig:
         has_table_location = bool(self.feishu_app_token and self.feishu_table_id)
         return has_table_location and (has_access_token or has_app_credentials)
 
+    # 这个属性判断真实飞书写入是否具备最小配置；接口权限由飞书侧返回 403 时确认。
+    @property
+    def can_write_real_feishu(self) -> bool:
+        return self.can_read_real_feishu
+
     # 这个属性列出真实飞书读取缺少的配置，便于 LangSmith 里直接定位问题。
     @property
     def missing_real_feishu_fields(self) -> list[str]:

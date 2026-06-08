@@ -1,4 +1,4 @@
-"""tool_ReadFeishuBitable 使用的飞书字段上下文读取服务。"""
+"""飞书多维表格 Tool 使用的字段上下文读取服务。"""
 
 from __future__ import annotations
 
@@ -94,4 +94,3 @@ def _mock_field_definitions() -> list[dict[str, Any]]:
             }
         )
     return definitions
-
