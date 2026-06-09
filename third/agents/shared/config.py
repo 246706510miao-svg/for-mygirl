@@ -29,6 +29,17 @@ class ThirdServiceConfig:
     openai_api_key: str
     finagent_use_llm: bool
     finagent_model: str
+    workflowagent_use_llm: bool
+    workflowagent_model: str
+    mysql_dsn: str
+    redis_url: str
+    workflow_queue_name: str
+    workflow_consumer_group: str
+    workflow_consumer_name: str
+    workflow_lock_ttl_seconds: int
+    workflow_artifact_ttl_seconds: int
+    workflow_idempotency_ttl_seconds: int
+    feishu_field_cache_ttl_seconds: int
     feishu_field_name_map: dict[str, str]
 
     # 这个属性判断真实飞书读取是否具备最小配置。
@@ -84,6 +95,17 @@ def load_config() -> ThirdServiceConfig:
         openai_api_key=os.getenv("OPENAI_API_KEY", ""),
         finagent_use_llm=_read_bool("THIRD_FINAGENT_USE_LLM", default=False),
         finagent_model=os.getenv("THIRD_FINAGENT_MODEL") or os.getenv("THIRD_ROUTER_MODEL", "gpt-4o-mini"),
+        workflowagent_use_llm=_read_bool("THIRD_WORKFLOWAGENT_USE_LLM", default=False),
+        workflowagent_model=os.getenv("THIRD_WORKFLOWAGENT_MODEL") or os.getenv("THIRD_FINAGENT_MODEL") or "gpt-4o-mini",
+        mysql_dsn=os.getenv("THIRD_MYSQL_DSN", ""),
+        redis_url=os.getenv("THIRD_REDIS_URL", "redis://localhost:6379/0"),
+        workflow_queue_name=os.getenv("THIRD_WORKFLOW_QUEUE_NAME", "third:workflow:queue"),
+        workflow_consumer_group=os.getenv("THIRD_WORKFLOW_CONSUMER_GROUP", "third-workflow-workers"),
+        workflow_consumer_name=os.getenv("THIRD_WORKFLOW_CONSUMER_NAME", "worker-1"),
+        workflow_lock_ttl_seconds=_read_int("THIRD_WORKFLOW_LOCK_TTL_SECONDS", 300),
+        workflow_artifact_ttl_seconds=_read_int("THIRD_WORKFLOW_ARTIFACT_TTL_SECONDS", 3600),
+        workflow_idempotency_ttl_seconds=_read_int("THIRD_WORKFLOW_IDEMPOTENCY_TTL_SECONDS", 604800),
+        feishu_field_cache_ttl_seconds=_read_int("THIRD_FEISHU_FIELD_CACHE_TTL_SECONDS", 1800),
         feishu_field_name_map=_read_json_map("THIRD_FEISHU_FIELD_NAME_MAP"),
     )
 
@@ -140,3 +162,14 @@ def _read_bool(name: str, default: bool) -> bool:
     if raw_value is None:
         return default
     return raw_value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+# 这个函数统一解析整数环境变量，非法值时使用默认配置。
+def _read_int(name: str, default: int) -> int:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    try:
+        return int(raw_value.strip())
+    except ValueError:
+        return default

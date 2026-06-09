@@ -8,10 +8,12 @@ try:
     from ..agents.shared.config import ThirdServiceConfig, load_config
     from ..agents.shared.mock_feishu import MOCK_RECORDS
     from ..agents.shared.time_utils import now_iso
+    from ..workflow.field_cache import acquire_field_refresh_lock, load_cached_fields, save_cached_fields
 except ImportError:
     from agents.shared.config import ThirdServiceConfig, load_config
     from agents.shared.mock_feishu import MOCK_RECORDS
     from agents.shared.time_utils import now_iso
+    from workflow.field_cache import acquire_field_refresh_lock, load_cached_fields, save_cached_fields
 
 from .feishu_client import FeishuBitableClient, FeishuClientError
 
@@ -44,9 +46,22 @@ def _load_real_table_fields(config: ThirdServiceConfig, base_context: dict[str, 
             "error": f"真实飞书字段读取配置不完整，缺少：{'、'.join(config.missing_real_feishu_fields)}",
         }
 
+    cached_fields = _load_cached_real_fields(config)
+    if cached_fields:
+        return {
+            **base_context,
+            "source": "feishu",
+            "fields": cached_fields,
+            "field_names": [field["field_name"] for field in cached_fields],
+            "error": None,
+            "cache": "hit",
+        }
+
     try:
+        acquire_field_refresh_lock(config)
         client = FeishuBitableClient(config)
         fields = client.list_field_definitions(config.feishu_app_token, config.feishu_table_id)
+        save_cached_fields(config, fields)
     except FeishuClientError as exc:
         return {
             **base_context,
@@ -62,7 +77,16 @@ def _load_real_table_fields(config: ThirdServiceConfig, base_context: dict[str, 
         "fields": fields,
         "field_names": [field["field_name"] for field in fields],
         "error": None,
+        "cache": "refresh",
     }
+
+
+# 这个函数读取未过期的真实飞书字段缓存，缓存异常时不阻断字段读取。
+def _load_cached_real_fields(config: ThirdServiceConfig) -> list[dict[str, Any]]:
+    try:
+        return load_cached_fields(config)
+    except Exception:
+        return []
 
 
 # 这个函数在 mock 模式下从 mock 记录推导字段上下文，保持 LangSmith 调试可用。

@@ -2,39 +2,47 @@
 
 ## 阅读顺序
 
-1. `README.md`：先看模块目标、运行方式和环境变量。
-2. `docs/router-read00.md`：查看当前 finagent 到飞书 CRUD Tool 的输入输出流程。
-3. `agents/graph.py`：理解 LangGraph 如何串联 finagent 和工具。
-4. `agents/finagent/agent.py`、`Prompt/finagent.yaml`：查看 Agent 决策逻辑和提示词。
-5. `Tool/tool_ReadFeishuBitable.py`、`Tool/tool_CreateFeishuBitableRecord.py`、`Tool/tool_UpdateFeishuBitableRecord.py`、`Tool/tool_DeleteFeishuBitableRecord.py`：查看各 Tool 的入口。
-6. `Tool/write_support.py`、`Tool/feishu_client.py`、`Tool/field_context.py`：查看写入字段校验、真实飞书接口和字段上下文读取。
-7. `agents/shared/`：最后看配置、字段 schema、mock 数据和通用工具。
+1. `README.md`：先看模块目标、运行方式、API 和环境变量。
+2. `docs/总架构图.md`：查看 SpringBoot、third、Redis、MySQL、OpenAI、飞书之间的边界。
+3. `docs/workflow-db-er.md`：查看 MySQL 表、Redis key、字段缓存 TTL 和幂等规则。
+4. `docs/router-read00.md`：查看当前 workflowagent 到 Tool 的输入输出流程。
+5. `agents/graph.py`、`workflow/executor.py`：理解 LangGraph 固定入口和 runtime 执行方式。
+6. `agents/workflowagent/agent.py`、`Prompt/workflowagent.yaml`：查看动态计划生成逻辑和提示词。
+7. `Tool/`：查看飞书字段读取、查询、新增、更新、删除 Tool。
+8. `storage/`、`runtime/`：查看 MySQL Repository 和 Redis Stream 运行态。
+9. `api.py`、`worker.py`：查看 SpringBoot 后续要调用的 API 和 worker 消费入口。
 
 ## 目录表
 
 | 路径 | 用途 |
 | --- | --- |
-| `README.md` | 模块说明、配置项、运行方式。 |
-| `codex.md` | 当前目录表，方便快速定位文件。 |
-| `docs/总架构图.md` | 第三方服务模块的整体架构图。 |
-| `docs/router-read00.md` | finagent 到飞书 CRUD Tool 的工作流程说明。 |
+| `README.md` | 模块说明、配置项、API、运行方式。 |
+| `codex.md` | 当前目录表。 |
+| `docs/总架构图.md` | third 总览架构图。 |
+| `docs/workflow-db-er.md` | workflow 数据库 ER 图和 Redis key 设计。 |
+| `docs/workflowagent-fixed-graph.md` | 固定执行图和节点职责说明。 |
+| `docs/router-read00.md` | workflowagent 到 Tool 的当前工作流程。 |
 | `langgraph.json` | LangGraph / LangSmith 加载图的配置。 |
-| `pyproject.toml` | 本模块作为 Python 包安装时的项目配置。 |
-| `requirements.txt` | 运行 LangGraph 和 OpenAI finagent 所需依赖。 |
-| `demo.py` | 命令行测试入口，输入会包装为 `content[0].text`。 |
-| `agents/graph.py` | LangGraph 主图，负责 `finagent -> 任一 Tool -> finagent` 编排。 |
-| `agents/state.py` | LangGraph 节点间传递的 `content` 状态结构。 |
-| `agents/finagent/agent.py` | finagent，根据 `content[0].text` 决定调用工具或输出最终答案。 |
-| `Prompt/finagent.yaml` | finagent 系统提示词。 |
-| `Tool/tool_ReadFeishuBitable.py` | 飞书多维表格读取工具入口。 |
-| `Tool/tool_CreateFeishuBitableRecord.py` | 飞书多维表格新增记录工具入口。 |
-| `Tool/tool_UpdateFeishuBitableRecord.py` | 飞书多维表格更新记录工具入口。 |
-| `Tool/tool_DeleteFeishuBitableRecord.py` | 飞书多维表格删除记录工具入口。 |
-| `Tool/write_support.py` | 写入类 Tool 共用的结构化请求、字段校验和值转换逻辑。 |
-| `Tool/field_context.py` | 读取真实或 mock 表字段上下文。 |
-| `Tool/feishu_client.py` | 真实飞书多维表格 HTTP 客户端。 |
+| `pyproject.toml` | Python 包配置。 |
+| `requirements.txt` | 运行依赖。 |
+| `alembic.ini`、`migrations/` | MySQL migration 配置和脚本。 |
+| `api.py` | FastAPI Workflow API。 |
+| `worker.py` | Redis Stream workflow worker。 |
+| `demo.py` | 同步和异步命令行调试入口。 |
+| `agents/graph.py` | LangGraph 固定入口，调用 workflow runtime。 |
+| `agents/state.py` | LangGraph 公开输入输出状态。 |
+| `agents/workflowagent/agent.py` | workflowagent，生成动态 workflow_plan。 |
+| `Prompt/workflowagent.yaml` | workflowagent 系统提示词。 |
+| `workflow/` | 执行器、计划校验、上下文、Tool 分发、业务 Agent、写入校验。 |
+| `storage/` | SQLAlchemy 模型、Repository、MySQL/内存存储工厂。 |
+| `runtime/` | Redis Stream/内存运行态工厂。 |
+| `Tool/tool_ReadFeishuBitableSchema.py` | 飞书字段定义读取 Tool。 |
+| `Tool/tool_ReadFeishuBitable.py` | 飞书记录读取 Tool。 |
+| `Tool/tool_CreateFeishuBitableRecord.py` | 飞书新增记录 Tool。 |
+| `Tool/tool_UpdateFeishuBitableRecord.py` | 飞书更新记录 Tool。 |
+| `Tool/tool_DeleteFeishuBitableRecord.py` | 飞书删除记录 Tool。 |
+| `Tool/write_support.py` | 写入类 Tool 共用字段校验和值转换逻辑。 |
+| `Tool/field_context.py` | 读取真实或 mock 表字段上下文，接入 TTL 字段缓存。 |
+| `Tool/feishu_client.py` | 飞书 OpenAPI HTTP 客户端。 |
 | `Tool/mock_repository.py` | mock 多维表格 CRUD 逻辑。 |
-| `agents/shared/config.py` | 飞书、OpenAI、LangSmith 相关环境配置读取。 |
-| `agents/shared/feishu_schema.py` | 飞书读取字段 schema 和字段别名。 |
-| `agents/shared/mock_feishu.py` | mock 飞书记录数据。 |
-| `agents/shared/time_utils.py` | 通用时间工具。 |
+| `agents/shared/config.py` | 飞书、OpenAI、MySQL、Redis、workflow 环境配置。 |
