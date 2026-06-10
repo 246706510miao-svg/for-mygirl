@@ -11,9 +11,10 @@
 7. `agents/workflowagent/agent.py`、`Prompt/workflowagent.yaml`：查看动态计划生成逻辑和提示词。
 8. `Tool/`：查看飞书字段读取、查询、新增、更新、删除 Tool。
 9. `storage/`、`runtime/`：查看 MySQL Repository 和 Redis Stream 运行态。
-10. `api.py`、`worker.py`：查看 SpringBoot 后续要调用的 API 和 worker 消费入口。
-11. `../docker-compose.yml`、`.env.local.docker.example`：查看本地 MySQL/Redis Docker 验证入口。
-12. `Dockerfile`、`.env.docker.mock`：查看后续完整 third 容器部署入口。
+10. `debug/`：查看本地调试台、运行模式体检、时间线和动态图生成。
+11. `api.py`、`worker.py`：查看 SpringBoot 后续要调用的 API 和 worker 消费入口。
+12. `../docker-compose.yml`、`.env.local.docker.example`：查看本地 MySQL/Redis Docker 验证入口。
+13. `Dockerfile`、`.env.docker.mock`：查看后续完整 third 容器部署入口。
 
 ## 目录结构
 
@@ -33,6 +34,10 @@ third/
 |-- api.py                            # FastAPI Workflow API
 |-- worker.py                         # Redis Stream workflow worker
 |-- demo.py                           # 同步和异步命令行调试入口
+|-- debug/
+|   |-- router.py                     # /debug 页面、健康检查、timeline、graph、artifacts 接口
+|   |-- page.py                       # 内置调试台 HTML
+|   `-- __init__.py
 |-- agents/
 |   |-- graph.py                      # LangGraph 固定入口，调用 workflow runtime
 |   |-- state.py                      # LangGraph 公开输入输出状态
@@ -98,6 +103,8 @@ third/
 - Redis 运行态创建入口是 `runtime/factory.py` 的 `get_workflow_runtime_store()`。
 - 建表脚本在 `migrations/versions/0001_workflow_tables.py`。
 - `THIRD_ALLOW_IN_MEMORY_FALLBACK=0` 会禁止 MySQL/Redis 失败时回退到进程内内存，Docker 和真实联调建议保持为 `0`。
+- `THIRD_DEBUG_ENABLED=1` 会启用 `/debug` 调试台，本地默认开启，服务器部署建议关闭。
+- `THIRD_WORKFLOW_DEBUG_LOG=1` 会输出脱敏后的 workflow plan JSON 和失败步骤摘要；未配置时默认跟随 `THIRD_DEBUG_ENABLED`。
 
 ## 建表方式
 
@@ -133,6 +140,18 @@ docker compose up -d
 ```bash
 uvicorn third.api:app --host 0.0.0.0 --port 8001 --reload
 ```
+
+本地调试台入口：
+
+```text
+http://127.0.0.1:8001/debug
+```
+
+调试台读取现有 workflow 表生成时间线和 Mermaid 文本，不新增数据库表。真实飞书和 LLM 联调时，先看 `/debug/health` 的 Feishu、WorkflowAgent、OpenAI、MySQL、Redis 和内存兜底状态。
+
+调试台默认只在当前 session 处于 `queued` 或 `running` 时自动刷新详情；进入 `waiting_user`、`success`、`failed`、`cancelled` 后会暂停自动重绘，避免查看 `Artifacts` 或 `JSON` 时滚动位置被重置。需要最新数据时使用页面右上角“刷新”。
+
+本地 worker 使用标准 logging，`python -m third.worker` 会在 `THIRD_WORKFLOW_DEBUG_LOG=1` 时打印 workflowagent 生成的 plan JSON 和失败步骤上下文，日志会脱敏密钥、token、DSN 和 Redis URL。
 
 后续完整 third 容器验证：
 

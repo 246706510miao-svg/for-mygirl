@@ -7,11 +7,13 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 
 try:
+    from .debug.router import router as debug_router
     from .runtime.factory import get_workflow_runtime_store
     from .storage.factory import get_workflow_repository
     from .storage.repository import now
     from .workflow.api_schema import InvokeWorkflowRequest, ResumeWorkflowRequest, WorkflowResponse
 except ImportError:
+    from debug.router import router as debug_router
     from runtime.factory import get_workflow_runtime_store
     from storage.factory import get_workflow_repository
     from storage.repository import now
@@ -20,6 +22,10 @@ except ImportError:
 
 # 这一段创建 FastAPI 应用，SpringBoot 后续通过 HTTP 调用这里。
 app = FastAPI(title="third workflow service", version="0.1.0")
+
+
+# 这一段挂载本地调试台，是否可访问由 THIRD_DEBUG_ENABLED 控制。
+app.include_router(debug_router)
 
 
 # 这个接口创建 workflow session 并投递异步任务。

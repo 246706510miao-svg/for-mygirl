@@ -10,6 +10,7 @@
 - `storage/`：MySQL/内存 Repository，保存 session、plan、step、artifact、确认和幂等数据。
 - `runtime/`：Redis Stream/内存运行态，保存队列、锁、游标、短期 artifact 和幂等缓存。
 - `api.py`：FastAPI 入口，提供 workflow 提交、查询、resume。
+- `debug/`：本地调试台，展示运行模式、最近 session、步骤时间线、动态图和 artifacts。
 - `worker.py`：Redis Stream worker，异步执行 workflow。
 - `Dockerfile`：后续服务器部署时，third API、worker、migration 共用镜像。
 - `.env.local.docker.example`：本地 Python 连接 Docker MySQL/Redis 的配置模板。
@@ -55,9 +56,15 @@ THIRD_WORKFLOW_ARTIFACT_TTL_SECONDS=3600
 THIRD_WORKFLOW_IDEMPOTENCY_TTL_SECONDS=604800
 THIRD_FEISHU_FIELD_CACHE_TTL_SECONDS=1800
 THIRD_ALLOW_IN_MEMORY_FALLBACK=0
+THIRD_DEBUG_ENABLED=1
+THIRD_WORKFLOW_DEBUG_LOG=1
 ```
 
 说明：`THIRD_ALLOW_IN_MEMORY_FALLBACK=0` 时，MySQL 或 Redis 缺失会直接报错，不会静默退回进程内内存。Docker、SpringBoot 联调和真实飞书验证建议保持为 `0`。本地单进程 mock 调试才建议设为 `1`。
+
+说明：`THIRD_DEBUG_ENABLED=1` 会启用 `/debug` 调试台；服务器部署时建议设为 `0`，避免暴露 workflow 输入、步骤输出和 artifact 内容。
+
+说明：`THIRD_WORKFLOW_DEBUG_LOG=1` 会在 API/worker 控制台输出 workflowagent 生成的 plan JSON 和失败步骤上下文；未配置时默认跟随 `THIRD_DEBUG_ENABLED`。日志会脱敏 OpenAI、飞书、MySQL、Redis 相关密钥或连接串。
 
 ## 运行方式
 
@@ -110,7 +117,25 @@ uvicorn third.api:app --host 0.0.0.0 --port 8001 --reload
 python -m third.worker
 ```
 
-说明：`uvicorn --reload` 可以让 API 进程在代码变化后自动重启；worker 暂时手动重启即可，后续需要也可以引入 watch 工具。
+说明：`uvicorn --reload` 可以让 API 进程在代码变化后自动重启；worker 暂时手动重启即可，后续需要也可以引入 watch 工具。`THIRD_WORKFLOW_DEBUG_LOG=1` 时，worker 控制台会打印每个新 workflow 的 plan JSON 和失败步骤信息，便于不打开页面也能定位执行路径。
+
+打开本地调试台：
+
+```text
+http://127.0.0.1:8001/debug
+```
+
+调试台可以直接提交 workflow、查看最近 session、步骤时间线、动态 Mermaid 文本、artifact、等待确认内容，并在 `waiting_user` 时执行 approve 或 reject。
+
+调试台默认开启自动刷新，但只会在当前 session 为 `queued` 或 `running` 时重绘详情。进入 `waiting_user`、`success`、`failed`、`cancelled` 后会暂停自动重绘，避免查看 `Artifacts` 或 `JSON` 时滚动条被拉回顶部；需要最新数据时点击右上角“刷新”。
+
+调试健康检查：
+
+```http
+GET /debug/health
+```
+
+它只显示 `configured / missing / ok / error` 等状态，不输出 OpenAI、飞书或数据库密钥明文。真实飞书和 LLM 联调时，先看这里确认 `Feishu real`、`WorkflowAgent LLM`、MySQL、Redis、OpenAI key、飞书表格定位和鉴权配置是否满足要求。
 
 提交一次 workflow：
 
@@ -262,10 +287,30 @@ POST /workflows/{session_id}/resume
 }
 ```
 
+## Debug API
+
+调试接口只属于 `third` 本地开发层，不需要 SpringBoot 代理才能使用。关闭 `THIRD_DEBUG_ENABLED` 后，除标准 `/health` 外，调试页面和调试数据接口不可访问。
+
+```http
+GET /debug
+GET /debug/health
+GET /debug/workflows?limit=50
+GET /debug/workflows/latest
+GET /debug/workflows/{session_id}/timeline
+GET /debug/workflows/{session_id}/artifacts
+GET /debug/workflows/{session_id}/graph
+```
+
+`/debug/workflows/{session_id}/timeline` 会从现有 MySQL 表推导执行过程，不依赖新增事件表。读取类 workflow 通常直接到 `success`；新增、更新、删除会先停在 `waiting_user`，调试台确认后 worker 才会继续执行写入 Tool。
+
+页面顶部“自动刷新”开关用于控制当前 session 详情轮询。关闭后页面不再自动请求详情接口；手动刷新仍会更新运行模式、最近 session 和当前详情，并尽量保留 `Artifacts`、`JSON` 视图的滚动位置。
+
 ## 执行规则
 
 - workflow 异步执行，API 提交后立即返回 `session_id`。
 - 每一步结果保存到 `session_artifacts`，后续步骤只读取自己声明依赖的 artifact。
+- 调试台只读取实际写入的 session、plan、step、artifact、confirmation，因此同时兼容 mock、真实飞书、规则 workflowagent 和 LLM workflowagent。
+- 调试日志由 `THIRD_WORKFLOW_DEBUG_LOG` 控制，本地开启时会输出脱敏后的 workflow plan 和失败 step 摘要。
 - 写入、更新、删除前必须经过字段读取、字段转换、校验和确认门。
 - 写入类操作使用 `idempotency_key` 防止重试造成重复写入。
 - 飞书字段定义缓存到 `feishu_field_cache`，通过 `expires_at` 实现 TTL 刷新。

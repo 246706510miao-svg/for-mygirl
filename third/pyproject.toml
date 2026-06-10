@@ -21,7 +21,7 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["agents*", "Tool*", "Prompt*", "workflow*", "storage*", "runtime*"]
+include = ["agents*", "Tool*", "Prompt*", "workflow*", "storage*", "runtime*", "debug*"]
 
 [tool.setuptools.package-data]
 Prompt = ["*.yaml"]

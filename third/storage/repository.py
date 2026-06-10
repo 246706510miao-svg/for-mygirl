@@ -54,6 +54,10 @@ class WorkflowRepository:
     def get_session(self, session_id: str) -> dict[str, Any] | None:
         raise NotImplementedError
 
+    # 这个方法按更新时间倒序列出最近的 workflow session。
+    def list_sessions(self, limit: int = 50) -> list[dict[str, Any]]:
+        raise NotImplementedError
+
     # 这个方法更新 workflow session 的状态字段。
     def update_session(self, session_id: str, **fields: Any) -> dict[str, Any]:
         raise NotImplementedError
@@ -112,6 +116,10 @@ class WorkflowRepository:
 
     # 这个方法读取等待中的确认请求。
     def get_waiting_confirmation(self, session_id: str) -> dict[str, Any] | None:
+        raise NotImplementedError
+
+    # 这个方法列出 session 下的所有确认请求，调试台用它展示确认历史。
+    def list_confirmations(self, session_id: str) -> list[dict[str, Any]]:
         raise NotImplementedError
 
     # 这个方法保存用户确认或拒绝结果。
@@ -183,6 +191,13 @@ class SqlAlchemyWorkflowRepository(WorkflowRepository):
         with self._session_factory() as session:
             model = session.get(WorkflowSessionModel, session_id)
             return _session_to_dict(model) if model else None
+
+    # 这个方法按更新时间倒序列出最近的 workflow session。
+    def list_sessions(self, limit: int = 50) -> list[dict[str, Any]]:
+        safe_limit = _safe_limit(limit)
+        with self._session_factory() as session:
+            stmt = select(WorkflowSessionModel).order_by(WorkflowSessionModel.updated_at.desc()).limit(safe_limit)
+            return [_session_to_dict(model) for model in session.execute(stmt).scalars().all()]
 
     # 这个方法更新 workflow session。
     def update_session(self, session_id: str, **fields: Any) -> dict[str, Any]:
@@ -332,6 +347,16 @@ class SqlAlchemyWorkflowRepository(WorkflowRepository):
             model = session.execute(stmt).scalars().first()
             return _confirmation_to_dict(model) if model else None
 
+    # 这个方法列出 session 下的所有确认请求。
+    def list_confirmations(self, session_id: str) -> list[dict[str, Any]]:
+        with self._session_factory() as session:
+            stmt = (
+                select(WorkflowConfirmationModel)
+                .where(WorkflowConfirmationModel.session_id == session_id)
+                .order_by(WorkflowConfirmationModel.created_at.asc())
+            )
+            return [_confirmation_to_dict(model) for model in session.execute(stmt).scalars().all()]
+
     # 这个方法保存用户确认结果。
     def resolve_confirmation(self, confirmation_id: str, approved: bool, user_response: str) -> dict[str, Any]:
         with self._session_factory() as session:
@@ -469,6 +494,12 @@ class InMemoryWorkflowRepository(WorkflowRepository):
         row = self.sessions.get(session_id)
         return deepcopy(row) if row else None
 
+    # 这个方法按更新时间倒序列出最近的 workflow session。
+    def list_sessions(self, limit: int = 50) -> list[dict[str, Any]]:
+        rows = list(self.sessions.values())
+        rows.sort(key=lambda item: item["updated_at"], reverse=True)
+        return deepcopy(rows[: _safe_limit(limit)])
+
     # 这个方法更新 workflow session。
     def update_session(self, session_id: str, **fields: Any) -> dict[str, Any]:
         row = self.sessions[session_id]
@@ -587,6 +618,12 @@ class InMemoryWorkflowRepository(WorkflowRepository):
         rows = [row for row in self.confirmations.values() if row["session_id"] == session_id and row["status"] == "waiting"]
         rows.sort(key=lambda item: item["created_at"], reverse=True)
         return deepcopy(rows[0]) if rows else None
+
+    # 这个方法列出 session 下的所有确认请求。
+    def list_confirmations(self, session_id: str) -> list[dict[str, Any]]:
+        rows = [row for row in self.confirmations.values() if row["session_id"] == session_id]
+        rows.sort(key=lambda item: item["created_at"])
+        return deepcopy(rows)
 
     # 这个方法保存确认结果。
     def resolve_confirmation(self, confirmation_id: str, approved: bool, user_response: str) -> dict[str, Any]:
@@ -828,3 +865,8 @@ def _field_cache_to_dict(model: FeishuFieldCacheModel) -> dict[str, Any]:
 # 这个函数生成内存字段缓存的组合 key。
 def _field_cache_key(app_token_hash: str, table_id: str, view_id: str | None) -> str:
     return f"{app_token_hash}:{table_id}:{view_id or ''}"
+
+
+# 这个函数限制调试列表查询大小，避免页面误拉太多历史数据。
+def _safe_limit(limit: int) -> int:
+    return max(1, min(int(limit or 50), 200))

@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
+import re
 from typing import Any
 
 try:
+    from ..agents.shared.config import load_config
     from ..agents.workflowagent.agent import build_workflow_plan
     from ..agents.workflowagent.agent import WRITE_TOOLS
     from ..runtime.factory import get_workflow_runtime_store
@@ -17,6 +20,7 @@ try:
     from .tool_dispatcher import dispatch_tool
     from .validation import run_validation_node
 except ImportError:
+    from agents.shared.config import load_config
     from agents.workflowagent.agent import build_workflow_plan
     from agents.workflowagent.agent import WRITE_TOOLS
     from runtime.factory import get_workflow_runtime_store
@@ -27,6 +31,24 @@ except ImportError:
     from workflow.plan_validator import PlanValidationError, validate_workflow_plan
     from workflow.tool_dispatcher import dispatch_tool
     from workflow.validation import run_validation_node
+
+
+# 这一段定义 workflow 执行日志，worker 和 API 都会通过标准 logging 输出。
+LOGGER = logging.getLogger(__name__)
+
+
+# 这一段定义日志脱敏规则，避免调试 plan 时泄露飞书、OpenAI、数据库或 Redis 凭证。
+SENSITIVE_KEY_PATTERN = re.compile(r"(secret|token|api[_-]?key|password|authorization|dsn|redis[_-]?url)", re.IGNORECASE)
+SENSITIVE_TEXT_PATTERNS = (
+    (re.compile(r"(app_token[\"']?\s*[:=：]\s*[\"']?)([A-Za-z0-9_\-]+)([\"']?)", re.IGNORECASE), r"\1***\3"),
+    (re.compile(r"(tenant_access_token[\"']?\s*[:=：]\s*[\"']?)([A-Za-z0-9._\-]+)([\"']?)", re.IGNORECASE), r"\1***\3"),
+    (re.compile(r"(app_secret[\"']?\s*[:=：]\s*[\"']?)([A-Za-z0-9._\-]+)([\"']?)", re.IGNORECASE), r"\1***\3"),
+    (re.compile(r"(OPENAI_API_KEY[\"']?\s*[:=：]\s*[\"']?)([A-Za-z0-9._\-]+)([\"']?)", re.IGNORECASE), r"\1***\3"),
+    (re.compile(r"\bsk-[A-Za-z0-9_\-]{10,}\b"), "sk-***"),
+    (re.compile(r"(mysql\+pymysql://[^:]+:)[^@]+(@)", re.IGNORECASE), r"\1***\2"),
+    (re.compile(r"(redis://[^:]*:)[^@]+(@)", re.IGNORECASE), r"\1***\2"),
+    (re.compile(r"(/base/)([A-Za-z0-9_\-]+)", re.IGNORECASE), r"\1***"),
+)
 
 
 # 这个类解释并执行 workflow_plan.steps。
@@ -66,6 +88,7 @@ class WorkflowExecutor:
             plan = validate_workflow_plan(raw_plan)
         except PlanValidationError:
             raise
+        _log_workflow_plan(session_id, plan)
         saved_plan = self.repository.save_plan(session_id, plan)
         self.repository.save_artifact(
             session_id,
@@ -109,6 +132,7 @@ class WorkflowExecutor:
             self.repository.update_step(step["step_id"], status="success", finished_at=now(), error_text=None)
             return {"status": "success"}
         except Exception as exc:
+            _log_step_failure(session_id, step, exc)
             self.repository.update_step(step["step_id"], status="failed", finished_at=now(), error_text=str(exc))
             self.repository.update_session(session_id, status="failed", error_text=str(exc))
             return {"status": "failed", "error_text": str(exc)}
@@ -281,6 +305,91 @@ def _answer_from_artifact(artifact: dict[str, Any] | None) -> str:
     if isinstance(payload, dict) and payload.get("summary"):
         return str(payload["summary"])
     return content_text or "workflow 已完成。"
+
+
+# 这个函数在本地调试日志里打印 workflowagent 生成的完整 plan。
+def _log_workflow_plan(session_id: str, plan: dict[str, Any]) -> None:
+    if not load_config().workflow_debug_log:
+        return
+    _ensure_debug_logger()
+    payload = {
+        "event": "workflow_plan_generated",
+        "session_id": session_id,
+        "intent": plan.get("intent"),
+        "risk_level": plan.get("risk_level"),
+        "requires_confirmation": plan.get("requires_confirmation"),
+        "steps": _step_log_summary(plan.get("steps") or []),
+        "workflow_plan": plan,
+    }
+    LOGGER.info(json.dumps(_redact_for_log(payload), ensure_ascii=False, default=str))
+
+
+# 这个函数在步骤失败时打印必要上下文，方便直接从 worker/API 控制台定位问题。
+def _log_step_failure(session_id: str, step: dict[str, Any], exc: Exception) -> None:
+    if not load_config().workflow_debug_log:
+        return
+    _ensure_debug_logger()
+    payload = {
+        "event": "workflow_step_failed",
+        "session_id": session_id,
+        "step_id": step.get("step_id"),
+        "local_step_id": step.get("local_step_id"),
+        "kind": step.get("kind"),
+        "tool_name": step.get("tool_name"),
+        "agent_name": step.get("agent_name"),
+        "error_text": str(exc),
+    }
+    LOGGER.error(json.dumps(_redact_for_log(payload), ensure_ascii=False, default=str))
+
+
+# 这个函数确保 API 或 worker 进程都能输出 workflow 调试日志。
+def _ensure_debug_logger() -> None:
+    LOGGER.setLevel(logging.INFO)
+    if not logging.getLogger().handlers:
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s %(levelname)s %(name)s %(message)s",
+        )
+
+
+# 这个函数把 plan 中的步骤压缩成适合日志扫描的摘要。
+def _step_log_summary(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "step_id": step.get("step_id"),
+            "kind": step.get("kind"),
+            "tool_name": step.get("tool_name"),
+            "agent_name": step.get("agent_name"),
+            "output": step.get("output"),
+        }
+        for step in steps
+    ]
+
+
+# 这个函数递归清理日志对象中的敏感字段和值。
+def _redact_for_log(value: Any) -> Any:
+    if isinstance(value, dict):
+        cleaned: dict[str, Any] = {}
+        for key, item in value.items():
+            key_text = str(key)
+            if SENSITIVE_KEY_PATTERN.search(key_text):
+                cleaned[key_text] = "***"
+            else:
+                cleaned[key_text] = _redact_for_log(item)
+        return cleaned
+    if isinstance(value, list):
+        return [_redact_for_log(item) for item in value]
+    if isinstance(value, str):
+        return _redact_text(value)
+    return value
+
+
+# 这个函数对日志文本做补充脱敏，覆盖用户输入里直接携带 token 或链接的情况。
+def _redact_text(text: str) -> str:
+    redacted = text
+    for pattern, replacement in SENSITIVE_TEXT_PATTERNS:
+        redacted = pattern.sub(replacement, redacted)
+    return redacted
 
 
 # 这个函数为 LangGraph 同步入口创建并执行一次 workflow。

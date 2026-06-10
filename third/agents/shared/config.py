@@ -41,6 +41,8 @@ class ThirdServiceConfig:
     workflow_idempotency_ttl_seconds: int
     feishu_field_cache_ttl_seconds: int
     allow_in_memory_fallback: bool
+    debug_enabled: bool
+    workflow_debug_log: bool
     feishu_field_name_map: dict[str, str]
 
     # 这个属性判断真实飞书读取是否具备最小配置。
@@ -85,6 +87,7 @@ class ThirdServiceConfig:
 # 这个函数从环境变量和 .env 文件创建配置对象；你后续收集到真实信息后只需要填配置。
 def load_config() -> ThirdServiceConfig:
     _load_env_files()
+    debug_enabled = _read_bool("THIRD_DEBUG_ENABLED", default=True)
     return ThirdServiceConfig(
         feishu_app_id=os.getenv("THIRD_FEISHU_APP_ID", ""),
         feishu_app_secret=os.getenv("THIRD_FEISHU_APP_SECRET", ""),
@@ -110,6 +113,8 @@ def load_config() -> ThirdServiceConfig:
         workflow_idempotency_ttl_seconds=_read_int("THIRD_WORKFLOW_IDEMPOTENCY_TTL_SECONDS", 604800),
         feishu_field_cache_ttl_seconds=_read_int("THIRD_FEISHU_FIELD_CACHE_TTL_SECONDS", 1800),
         allow_in_memory_fallback=_read_bool("THIRD_ALLOW_IN_MEMORY_FALLBACK", default=True),
+        debug_enabled=debug_enabled,
+        workflow_debug_log=_read_bool("THIRD_WORKFLOW_DEBUG_LOG", default=debug_enabled),
         feishu_field_name_map=_read_json_map("THIRD_FEISHU_FIELD_NAME_MAP"),
     )
 
