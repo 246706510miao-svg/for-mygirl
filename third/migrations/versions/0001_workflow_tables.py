@@ -52,6 +52,7 @@ def upgrade() -> None:
     op.create_table(
         "workflow_steps",
         sa.Column("step_id", sa.String(length=64), primary_key=True),
+        sa.Column("local_step_id", sa.String(length=128), nullable=False),
         sa.Column("plan_id", sa.String(length=64), sa.ForeignKey("workflow_plans.plan_id"), nullable=False),
         sa.Column("step_seq", sa.Integer(), nullable=False),
         sa.Column("kind", sa.String(length=32), nullable=False),
@@ -66,6 +67,7 @@ def upgrade() -> None:
         sa.Column("error_text", sa.Text(), nullable=True),
         sa.Column("started_at", sa.DateTime(), nullable=True),
         sa.Column("finished_at", sa.DateTime(), nullable=True),
+        sa.UniqueConstraint("plan_id", "local_step_id", name="uq_workflow_steps_plan_local_step_id"),
     )
     op.create_index("ix_workflow_steps_plan_id", "workflow_steps", ["plan_id"])
     op.create_index("ix_workflow_steps_status", "workflow_steps", ["status"])

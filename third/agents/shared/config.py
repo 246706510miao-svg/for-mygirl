@@ -40,6 +40,7 @@ class ThirdServiceConfig:
     workflow_artifact_ttl_seconds: int
     workflow_idempotency_ttl_seconds: int
     feishu_field_cache_ttl_seconds: int
+    allow_in_memory_fallback: bool
     feishu_field_name_map: dict[str, str]
 
     # 这个属性判断真实飞书读取是否具备最小配置。
@@ -70,9 +71,11 @@ class ThirdServiceConfig:
     # 这个属性给 Tool 使用，提供默认表格上下文。
     @property
     def table_context(self) -> dict[str, str]:
+        app_token = self.feishu_app_token if self.feishu_use_real else self.feishu_app_token or DEFAULT_APP_TOKEN
+        table_id = self.feishu_table_id if self.feishu_use_real else self.feishu_table_id or DEFAULT_TABLE_ID
         return {
-            "app_token": self.feishu_app_token or DEFAULT_APP_TOKEN,
-            "table_id": self.feishu_table_id or DEFAULT_TABLE_ID,
+            "app_token": app_token,
+            "table_id": table_id,
             "table_name": self.feishu_table_name or DEFAULT_TABLE_NAME,
             "view_id": self.feishu_view_id,
             "user_id_type": self.feishu_user_id_type,
@@ -106,6 +109,7 @@ def load_config() -> ThirdServiceConfig:
         workflow_artifact_ttl_seconds=_read_int("THIRD_WORKFLOW_ARTIFACT_TTL_SECONDS", 3600),
         workflow_idempotency_ttl_seconds=_read_int("THIRD_WORKFLOW_IDEMPOTENCY_TTL_SECONDS", 604800),
         feishu_field_cache_ttl_seconds=_read_int("THIRD_FEISHU_FIELD_CACHE_TTL_SECONDS", 1800),
+        allow_in_memory_fallback=_read_bool("THIRD_ALLOW_IN_MEMORY_FALLBACK", default=True),
         feishu_field_name_map=_read_json_map("THIRD_FEISHU_FIELD_NAME_MAP"),
     )
 

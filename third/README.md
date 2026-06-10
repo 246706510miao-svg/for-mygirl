@@ -11,6 +11,10 @@
 - `runtime/`：Redis Stream/内存运行态，保存队列、锁、游标、短期 artifact 和幂等缓存。
 - `api.py`：FastAPI 入口，提供 workflow 提交、查询、resume。
 - `worker.py`：Redis Stream worker，异步执行 workflow。
+- `Dockerfile`：后续服务器部署时，third API、worker、migration 共用镜像。
+- `.env.local.docker.example`：本地 Python 连接 Docker MySQL/Redis 的配置模板。
+- `.env.docker.mock`：完整 third 容器 profile 的 mock 配置。
+- `.env.docker.real.example`：完整 third 容器 profile 的真实飞书配置模板。
 - `Prompt/workflowagent.yaml`：workflowagent 系统提示词。
 - `migrations/`：Alembic migration。
 - `docs/`：架构图、ER 图和流程说明。
@@ -35,13 +39,14 @@ OpenAI 配置：
 OPENAI_API_KEY=sk-xxx
 THIRD_WORKFLOWAGENT_USE_LLM=1
 THIRD_WORKFLOWAGENT_MODEL=gpt-4o-mini
+THIRD_FINAGENT_USE_LLM=0
 ```
 
 存储和异步执行配置：
 
 ```env
-THIRD_MYSQL_DSN=mysql+pymysql://user:password@mysql:3306/third_service
-THIRD_REDIS_URL=redis://redis:6379/0
+THIRD_MYSQL_DSN=mysql+pymysql://third_user:third_password@127.0.0.1:3307/third_service
+THIRD_REDIS_URL=redis://127.0.0.1:6380/0
 THIRD_WORKFLOW_QUEUE_NAME=third:workflow:queue
 THIRD_WORKFLOW_CONSUMER_GROUP=third-workflow-workers
 THIRD_WORKFLOW_CONSUMER_NAME=worker-1
@@ -49,11 +54,35 @@ THIRD_WORKFLOW_LOCK_TTL_SECONDS=300
 THIRD_WORKFLOW_ARTIFACT_TTL_SECONDS=3600
 THIRD_WORKFLOW_IDEMPOTENCY_TTL_SECONDS=604800
 THIRD_FEISHU_FIELD_CACHE_TTL_SECONDS=1800
+THIRD_ALLOW_IN_MEMORY_FALLBACK=0
 ```
 
-说明：没有配置 `THIRD_MYSQL_DSN` 时，代码会使用进程内内存 Repository 兜底；没有可用 Redis 时，会使用进程内内存队列兜底。兜底只适合本地 mock 调试，不适合 SpringBoot 联调或生产。
+说明：`THIRD_ALLOW_IN_MEMORY_FALLBACK=0` 时，MySQL 或 Redis 缺失会直接报错，不会静默退回进程内内存。Docker、SpringBoot 联调和真实飞书验证建议保持为 `0`。本地单进程 mock 调试才建议设为 `1`。
 
 ## 运行方式
+
+### 本地开发：Docker 只启动 MySQL/Redis
+
+当前阶段推荐这种方式：数据库和 Redis 由 Docker 管理，`third` 代码仍然在本机 Python 进程里运行。这样改 `third` 代码后不用重新 build 镜像，重启本地 API/worker 即可。
+
+```bash
+docker compose up -d
+```
+
+默认宿主机端口：MySQL `3307`、Redis `6380`。
+
+查看服务状态：
+
+```bash
+docker compose ps
+docker compose logs -f mysql redis
+```
+
+准备本地 env：
+
+```powershell
+Copy-Item third/.env.local.docker.example third/.env
+```
 
 安装依赖：
 
@@ -66,21 +95,100 @@ pip install -r third/requirements.txt
 ```bash
 cd third
 alembic upgrade head
+cd ..
 ```
 
-启动 API：
+启动本地 API：
 
 ```bash
-uvicorn third.api:app --host 0.0.0.0 --port 8001
+uvicorn third.api:app --host 0.0.0.0 --port 8001 --reload
 ```
 
-启动 worker：
+启动本地 worker：
 
 ```bash
 python -m third.worker
 ```
 
-同步 LangGraph / LangSmith 调试：
+说明：`uvicorn --reload` 可以让 API 进程在代码变化后自动重启；worker 暂时手动重启即可，后续需要也可以引入 watch 工具。
+
+提交一次 workflow：
+
+```bash
+curl -X POST http://127.0.0.1:8001/workflows/invoke \
+  -H "Content-Type: application/json" \
+  -d '{"content":[{"text":"查询状态为进行中的记录，只返回标题、状态"}]}'
+```
+
+查询状态：
+
+```bash
+curl http://127.0.0.1:8001/workflows/sess_xxx
+```
+
+写入类请求会进入 `waiting_user`，需要调用 resume：
+
+```bash
+curl -X POST http://127.0.0.1:8001/workflows/sess_xxx/resume \
+  -H "Content-Type: application/json" \
+  -d '{"confirmation_id":"confirm_xxx","approved":true,"content":[{"text":"确认写入"}]}'
+```
+
+停止服务：
+
+```bash
+docker compose down
+```
+
+清空本地 MySQL/Redis 数据卷：
+
+```bash
+docker compose down -v
+```
+
+只删除并重建 MySQL 业务库，不删除 Redis 和 Docker volume：
+
+```bash
+docker compose exec mysql mysql -uroot -pthird_root_password -e "DROP DATABASE IF EXISTS third_service; CREATE DATABASE third_service CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci; GRANT ALL PRIVILEGES ON third_service.* TO 'third_user'@'%'; FLUSH PRIVILEGES;"
+cd third
+alembic upgrade head
+cd ..
+```
+
+### 完整 third 容器验证
+
+这不是当前推荐的本地开发方式，主要用于后续服务器部署或完整容器链路验证。使用 profile 后才会 build third 镜像：
+
+```bash
+docker compose --profile third-container up -d --build
+```
+
+mock 模式默认使用 `third/.env.docker.mock`。
+
+真实飞书容器验证时，复制 `third/.env.docker.real.example` 为本地私有 env 文件，填入真实飞书和 OpenAI 配置，然后让 Compose 只加载这个文件：
+
+```powershell
+$env:THIRD_ENV_FILE = "./third/.env.docker.real"
+docker compose --profile third-container up -d --build
+```
+
+真实模式必须设置：
+
+```env
+THIRD_FEISHU_USE_REAL=1
+THIRD_FEISHU_APP_ID=cli_xxx
+THIRD_FEISHU_APP_SECRET=xxx
+THIRD_FEISHU_APP_TOKEN=app_xxx
+THIRD_FEISHU_TABLE_ID=tbl_xxx
+OPENAI_API_KEY=sk_xxx
+THIRD_WORKFLOWAGENT_USE_LLM=1
+THIRD_FINAGENT_USE_LLM=0
+THIRD_ALLOW_IN_MEMORY_FALLBACK=0
+```
+
+真实模式下不会读取 `.env.docker.mock`，也不会把缺失的飞书 `app_token/table_id` 替换成 mock 默认值。飞书配置缺失、字段读取失败或接口失败时，workflow 会返回错误状态。
+
+### 同步 LangGraph / LangSmith 调试
 
 ```bash
 python -m third.demo "查询状态为进行中的记录，只返回标题、状态"

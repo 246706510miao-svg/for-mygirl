@@ -1,0 +1,22 @@
+# 这一段排除版本库、缓存和本地密钥，避免进入 Docker build context。
+.git
+.idea
+.vscode
+.claude
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.venv
+venv
+
+# 这一段排除本地真实环境变量；Compose 会从宿主机 env_file 注入。
+.env
+*.env
+third/.env
+third/.env.*
+!third/.env.example
+!third/.env.local.docker.example
+!third/.env.docker.mock
+!third/.env.docker.real.example

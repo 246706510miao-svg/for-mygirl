@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -46,8 +46,10 @@ class WorkflowPlanModel(Base):
 # 这个模型保存计划中的单个可执行步骤。
 class WorkflowStepModel(Base):
     __tablename__ = "workflow_steps"
+    __table_args__ = (UniqueConstraint("plan_id", "local_step_id", name="uq_workflow_steps_plan_local_step_id"),)
 
     step_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    local_step_id: Mapped[str] = mapped_column(String(128), nullable=False)
     plan_id: Mapped[str] = mapped_column(String(64), ForeignKey("workflow_plans.plan_id"), nullable=False, index=True)
     step_seq: Mapped[int] = mapped_column(Integer, nullable=False)
     kind: Mapped[str] = mapped_column(String(32), nullable=False)

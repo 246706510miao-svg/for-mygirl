@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from copy import deepcopy
 from datetime import datetime, timedelta
 from typing import Any
@@ -199,7 +200,7 @@ class SqlAlchemyWorkflowRepository(WorkflowRepository):
     # 这个方法保存 workflow plan 和 steps。
     def save_plan(self, session_id: str, plan: dict[str, Any]) -> dict[str, Any]:
         created_at = now()
-        plan_id = str(plan.get("plan_id") or new_id("plan"))
+        plan_id = new_id("plan")
         plan_model = WorkflowPlanModel(
             plan_id=plan_id,
             session_id=session_id,
@@ -478,7 +479,7 @@ class InMemoryWorkflowRepository(WorkflowRepository):
     # 这个方法保存计划和步骤。
     def save_plan(self, session_id: str, plan: dict[str, Any]) -> dict[str, Any]:
         created_at = now()
-        plan_id = str(plan.get("plan_id") or new_id("plan"))
+        plan_id = new_id("plan")
         row = {
             "plan_id": plan_id,
             "session_id": session_id,
@@ -672,8 +673,10 @@ def _step_model_from_plan_step(plan_id: str, index: int, step: dict[str, Any]) -
 
 # 这个函数把计划步骤转换成通用字典。
 def _step_dict_from_plan_step(plan_id: str, index: int, step: dict[str, Any]) -> dict[str, Any]:
+    local_step_id = _local_step_id(index, step)
     return {
-        "step_id": str(step.get("step_id") or f"step_{index}"),
+        "step_id": _database_step_id(plan_id, local_step_id, index),
+        "local_step_id": local_step_id,
         "plan_id": plan_id,
         "step_seq": index,
         "kind": str(step.get("kind") or ""),
@@ -689,6 +692,21 @@ def _step_dict_from_plan_step(plan_id: str, index: int, step: dict[str, Any]) ->
         "started_at": None,
         "finished_at": None,
     }
+
+
+# 这个函数保留 workflow_plan 内的本地步骤 ID，便于阅读和调试。
+def _local_step_id(index: int, step: dict[str, Any]) -> str:
+    value = str(step.get("step_id") or f"step_{index}").strip()
+    return value or f"step_{index}"
+
+
+# 这个函数生成数据库全局唯一步骤 ID，避免不同 session 的固定步骤名冲突。
+def _database_step_id(plan_id: str, local_step_id: str, index: int) -> str:
+    candidate = f"{plan_id}_{local_step_id}"
+    if len(candidate) <= 64:
+        return candidate
+    digest = hashlib.sha1(candidate.encode("utf-8")).hexdigest()[:16]
+    return f"{plan_id}_s{index}_{digest}"[:64]
 
 
 # 这个函数把 session 模型转换成字典。
@@ -725,6 +743,7 @@ def _plan_to_dict(model: WorkflowPlanModel) -> dict[str, Any]:
 def _step_to_dict(model: WorkflowStepModel) -> dict[str, Any]:
     return {
         "step_id": model.step_id,
+        "local_step_id": model.local_step_id,
         "plan_id": model.plan_id,
         "step_seq": model.step_seq,
         "kind": model.kind,

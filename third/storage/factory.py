@@ -18,6 +18,8 @@ _MEMORY_REPOSITORY = InMemoryWorkflowRepository()
 def get_workflow_repository() -> WorkflowRepository:
     config = load_config()
     if not config.mysql_dsn:
+        if not config.allow_in_memory_fallback:
+            raise RuntimeError("未配置 THIRD_MYSQL_DSN，且 THIRD_ALLOW_IN_MEMORY_FALLBACK=0，无法使用内存 Repository。")
         return _MEMORY_REPOSITORY
     from .database import create_session_factory
 

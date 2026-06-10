@@ -2,3 +2,13 @@ test
 .claude
 .idea
 .vscode
+
+# 本地真实环境变量不进入版本库，只保留可提交的模板。
+.env
+*.env
+third/.env
+third/.env.*
+!third/.env.example
+!third/.env.local.docker.example
+!third/.env.docker.mock
+!third/.env.docker.real.example

@@ -10,3 +10,4 @@
 - 总架构图：[docs/架构图/01_总架构图.md](./docs/架构图/01_总架构图.md)
 - 数据库：[docs/数据库/codex.md](./docs/数据库/codex.md)
 - 接口文档：[docs/接口文档.md](./docs/接口文档.md)
+- 第三方服务模块：[third/README.md](./third/README.md)

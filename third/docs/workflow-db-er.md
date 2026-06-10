@@ -43,6 +43,7 @@ erDiagram
 
     WORKFLOW_STEPS {
         varchar step_id PK
+        varchar local_step_id
         varchar plan_id FK
         int step_seq
         varchar kind
@@ -171,7 +172,8 @@ erDiagram
 
 | 字段 | 说明 |
 |---|---|
-| `step_id` | 步骤 ID。 |
+| `step_id` | 数据库全局步骤 ID，由 `plan_id + local_step_id` 派生，避免不同 session 的固定步骤名冲突。 |
+| `local_step_id` | workflow plan 内的本地步骤 ID，例如 `step_read_records`。同一个 `plan_id` 内唯一。 |
 | `plan_id` | 所属计划。 |
 | `step_seq` | 步骤顺序。 |
 | `kind` | `tool`、`agent`、`validation`、`confirm`、`answer`。 |
