@@ -8,8 +8,10 @@ from typing import Any
 
 try:
     from ..agents.shared.config import ThirdServiceConfig, load_config
+    from ..agents.shared.json_utils import dumps_json
 except ImportError:
     from agents.shared.config import ThirdServiceConfig, load_config
+    from agents.shared.json_utils import dumps_json
 
 
 # 这个基类定义 executor 和 worker 需要的运行态能力。
@@ -119,7 +121,7 @@ class RedisWorkflowRuntimeStore(WorkflowRuntimeStore):
     # 这个方法缓存短期 artifact。
     def set_temp_artifact(self, session_id: str, artifact_key: str, payload: dict[str, Any]) -> None:
         key = f"third:artifact:temp:{session_id}:{artifact_key}"
-        self.client.set(key, json.dumps(payload, ensure_ascii=False), ex=self.config.workflow_artifact_ttl_seconds)
+        self.client.set(key, dumps_json(payload), ex=self.config.workflow_artifact_ttl_seconds)
 
     # 这个方法读取短期 artifact。
     def get_temp_artifact(self, session_id: str, artifact_key: str) -> dict[str, Any] | None:
@@ -135,7 +137,7 @@ class RedisWorkflowRuntimeStore(WorkflowRuntimeStore):
     # 这个方法写入短期幂等缓存。
     def set_idempotency(self, idempotency_key: str, payload: dict[str, Any]) -> None:
         key = f"third:idempotency:{idempotency_key}"
-        self.client.set(key, json.dumps(payload, ensure_ascii=False), ex=self.config.workflow_idempotency_ttl_seconds)
+        self.client.set(key, dumps_json(payload), ex=self.config.workflow_idempotency_ttl_seconds)
 
     # 这个方法读取短期幂等缓存。
     def get_idempotency(self, idempotency_key: str) -> dict[str, Any] | None:

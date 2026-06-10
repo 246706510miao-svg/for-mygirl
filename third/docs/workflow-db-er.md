@@ -284,6 +284,8 @@ erDiagram
 
 Redis 不作为最终事实来源，只保存短期运行态。
 
+Redis String 中保存的是 JSON-safe payload；嵌套时间值使用 ISO 字符串，MySQL 的 DateTime 列仍保存数据库 datetime。
+
 | Key | 类型 | TTL | 作用 |
 |---|---|---|---|
 | `third:workflow:queue` | Stream 或 List | 无固定 TTL | 异步 workflow 任务队列。 |

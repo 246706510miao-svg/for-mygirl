@@ -33,6 +33,11 @@ except ImportError:
     WorkflowSessionModel = Any
     WorkflowStepModel = Any
 
+try:
+    from ..agents.shared.json_utils import to_jsonable
+except ImportError:
+    from agents.shared.json_utils import to_jsonable
+
 
 # 这个函数生成 workflow 使用的短 ID，便于日志和 LangSmith 里阅读。
 def new_id(prefix: str) -> str:
@@ -223,7 +228,7 @@ class SqlAlchemyWorkflowRepository(WorkflowRepository):
             intent=str(plan.get("intent") or "unknown"),
             risk_level=str(plan.get("risk_level") or "read"),
             requires_confirmation=bool(plan.get("requires_confirmation")),
-            plan_json=deepcopy(plan),
+            plan_json=to_jsonable(plan),
             status="planned",
             created_at=created_at,
             updated_at=created_at,
@@ -283,8 +288,8 @@ class SqlAlchemyWorkflowRepository(WorkflowRepository):
             source_step_id=source_step_id,
             artifact_key=artifact_key,
             content_text=content_text,
-            data_json=deepcopy(data_json or {}),
-            schema_json=deepcopy(schema_json or {}),
+            data_json=to_jsonable(data_json or {}),
+            schema_json=to_jsonable(schema_json or {}),
             expires_at=expires_at,
             created_at=now(),
         )
@@ -325,7 +330,7 @@ class SqlAlchemyWorkflowRepository(WorkflowRepository):
             step_id=step_id,
             status="waiting",
             request_text=request_text,
-            preview_json=deepcopy(preview_json),
+            preview_json=to_jsonable(preview_json),
             user_response=None,
             expires_at=expires_at,
             decided_at=None,
@@ -448,7 +453,7 @@ class SqlAlchemyWorkflowRepository(WorkflowRepository):
                     field_id=str(field.get("field_id") or ""),
                     field_name=str(field.get("field_name") or ""),
                     field_type=str(field.get("type") or field.get("field_type") or ""),
-                    property_json=deepcopy(field.get("property") or {}),
+                    property_json=to_jsonable(field.get("property") or {}),
                     writable=bool(field.get("writable", True)),
                     readonly_reason=field.get("readonly_reason"),
                     cached_at=cached_at,
@@ -518,7 +523,7 @@ class InMemoryWorkflowRepository(WorkflowRepository):
             "intent": str(plan.get("intent") or "unknown"),
             "risk_level": str(plan.get("risk_level") or "read"),
             "requires_confirmation": bool(plan.get("requires_confirmation")),
-            "plan_json": deepcopy(plan),
+            "plan_json": to_jsonable(plan),
             "status": "planned",
             "created_at": created_at,
             "updated_at": created_at,
@@ -569,8 +574,8 @@ class InMemoryWorkflowRepository(WorkflowRepository):
             "source_step_id": source_step_id,
             "artifact_key": artifact_key,
             "content_text": content_text,
-            "data_json": deepcopy(data_json or {}),
-            "schema_json": deepcopy(schema_json or {}),
+            "data_json": to_jsonable(data_json or {}),
+            "schema_json": to_jsonable(schema_json or {}),
             "expires_at": expires_at,
             "created_at": now(),
         }
@@ -604,7 +609,7 @@ class InMemoryWorkflowRepository(WorkflowRepository):
             "step_id": step_id,
             "status": "waiting",
             "request_text": request_text,
-            "preview_json": deepcopy(preview_json),
+            "preview_json": to_jsonable(preview_json),
             "user_response": None,
             "expires_at": expires_at,
             "decided_at": None,
@@ -690,7 +695,7 @@ class InMemoryWorkflowRepository(WorkflowRepository):
                 "field_id": str(field.get("field_id") or ""),
                 "field_name": str(field.get("field_name") or ""),
                 "field_type": str(field.get("type") or field.get("field_type") or ""),
-                "property_json": deepcopy(field.get("property") or {}),
+                "property_json": to_jsonable(field.get("property") or {}),
                 "writable": bool(field.get("writable", True)),
                 "readonly_reason": field.get("readonly_reason"),
                 "cached_at": cached_at,
@@ -720,9 +725,9 @@ def _step_dict_from_plan_step(plan_id: str, index: int, step: dict[str, Any]) ->
         "tool_name": step.get("tool_name"),
         "agent_name": step.get("agent_name"),
         "prompt_ref": step.get("prompt_ref"),
-        "input_spec_json": deepcopy(step.get("input") or step.get("input_spec") or {}),
+        "input_spec_json": to_jsonable(step.get("input") or step.get("input_spec") or {}),
         "output_key": step.get("output", {}).get("save_as") if isinstance(step.get("output"), dict) else step.get("output_key"),
-        "validation_json": deepcopy(step.get("validation") or {}),
+        "validation_json": to_jsonable(step.get("validation") or {}),
         "status": "pending",
         "attempt_count": 0,
         "error_text": None,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from datetime import datetime, timezone
 from typing import Any
 
 try:
@@ -187,7 +188,7 @@ class WorkflowExecutor:
             "feishu_bitable",
             str(data_json.get("payload_hash") or ""),
             "running",
-            expires_at=data_json.get("expires_at"),
+            expires_at=_parse_datetime(data_json.get("expires_at")),
         )
         self.runtime_store.set_idempotency(str(idempotency_key), saved)
 
@@ -232,7 +233,7 @@ class WorkflowExecutor:
             str(data_json.get("payload_hash") or ""),
             "success",
             result_artifact_id=artifact.get("artifact_id"),
-            expires_at=data_json.get("expires_at"),
+            expires_at=_parse_datetime(data_json.get("expires_at")),
         )
         self.runtime_store.set_idempotency(str(idempotency_key), saved)
 
@@ -305,6 +306,21 @@ def _answer_from_artifact(artifact: dict[str, Any] | None) -> str:
     if isinstance(payload, dict) and payload.get("summary"):
         return str(payload["summary"])
     return content_text or "workflow 已完成。"
+
+
+# 这个函数把 artifact JSON 里的 ISO 时间还原成 MySQL DateTime 列需要的 datetime。
+def _parse_datetime(value: Any) -> datetime | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime):
+        return value
+    text = str(value).strip()
+    if not text:
+        return None
+    parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    if parsed.tzinfo:
+        return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    return parsed
 
 
 # 这个函数在本地调试日志里打印 workflowagent 生成的完整 plan。

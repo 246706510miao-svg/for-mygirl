@@ -12,6 +12,7 @@ try:
     from ..Tool.mock_repository import read_mock_records
     from ..Tool.write_support import build_lookup_read_request, normalize_write_request, validation_warnings
     from ..agents.shared.config import load_config
+    from ..agents.shared.json_utils import dumps_json
     from ..agents.workflowagent.agent import CREATE_TOOL, DELETE_TOOL, UPDATE_TOOL
     from ..storage.repository import now
 except ImportError:
@@ -19,6 +20,7 @@ except ImportError:
     from Tool.mock_repository import read_mock_records
     from Tool.write_support import build_lookup_read_request, normalize_write_request, validation_warnings
     from agents.shared.config import load_config
+    from agents.shared.json_utils import dumps_json
     from agents.workflowagent.agent import CREATE_TOOL, DELETE_TOOL, UPDATE_TOOL
     from storage.repository import now
 
@@ -62,10 +64,10 @@ def run_validation_node(context: dict[str, Any]) -> dict[str, Any]:
         "payload_hash": payload_hash,
         "warnings": validation_warnings(normalized_request),
         "preview": _preview(normalized_request),
-        "expires_at": now() + timedelta(seconds=config.workflow_idempotency_ttl_seconds),
+        "expires_at": (now() + timedelta(seconds=config.workflow_idempotency_ttl_seconds)).isoformat(),
     }
     return {
-        "content_text": json.dumps(data_json, ensure_ascii=False, default=str),
+        "content_text": dumps_json(data_json),
         "data_json": data_json,
         "schema_json": {"operation": operation, "tool_name": tool_name},
     }
