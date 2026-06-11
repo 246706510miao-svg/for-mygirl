@@ -8,7 +8,7 @@
 {
   "content": [
     {
-      "text": "新增一条记录，标题为测试新增，状态为进行中"
+      "text": "新增一条记录，事项名称为测试新增，总结为联调记录，评级为A"
     }
   ]
 }
@@ -21,7 +21,7 @@
 写入类计划会包含：
 
 1. `tool_ReadFeishuBitableSchema`：读取字段定义，保存为 `feishu.table_schema`。
-2. `business_agent`：把用户输入转换成飞书写入 payload，保存为 `feishu.create_payload`。
+2. `business_agent`：使用数据库 Agent 目录中 `prompt_ref=parse_feishu_record.v1` 的提示词，把用户输入转换成飞书写入 payload，保存为 `feishu.create_payload`。
 3. `validation`：校验字段、类型和定位条件，保存为 `validation.write_payload`。
 4. `confirm`：生成确认请求，状态进入 `waiting_user`。
 5. `tool_CreateFeishuBitableRecord`：用户确认后执行写入，保存为 `write_result`。
@@ -41,7 +41,9 @@
 }
 ```
 
-说明：业务 Agent 每一轮都是无状态的，记忆来自 `session_artifacts`。
+说明：业务 Agent 每一轮都是无状态的，记忆来自 `session_artifacts`。LLM 模式下，workflowagent 只能选择 MySQL `prompt_registry` 中启用的 `agent_name/prompt_ref`；Agent Runner 也只从数据库读取提示词正文。
+
+业务 Agent 不直接调用 Tool，也不直接决定飞书 HTTP 字段。它只根据用户原话和 `feishu.table_schema` 生成候选业务 payload。字段名、字段类型、单选选项、日期/数字转换、更新或删除唯一定位、确认预览和幂等 key 都由后续 `validation` 节点确定；写入 Tool 在真正调用飞书前还会再次 normalize。新增请求中如果用户描述多个独立事项，business_agent 可以输出 `create_request.records`，validation 会逐条校验并在确认门展示多条预览。
 
 ## 4. Tool 输入输出
 
@@ -51,13 +53,14 @@
 
 ```json
 {
-  "original_input": "新增一条记录，标题为测试新增，状态为进行中",
+  "original_input": "新增一条记录，事项名称为测试新增，总结为联调记录，评级为A",
   "create_request": {
     "operation": "create_record",
     "service": "feishu_bitable",
     "fields": {
-      "标题": "测试新增",
-      "状态": "进行中"
+      "事项名称": "测试新增",
+      "总结": "联调记录",
+      "评级": "A"
     }
   }
 }
@@ -90,8 +93,9 @@ Tool 输出仍然是 `tool_result`：
     "request_text": "确认执行以下飞书写入操作吗？",
     "preview_json": {
       "fields": {
-        "标题": "测试新增",
-        "状态": "进行中"
+        "事项名称": "测试新增",
+        "总结": "联调记录",
+        "评级": "A"
       }
     }
   },
@@ -150,7 +154,7 @@ http://127.0.0.1:8001/debug
 workflow_sessions -> workflow_plans -> workflow_steps -> session_artifacts -> workflow_confirmations
 ```
 
-因此它同时兼容 mock、真实飞书、规则 workflowagent 和 LLM workflowagent。真实模式下如果字段、权限、飞书接口或 LLM 计划出错，失败步骤和 artifact 会保留错误信息。
+因此它同时兼容 mock、真实飞书、规则 workflowagent 和 LLM workflowagent。真实模式下如果字段、权限、飞书接口、Agent 目录或 LLM 计划出错，失败步骤和 artifact 会保留错误信息。LLM plan 未通过校验时会额外保存 `workflow.plan.invalid` artifact，记录原始 plan 和校验错误。
 
 ## 8. 本地 Docker 数据库和真实模式边界
 
@@ -174,9 +178,7 @@ THIRD_ALLOW_IN_MEMORY_FALLBACK=0
 
 ```bash
 docker compose exec mysql mysql -uroot -pthird_root_password -e "DROP DATABASE IF EXISTS third_service; CREATE DATABASE third_service CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci; GRANT ALL PRIVILEGES ON third_service.* TO 'third_user'@'%'; FLUSH PRIVILEGES;"
-cd third
 alembic upgrade head
-cd ..
 ```
 
 真实飞书验证时，在本地 `third/.env` 中设置：

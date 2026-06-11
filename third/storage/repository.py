@@ -18,6 +18,7 @@ try:
         WorkflowConfirmationModel,
         WorkflowIdempotencyKeyModel,
         WorkflowPlanModel,
+        PromptRegistryModel,
         WorkflowSessionModel,
         WorkflowStepModel,
     )
@@ -30,6 +31,7 @@ except ImportError:
     WorkflowConfirmationModel = Any
     WorkflowIdempotencyKeyModel = Any
     WorkflowPlanModel = Any
+    PromptRegistryModel = Any
     WorkflowSessionModel = Any
     WorkflowStepModel = Any
 
@@ -147,6 +149,14 @@ class WorkflowRepository:
         result_artifact_id: str | None = None,
         expires_at: datetime | None = None,
     ) -> dict[str, Any]:
+        raise NotImplementedError
+
+    # 这个方法读取启用中的提示词。
+    def get_prompt(self, prompt_key: str) -> dict[str, Any] | None:
+        raise NotImplementedError
+
+    # 这个方法列出可供 workflowagent 规划使用的业务 Agent 提示词目录。
+    def list_agent_prompts(self, enabled_only: bool = True) -> list[dict[str, Any]]:
         raise NotImplementedError
 
     # 这个方法读取未过期的飞书字段缓存。
@@ -414,6 +424,23 @@ class SqlAlchemyWorkflowRepository(WorkflowRepository):
             session.commit()
             return _idempotency_to_dict(model)
 
+    # 这个方法读取启用中的提示词。
+    def get_prompt(self, prompt_key: str) -> dict[str, Any] | None:
+        with self._session_factory() as session:
+            model = session.get(PromptRegistryModel, prompt_key)
+            if not model or not model.enabled:
+                return None
+            return _prompt_to_dict(model)
+
+    # 这个方法列出启用中的业务 Agent 提示词目录。
+    def list_agent_prompts(self, enabled_only: bool = True) -> list[dict[str, Any]]:
+        with self._session_factory() as session:
+            stmt = select(PromptRegistryModel)
+            if enabled_only:
+                stmt = stmt.where(PromptRegistryModel.enabled == True)  # noqa: E712
+            models = session.execute(stmt.order_by(PromptRegistryModel.prompt_key.asc())).scalars().all()
+            return [_prompt_to_dict(model) for model in models if model.agent_name]
+
     # 这个方法读取未过期字段缓存。
     def get_feishu_field_cache(self, app_token_hash: str, table_id: str, view_id: str | None) -> list[dict[str, Any]]:
         with self._session_factory() as session:
@@ -476,6 +503,7 @@ class InMemoryWorkflowRepository(WorkflowRepository):
         self.artifacts: dict[str, dict[str, Any]] = {}
         self.confirmations: dict[str, dict[str, Any]] = {}
         self.idempotency_keys: dict[str, dict[str, Any]] = {}
+        self.prompts: dict[str, dict[str, Any]] = {}
         self.field_cache: dict[str, list[dict[str, Any]]] = {}
 
     # 这个方法创建 workflow session。
@@ -669,6 +697,22 @@ class InMemoryWorkflowRepository(WorkflowRepository):
         self.idempotency_keys[idempotency_key] = row
         return deepcopy(row)
 
+    # 这个方法读取启用中的提示词。
+    def get_prompt(self, prompt_key: str) -> dict[str, Any] | None:
+        row = self.prompts.get(prompt_key)
+        if not row or not row.get("enabled", True):
+            return None
+        return deepcopy(row)
+
+    # 这个方法列出启用中的业务 Agent 提示词目录。
+    def list_agent_prompts(self, enabled_only: bool = True) -> list[dict[str, Any]]:
+        rows = list(self.prompts.values())
+        if enabled_only:
+            rows = [row for row in rows if row.get("enabled", True)]
+        rows = [row for row in rows if row.get("agent_name")]
+        rows.sort(key=lambda item: str(item.get("prompt_key") or ""))
+        return deepcopy(rows)
+
     # 这个方法读取未过期字段缓存。
     def get_feishu_field_cache(self, app_token_hash: str, table_id: str, view_id: str | None) -> list[dict[str, Any]]:
         rows = self.field_cache.get(_field_cache_key(app_token_hash, table_id, view_id), [])
@@ -846,6 +890,24 @@ def _idempotency_to_dict(model: WorkflowIdempotencyKeyModel) -> dict[str, Any]:
         "result_artifact_id": model.result_artifact_id,
         "expires_at": model.expires_at,
         "created_at": model.created_at,
+    }
+
+
+# 这个函数把提示词模型转换成字典。
+def _prompt_to_dict(model: PromptRegistryModel) -> dict[str, Any]:
+    return {
+        "prompt_key": model.prompt_key,
+        "agent_name": model.agent_name,
+        "role_name": model.role_name,
+        "description": model.description or "",
+        "db_address": model.db_address or "",
+        "input_schema_json": model.input_schema_json or {},
+        "prompt_text": model.prompt_text,
+        "output_schema_json": model.output_schema_json,
+        "metadata_json": model.metadata_json or {},
+        "version": model.version,
+        "enabled": model.enabled,
+        "updated_at": model.updated_at,
     }
 
 

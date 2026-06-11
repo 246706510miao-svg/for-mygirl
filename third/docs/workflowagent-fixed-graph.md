@@ -6,9 +6,10 @@
 
 ```mermaid
 flowchart TD
-    U["用户输入：content[0].text<br/>非 Agent"] -->|"生成规划请求"| W["workflowagent<br/>Agent：生成 workflow_plan"]
+    U["用户输入：content[0].text<br/>非 Agent"] -->|"生成规划请求"| W["workflowagent<br/>Agent：读取 Tool / Agent 目录并生成 workflow_plan"]
 
-    W -->|"输出 workflow_plan"| PV["Plan Validator<br/>非 Agent：校验计划可执行性"]
+    DB -->|"启用的 prompt_registry Agent 目录"| W
+    W -->|"输出 workflow_plan"| PV["Plan Validator<br/>非 Agent：校验计划和 Agent 引用"]
     PV -->|"保存 session / plan"| DB[("Workflow DB<br/>非 Agent：保存会话、计划、步骤和中间结果")]
 
     DB -->|"读取当前步骤"| EX["Workflow Executor<br/>非 Agent：解释并执行 workflow_plan"]
@@ -17,17 +18,18 @@ flowchart TD
     CB -->|"按 step.kind 分流"| R{"step.kind<br/>非 Agent：步骤类型路由"}
 
     R -->|"tool"| TD["Tool Dispatcher<br/>非 Agent：按 tool_name 分发工具"]
-    R -->|"agent"| AR["Agent Runner<br/>非 Agent：加载 prompt_ref 并调用业务 Agent"]
+    R -->|"agent"| AR["Agent Runner<br/>非 Agent：按 prompt_ref 选择业务处理器"]
     R -->|"validation"| VA["Validation Node<br/>非 Agent：字段、风险和唯一性校验"]
 
     AR -->|"本步上下文 + prompt"| BA["业务 Agent<br/>Agent：解析、转换或总结"]
-    BA -->|"调用模型"| LLM["LLM<br/>非 Agent：模型能力"]
+    BA -->|"LLM 模式调用模型"| LLM["LLM<br/>非 Agent：模型能力"]
 
     TD -->|"飞书操作"| FT["Feishu Tools<br/>非 Agent：读字段、查询、新增、更新、删除"]
     TD -->|"本地数据操作"| ST["SQL / Memory Tools<br/>非 Agent：读取数据库或记忆"]
 
     FT -->|"工具输出"| SAVE["Artifact Writer<br/>非 Agent：保存 output.save_as"]
     ST -->|"工具输出"| SAVE
+    BA -->|"规则模式输出"| SAVE
     LLM -->|"Agent 输出"| SAVE
     VA -->|"校验结果"| SAVE
 
@@ -43,17 +45,18 @@ flowchart TD
 | 节点 | 是否 Agent | 作用 |
 |---|---|---|
 | 用户输入 | 否 | 接收外部自然语言请求，入口仍然只使用 `content[0].text`。 |
-| `workflowagent` | 是 | 只负责生成 `workflow_plan`，说明目标、步骤、输入依赖、输出位置和校验要求。 |
-| `Plan Validator` | 否 | 校验计划是否能执行，防止不存在的 Tool、错误依赖、写入前缺少字段读取等问题。 |
+| `workflowagent` | 是 | LLM 模式下拿到 Tool 能力目录和数据库启用的 Agent 目录，再生成 `workflow_plan`，说明目标、步骤、输入依赖、输出位置和校验要求。 |
+| Tool 能力目录 | 否 | 由代码内置，告诉 workflowagent 每个 `tool_name` 的用途、适用场景、副作用等级、输入输出和是否需要确认。 |
+| `Plan Validator` | 否 | 校验计划是否能执行，防止不存在的 Tool、错误依赖、未注册 `agent_name/prompt_ref`、写入前缺少字段读取、把明显写入飞书请求误规划成读取等问题。 |
 | `Workflow DB` | 否 | 保存系统状态，包括 session、plan、step、artifact。Agent 不保存长期状态。 |
 | `Workflow Executor` | 否 | 固定执行器，读取当前步骤并决定进入 Tool、Agent 或 Validation。 |
 | `Step Context Builder` | 否 | 从 DB 取出本步骤需要的 artifact，只把当前步骤需要的信息交给执行对象。 |
 | `step.kind` 路由 | 否 | 根据步骤类型分流，例如 `tool`、`agent`、`validation`。 |
 | `Tool Dispatcher` | 否 | 根据 `tool_name` 调用对应 Tool，不做语义判断。 |
-| `Agent Runner` | 否 | 加载 `prompt_ref`、拼接上下文、调用业务 Agent。它是运行容器，不是 Agent。 |
-| 业务 Agent | 是 | 每次只处理当前步骤，例如解析自然语言、按字段 schema 生成 payload、总结中间结果。 |
+| `Agent Runner` | 否 | 根据 `prompt_ref` 选择当前支持的业务处理器，只从 `prompt_registry` 读取提示词；数据库没有记录时当前步骤失败。它是运行容器，不是 Agent。 |
+| 业务 Agent | 是 | 每次只处理当前步骤，例如解析自然语言、按字段 schema 生成 payload、总结中间结果。`parse_feishu_record.v1` 在 `THIRD_WORKFLOWAGENT_USE_LLM=1` 时调用 LLM，关闭时保留规则解析。 |
 | `LLM` | 否 | 模型能力本身，不等于 Agent。 |
-| `Validation Node` | 否 | 写入前做硬校验，例如字段是否存在、字段类型是否可写、更新或删除是否唯一定位。 |
+| `Validation Node` | 否 | 写入前做硬校验，例如字段是否存在、字段类型是否可写、批量新增每条记录是否合法、更新或删除是否唯一定位。 |
 | `Feishu Tools` | 否 | 执行飞书多维表格能力，包括读字段、查记录、新增、更新、删除。 |
 | `SQL / Memory Tools` | 否 | 读取本地数据库、历史对话或用户记忆。 |
 | `Artifact Writer` | 否 | 把每一步输出保存到 `session_artifacts`，供后续步骤按 key 引用。 |

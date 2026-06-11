@@ -9,8 +9,10 @@
 5. `docs/router-read00.md`：查看当前 workflowagent 到 Tool 的输入输出流程。
 6. `agents/graph.py`、`workflow/executor.py`：理解 LangGraph 固定入口和 runtime 执行方式。
 7. `agents/workflowagent/agent.py`、`Prompt/workflowagent.yaml`：查看动态计划生成逻辑和提示词。
-8. `Tool/`：查看飞书字段读取、查询、新增、更新、删除 Tool。
-9. `storage/`、`runtime/`：查看 MySQL Repository 和 Redis Stream 运行态。
+8. `Prompt/runagent/`、`scripts/seed_runagent_prompts.py`：查看业务 Agent 提示词文件来源和同步到数据库的脚本。
+9. `workflow/agent_runner.py`：查看 business_agent 按 `prompt_ref` 从数据库读取提示词并执行的逻辑。
+10. `Tool/`：查看飞书字段读取、查询、新增、更新、删除 Tool。
+11. `storage/`、`runtime/`：查看 MySQL Repository 和 Redis Stream 运行态。
 10. `debug/`：查看本地调试台、运行模式体检、时间线和动态图生成。
 11. `api.py`、`worker.py`：查看 SpringBoot 后续要调用的 API 和 worker 消费入口。
 12. `../docker-compose.yml`、`.env.local.docker.example`：查看本地 MySQL/Redis Docker 验证入口。
@@ -52,8 +54,11 @@ third/
 |       `-- time_utils.py             # 时间工具
 |-- Prompt/
 |   |-- workflowagent.yaml            # workflowagent 系统提示词
+|   |-- runagent/                     # 业务 Agent 提示词文件来源，seed 后写入 prompt_registry
 |   |-- finagent.yaml                 # 旧 finagent 提示词兼容文件
 |   `-- __init__.py
+|-- scripts/
+|   `-- seed_runagent_prompts.py      # runagent 提示词同步脚本
 |-- Tool/
 |   |-- feishu_client.py              # 飞书 OpenAPI HTTP 客户端
 |   |-- field_context.py              # 字段上下文读取，接入 TTL 字段缓存
@@ -111,18 +116,16 @@ third/
 生产和联调环境优先使用 Alembic：
 
 ```bash
-cd third
 alembic upgrade head
-cd ..
 ```
+
+项目根目录和 `third/` 目录都保留 Alembic 配置；推荐从项目根目录执行上面的命令。
 
 重建本地 Docker MySQL 业务库时，可以先删除并重建 `third_service`，再重新执行 Alembic：
 
 ```bash
 docker compose exec mysql mysql -uroot -pthird_root_password -e "DROP DATABASE IF EXISTS third_service; CREATE DATABASE third_service CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci; GRANT ALL PRIVILEGES ON third_service.* TO 'third_user'@'%'; FLUSH PRIVILEGES;"
-cd third
 alembic upgrade head
-cd ..
 ```
 
 本地临时调试也可以调用 `storage/database.py` 里的 `create_all_tables()`，但正式流程不要依赖它，后续表结构演进应继续走 Alembic migration。

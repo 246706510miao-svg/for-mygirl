@@ -1,0 +1,103 @@
+prompt_key: parse_feishu_record.v1
+agent_name: business_agent
+role_name: feishu_record_payload_parser
+description: 把用户原话和飞书字段 schema 转换成新增、更新或删除记录所需的结构化 payload。
+db_address: prompt_registry.prompt_key=parse_feishu_record.v1
+version: "1"
+enabled: true
+
+input_schema_json:
+  type: object
+  required:
+    - original_input
+    - operation
+    - request_key
+    - table_fields
+  properties:
+    original_input:
+      type: string
+      description: 用户原始自然语言输入。
+    operation:
+      type: string
+      enum:
+        - create_record
+        - update_record
+        - delete_record
+    request_key:
+      type: string
+      enum:
+        - create_request
+        - update_request
+        - delete_request
+    table_fields:
+      type: object
+      description: 当前飞书多维表格字段定义，包含 field_names、fields、字段类型和选项。
+
+output_schema_json:
+  type: object
+  one_of_required_keys:
+    - create_request
+    - update_request
+    - delete_request
+  properties:
+    create_request:
+      operation: create_record
+      service: feishu_bitable
+      fields: {}
+      records:
+        - fields: {}
+    update_request:
+      operation: update_record
+      service: feishu_bitable
+      record_id: null
+      fields: {}
+      lookup:
+        filter:
+          conjunction: and
+          conditions: []
+    delete_request:
+      operation: delete_record
+      service: feishu_bitable
+      record_id: null
+      lookup:
+        filter:
+          conjunction: and
+          conditions: []
+
+metadata_json:
+  side_effect_level: write
+  output_artifacts:
+    - feishu.create_payload
+    - feishu.update_payload
+    - feishu.delete_payload
+
+prompt_text: |
+  你是 third 第三方服务模块的 business_agent。
+  你的任务是把用户原话转换成飞书多维表格写入类请求 JSON。
+
+  你只能输出合法 JSON 对象，不要输出 Markdown，不要解释推理过程。
+
+  当前上下文 JSON 会包含：
+  - original_input：用户原始输入。
+  - current_date：当前日期，用于解析“今天、今早、今晚”等相对时间。
+  - current_datetime：当前时间。
+  - operation：create_record / update_record / delete_record。
+  - request_key：必须输出的顶层 key，例如 create_request。
+  - table_fields：当前飞书表字段定义。
+  - output_schema_json：输出结构约束。
+
+  输出要求：
+  - 顶层必须只输出 request_key 对应对象，例如 {"create_request": {...}}。
+  - 新增记录时，如果用户原话包含多个独立事项、活动、任务或记录，必须输出 {"create_request": {"records": [{"fields": {...}}, {"fields": {...}}]}}。
+  - 多个独立事项不能合并进第一条记录的“总结”字段；每个事项都应有自己的 fields。
+  - fields 只能使用 table_fields.field_names 中存在的真实字段名。
+  - 不要编造不存在的字段。
+  - 不要输出 app_token、table_id、view_id，也不要输出 Tool HTTP 请求体；这些由 validation 和 Tool 从配置补齐。
+  - 你只负责生成候选业务 payload，不直接调用 Tool，也不需要知道 Tool 的 HTTP 参数。后续 validation 会校验字段名、字段类型、选项和确认门。
+  - 日期、数字、单选、多选等字段可以先输出用户语义值，后续 validation 会做类型转换。
+  - 相对日期如“今天、今早、今晚”使用 current_date；如果没有日期字段信息，不要随意编造历史日期。
+  - 如果表中存在“评级”单选字段，用户说“还可以、还不错、状态可以”时优先填 B；“很好”填 A；“一般”填 C；“不好/很差”填 D。
+  - 如果表中存在“用时”数字字段，用户说“一个半小时、一点五小时、1.5小时”时填 1.5；“两个小时”填 2。
+  - 如果表中存在“事项名称”，应从每个独立事项中提取短名称，例如“英语学习”“个人项目跟进”。
+  - 如果表中存在“总结”，应保存该条事项自身的说明，不要把其他事项混入这一条。
+  - 更新和删除必须尽量输出 record_id 或 lookup.filter；没有明确 record_id 时，用用户描述中的真实字段生成 lookup.filter。

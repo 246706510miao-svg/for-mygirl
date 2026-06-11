@@ -99,9 +99,14 @@ erDiagram
 
     PROMPT_REGISTRY {
         varchar prompt_key PK
+        varchar agent_name
         varchar role_name
+        text description
+        varchar db_address
+        json input_schema_json
         text prompt_text
         json output_schema_json
+        json metadata_json
         varchar version
         boolean enabled
         datetime updated_at
@@ -235,16 +240,28 @@ erDiagram
 
 ### prompt_registry
 
-保存可被 Agent Runner 使用的提示词。
+保存可被 workflowagent 和 Agent Runner 使用的业务 Agent 目录及提示词。`Prompt/runagent/*.yaml` 是维护来源，执行 seed 脚本后写入本表；运行时只读取数据库，不读取文件兜底。`workflowagent` 会读取启用记录中的 `agent_name`、`prompt_key`、`role_name`、`description`、`db_address`、输入输出 schema、`metadata_json`、`version` 和 `enabled` 来规划 `kind=agent` 步骤；Agent Runner 再按 `prompt_ref` 读取同一条记录的 `prompt_text`。
 
 | 字段 | 说明 |
 |---|---|
 | `prompt_key` | 提示词 key，例如 `parse_feishu_record.v1`。 |
-| `role_name` | 提示词对应的角色，例如 `parser_agent`。 |
+| `agent_name` | 执行该提示词的业务 Agent 名，例如 `business_agent`。 |
+| `role_name` | 提示词对应的角色，例如 `feishu_record_payload_parser`。 |
+| `description` | 给 workflowagent 使用的能力说明。 |
+| `db_address` | 提示词数据库地址，格式为 `prompt_registry.prompt_key=<prompt_key>`。 |
+| `input_schema_json` | 该 Agent 需要的输入结构。 |
 | `prompt_text` | 提示词正文。 |
 | `output_schema_json` | 该提示词要求的输出结构。 |
+| `metadata_json` | 额外元数据，例如副作用等级、输出 artifact key 等。 |
 | `version` | 提示词版本。 |
 | `enabled` | 是否启用。 |
+
+同步规则：
+
+1. 修改或新增 `Prompt/runagent/*.yaml` 后，先在项目根目录执行 `alembic upgrade head`，再执行 `python -m third.scripts.seed_runagent_prompts`。
+2. 脚本按 `prompt_key` 覆盖更新本表。
+3. LLM workflow 执行前必须能从本表读取至少一个启用 Agent；否则直接失败。
+4. Agent Runner 找不到 `prompt_ref` 对应的启用记录时直接失败，不读取文件兜底。
 
 ### tool_registry
 

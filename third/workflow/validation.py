@@ -36,7 +36,7 @@ def run_validation_node(context: dict[str, Any]) -> dict[str, Any]:
     tool_name = str(payload.get("tool_name") or _tool_name(operation))
     original_input = str(context.get("original_input") or "")
     explicit_request = (payload.get("tool_input_payload") or {}).get(request_key)
-    normalized_request = normalize_write_request(
+    normalized_request, errors = _normalize_validation_request(
         operation,
         explicit_request,
         original_input,
@@ -44,7 +44,6 @@ def run_validation_node(context: dict[str, Any]) -> dict[str, Any]:
         table_fields,
         require_fields=operation != "delete_record",
     )
-    errors = list(normalized_request.get("validation_errors") or [])
     if operation in {"update_record", "delete_record"}:
         errors.extend(_apply_unique_lookup(normalized_request, operation, config))
     if errors:
@@ -71,6 +70,63 @@ def run_validation_node(context: dict[str, Any]) -> dict[str, Any]:
         "data_json": data_json,
         "schema_json": {"operation": operation, "tool_name": tool_name},
     }
+
+
+# 这个函数统一处理单条写入和批量新增写入。
+def _normalize_validation_request(
+    operation: str,
+    explicit_request: dict[str, Any] | None,
+    original_input: str,
+    config: Any,
+    table_fields: dict[str, Any],
+    require_fields: bool,
+) -> tuple[dict[str, Any], list[str]]:
+    if operation == "create_record" and isinstance(explicit_request, dict) and isinstance(explicit_request.get("records"), list):
+        return _normalize_batch_create_request(explicit_request, original_input, config, table_fields)
+    normalized_request = normalize_write_request(operation, explicit_request, original_input, config, table_fields, require_fields=require_fields)
+    return normalized_request, list(normalized_request.get("validation_errors") or [])
+
+
+# 这个函数把 create_request.records 中的每条记录分别做字段和类型校验。
+def _normalize_batch_create_request(
+    explicit_request: dict[str, Any],
+    original_input: str,
+    config: Any,
+    table_fields: dict[str, Any],
+) -> tuple[dict[str, Any], list[str]]:
+    records = explicit_request.get("records") or []
+    common_request = {key: value for key, value in explicit_request.items() if key not in {"records", "fields", "lookup"}}
+    normalized_records: list[dict[str, Any]] = []
+    errors: list[str] = []
+    for index, record_payload in enumerate(records, start=1):
+        if not isinstance(record_payload, dict):
+            errors.append(f"第 {index} 条新增记录必须是 JSON 对象。")
+            continue
+        record_request = {**common_request, **record_payload}
+        normalized_record = normalize_write_request("create_record", record_request, original_input, config, table_fields, require_fields=True)
+        record_errors = list(normalized_record.get("validation_errors") or [])
+        if record_errors:
+            errors.extend([f"第 {index} 条新增记录：{error}" for error in record_errors])
+        normalized_records.append(normalized_record)
+
+    if not normalized_records:
+        errors.append("批量新增至少需要一条 records 记录。")
+
+    table_context = config.table_context
+    batch_request = {
+        "operation": "create_record",
+        "service": "feishu_bitable",
+        "app_token": common_request.get("app_token") or table_context["app_token"],
+        "table_id": common_request.get("table_id") or table_context["table_id"],
+        "table_name": common_request.get("table_name") or table_context["table_name"],
+        "view_id": common_request.get("view_id") or table_context["view_id"] or None,
+        "user_id_type": common_request.get("user_id_type") or table_context["user_id_type"],
+        "mock": common_request.get("mock", not config.feishu_use_real),
+        "records": normalized_records,
+        "table_fields": table_fields,
+        "validation_errors": errors,
+    }
+    return batch_request, errors
 
 
 # 这个函数从上下文里找到写入 payload artifact。
@@ -127,6 +183,18 @@ def _idempotency_key(operation: str, payload: dict[str, Any]) -> tuple[str, str]
 
 # 这个函数提取确认时展示给用户的数据预览。
 def _preview(request: dict[str, Any]) -> dict[str, Any]:
+    if isinstance(request.get("records"), list):
+        return {
+            "record_count": len(request["records"]),
+            "records": [
+                {
+                    "record_id": record.get("record_id"),
+                    "fields": record.get("fields") or {},
+                    "lookup": record.get("lookup") or {},
+                }
+                for record in request["records"]
+            ],
+        }
     return {
         "record_id": request.get("record_id"),
         "fields": request.get("fields") or {},

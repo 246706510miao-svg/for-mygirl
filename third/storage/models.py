@@ -117,9 +117,14 @@ class PromptRegistryModel(Base):
     __tablename__ = "prompt_registry"
 
     prompt_key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    agent_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     role_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    db_address: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    input_schema_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     prompt_text: Mapped[str] = mapped_column(Text, nullable=False)
     output_schema_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     version: Mapped[str] = mapped_column(String(32), nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)

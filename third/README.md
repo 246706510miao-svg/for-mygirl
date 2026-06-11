@@ -17,6 +17,8 @@
 - `.env.docker.mock`：完整 third 容器 profile 的 mock 配置。
 - `.env.docker.real.example`：完整 third 容器 profile 的真实飞书配置模板。
 - `Prompt/workflowagent.yaml`：workflowagent 系统提示词。
+- `Prompt/runagent/`：业务 Agent 提示词文件来源，执行 seed 后写入 MySQL `prompt_registry`。
+- `scripts/seed_runagent_prompts.py`：把 `Prompt/runagent/*.yaml` 覆盖同步到 `prompt_registry`。
 - `migrations/`：Alembic migration。
 - `docs/`：架构图、ER 图和流程说明。
 
@@ -34,6 +36,8 @@ THIRD_FEISHU_VIEW_ID=
 THIRD_FEISHU_FIELD_NAME_MAP={}
 ```
 
+说明：`THIRD_FEISHU_FIELD_NAME_MAP` 用于把用户常用语义字段映射到真实飞书字段名，例如 `{"标题":"事项名称"}`。真实飞书写入时，未映射且不在当前表字段列表中的字段会被拒绝，避免写入错误列。
+
 OpenAI 配置：
 
 ```env
@@ -42,6 +46,8 @@ THIRD_WORKFLOWAGENT_USE_LLM=1
 THIRD_WORKFLOWAGENT_MODEL=gpt-4o-mini
 THIRD_FINAGENT_USE_LLM=0
 ```
+
+说明：`THIRD_WORKFLOWAGENT_USE_LLM=1` 会同时启用 workflowagent 的计划生成和 business_agent 的写入 payload 解析。LLM 模式下，workflowagent 会拿到两类目录：代码内置的 Tool 能力目录（每个 `tool_name` 的用途、风险、输入输出和是否需要确认）以及 MySQL `prompt_registry` 中启用的 Agent 目录（`agent_name/prompt_ref/role_name/description/db_address/input_schema_json/output_schema_json/metadata_json/version/enabled`）。workflowagent 只在 plan 中引用 `agent_name/prompt_ref`；Agent Runner 执行时再从数据库读取对应 `prompt_text`。数据库没有启用 Agent、缺少对应 prompt、OpenAI 不可用或输出 JSON 非法都会让当前步骤失败，不读取文件兜底。
 
 存储和异步执行配置：
 
@@ -100,10 +106,18 @@ pip install -r third/requirements.txt
 执行 MySQL migration：
 
 ```bash
-cd third
 alembic upgrade head
-cd ..
 ```
+
+说明：项目根目录已提供 Alembic 配置，直接从项目根目录执行即可。
+
+同步 runagent 提示词到 MySQL：
+
+```bash
+python -m third.scripts.seed_runagent_prompts
+```
+
+说明：`Prompt/runagent/` 是维护来源，MySQL `prompt_registry` 是运行时唯一事实来源。新增或修改业务 Agent 提示词后，需要重新执行 seed 脚本；同名 `prompt_key` 会覆盖更新。
 
 启动本地 API：
 
@@ -142,7 +156,7 @@ GET /debug/health
 ```bash
 curl -X POST http://127.0.0.1:8001/workflows/invoke \
   -H "Content-Type: application/json" \
-  -d '{"content":[{"text":"查询状态为进行中的记录，只返回标题、状态"}]}'
+  -d '{"content":[{"text":"查询记录，只返回事项名称、评级"}]}'
 ```
 
 查询状态：
@@ -175,9 +189,7 @@ docker compose down -v
 
 ```bash
 docker compose exec mysql mysql -uroot -pthird_root_password -e "DROP DATABASE IF EXISTS third_service; CREATE DATABASE third_service CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci; GRANT ALL PRIVILEGES ON third_service.* TO 'third_user'@'%'; FLUSH PRIVILEGES;"
-cd third
 alembic upgrade head
-cd ..
 ```
 
 ### 完整 third 容器验证
@@ -216,14 +228,14 @@ THIRD_ALLOW_IN_MEMORY_FALLBACK=0
 ### 同步 LangGraph / LangSmith 调试
 
 ```bash
-python -m third.demo "查询状态为进行中的记录，只返回标题、状态"
-python -m third.demo "新增一条记录，标题为测试新增，状态为进行中"
+python -m third.demo "查询记录，只返回事项名称、评级"
+python -m third.demo "新增一条记录，事项名称为测试新增，总结为联调记录，评级为A"
 ```
 
 异步命令行调试：
 
 ```bash
-python -m third.demo --submit "查询状态为进行中的记录，只返回标题、状态"
+python -m third.demo --submit "查询记录，只返回事项名称、评级"
 python -m third.demo --worker-once
 python -m third.demo --status sess_xxx
 python -m third.demo --resume sess_xxx --confirmation-id confirm_xxx --approve "确认写入"
@@ -310,8 +322,12 @@ GET /debug/workflows/{session_id}/graph
 - workflow 异步执行，API 提交后立即返回 `session_id`。
 - 每一步结果保存到 `session_artifacts`，后续步骤只读取自己声明依赖的 artifact。
 - 调试台只读取实际写入的 session、plan、step、artifact、confirmation，因此同时兼容 mock、真实飞书、规则 workflowagent 和 LLM workflowagent。
-- 调试日志由 `THIRD_WORKFLOW_DEBUG_LOG` 控制，本地开启时会输出脱敏后的 workflow plan 和失败 step 摘要。
+- 如果 LLM 生成的 `workflow_plan` 未通过校验，executor 会保存 `workflow.plan.invalid` artifact，里面包含校验错误和原始 plan，便于定位模型漏字段或误判意图。
+- 调试日志由 `THIRD_WORKFLOW_DEBUG_LOG` 控制，本地开启时会输出脱敏后的 workflow plan、无效 plan 和失败 step 摘要。
+- `THIRD_WORKFLOWAGENT_USE_LLM=1` 时，workflowagent 只能从注入的 Tool 能力目录选择 `tool_name`，并只能从数据库 Agent 目录中选择 `agent_name/prompt_ref`；写入类 business_agent 也只从数据库读取提示词。
+- `THIRD_WORKFLOWAGENT_USE_LLM=0` 时，保留规则 workflowagent 和规则 payload 解析，用于 mock 或离线调试。
 - 写入、更新、删除前必须经过字段读取、字段转换、校验和确认门。
+- business_agent 只生成候选业务 payload；字段是否存在、类型转换、批量新增 records、确认预览和最终 Tool 入参由 validation 节点确定，写入 Tool 还会二次 normalize。
 - 写入类操作使用 `idempotency_key` 防止重试造成重复写入。
 - 飞书字段定义缓存到 `feishu_field_cache`，通过 `expires_at` 实现 TTL 刷新。
 - 当前不做权限传递；飞书访问能力与自建应用配置对齐。

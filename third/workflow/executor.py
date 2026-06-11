@@ -84,10 +84,14 @@ class WorkflowExecutor:
         existing_plan = self.repository.get_plan(session_id)
         if existing_plan:
             return existing_plan
-        raw_plan = build_workflow_plan(original_input)
+        config = load_config()
+        agent_prompts = self.repository.list_agent_prompts(enabled_only=True) if config.workflowagent_use_llm else None
+        raw_plan = build_workflow_plan(original_input, config=config, repository=self.repository, agent_prompts=agent_prompts)
         try:
-            plan = validate_workflow_plan(raw_plan)
-        except PlanValidationError:
+            plan = validate_workflow_plan(raw_plan, agent_prompts=agent_prompts)
+        except PlanValidationError as exc:
+            self._save_invalid_plan(session_id, raw_plan, exc)
+            _log_invalid_workflow_plan(session_id, raw_plan, exc)
             raise
         _log_workflow_plan(session_id, plan)
         saved_plan = self.repository.save_plan(session_id, plan)
@@ -100,6 +104,17 @@ class WorkflowExecutor:
             schema_json={"type": "workflow_plan"},
         )
         return saved_plan
+
+    # 这个方法保存未通过校验的原始 workflow_plan，便于调试 LLM 输出问题。
+    def _save_invalid_plan(self, session_id: str, raw_plan: dict[str, Any], exc: Exception) -> None:
+        self.repository.save_artifact(
+            session_id,
+            "workflow.plan.invalid",
+            None,
+            content_text=json.dumps({"error_text": str(exc), "workflow_plan": raw_plan}, ensure_ascii=False, default=str),
+            data_json={"error_text": str(exc), "workflow_plan": raw_plan},
+            schema_json={"type": "invalid_workflow_plan"},
+        )
 
     # 这个方法找到下一个 pending 步骤。
     def _next_pending_step(self, plan_id: str) -> dict[str, Any] | None:
@@ -154,6 +169,7 @@ class WorkflowExecutor:
             "plan": plan.get("plan_json") or plan,
             "step": step,
             "artifacts": artifacts,
+            "repository": self.repository,
         }
 
     # 这个方法保存步骤输出为 artifact，并写入 Redis 短期缓存。
@@ -267,7 +283,9 @@ class WorkflowExecutor:
 
     # 这个方法生成最终答案并完成 session。
     def _finish_session(self, session_id: str, plan: dict[str, Any]) -> dict[str, Any]:
-        source_key = ((plan.get("plan_json") or {}).get("final") or {}).get("source") or "write_result"
+        final_spec = (plan.get("plan_json") or {}).get("final") or {}
+        source_key = final_spec.get("source") if isinstance(final_spec, dict) else None
+        source_key = source_key or "write_result"
         artifact = self.repository.get_artifact(session_id, source_key)
         answer = _answer_from_artifact(artifact)
         self.repository.update_session(session_id, status="success", final_answer=answer, current_step_id=None)
@@ -338,6 +356,24 @@ def _log_workflow_plan(session_id: str, plan: dict[str, Any]) -> None:
         "workflow_plan": plan,
     }
     LOGGER.info(json.dumps(_redact_for_log(payload), ensure_ascii=False, default=str))
+
+
+# 这个函数在 workflowagent 输出无法通过校验时打印原始 plan 摘要。
+def _log_invalid_workflow_plan(session_id: str, raw_plan: dict[str, Any], exc: Exception) -> None:
+    if not load_config().workflow_debug_log:
+        return
+    _ensure_debug_logger()
+    payload = {
+        "event": "workflow_plan_invalid",
+        "session_id": session_id,
+        "error_text": str(exc),
+        "intent": raw_plan.get("intent") if isinstance(raw_plan, dict) else None,
+        "risk_level": raw_plan.get("risk_level") if isinstance(raw_plan, dict) else None,
+        "requires_confirmation": raw_plan.get("requires_confirmation") if isinstance(raw_plan, dict) else None,
+        "steps": _step_log_summary(raw_plan.get("steps") or []) if isinstance(raw_plan, dict) else [],
+        "workflow_plan": raw_plan,
+    }
+    LOGGER.error(json.dumps(_redact_for_log(payload), ensure_ascii=False, default=str))
 
 
 # 这个函数在步骤失败时打印必要上下文，方便直接从 worker/API 控制台定位问题。

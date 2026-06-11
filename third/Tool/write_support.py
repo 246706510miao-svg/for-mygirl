@@ -397,13 +397,17 @@ def _extract_assignments(
 ) -> dict[str, Any]:
     fields: dict[str, Any] = {}
     operator_pattern = "|".join(re.escape(operator) for operator in operators)
+    has_known_schema = bool(_field_names_from_context(table_fields))
     for field_name, aliases in _field_candidates(table_fields).items():
         for alias in aliases:
             pattern = rf"{re.escape(alias)}\s*(?:{operator_pattern})\s*([^，。；;\n]+)"
             match = re.search(pattern, user_input, flags=re.IGNORECASE)
             if not match:
                 continue
-            resolved = _resolve_field_name(field_name, table_fields, config, empty_field_validation(table_fields)) or field_name
+            resolved = _resolve_field_name(field_name, table_fields, config, empty_field_validation(table_fields))
+            if not resolved and has_known_schema:
+                break
+            resolved = resolved or field_name
             fields[resolved] = _clean_extracted_value(match.group(1))
             break
     return fields
