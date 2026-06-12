@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from copy import deepcopy
 from datetime import timedelta
 from typing import Any
 
@@ -35,7 +36,7 @@ def run_validation_node(context: dict[str, Any]) -> dict[str, Any]:
     request_key = str(payload.get("request_key") or _request_key(operation))
     tool_name = str(payload.get("tool_name") or _tool_name(operation))
     original_input = str(context.get("original_input") or "")
-    explicit_request = (payload.get("tool_input_payload") or {}).get(request_key)
+    explicit_request = _request_with_record_match((payload.get("tool_input_payload") or {}).get(request_key), context, operation)
     normalized_request, errors = _normalize_validation_request(
         operation,
         explicit_request,
@@ -65,6 +66,10 @@ def run_validation_node(context: dict[str, Any]) -> dict[str, Any]:
         "preview": _preview(normalized_request),
         "expires_at": (now() + timedelta(seconds=config.workflow_idempotency_ttl_seconds)).isoformat(),
     }
+    match_info = _match_info(context)
+    if match_info:
+        data_json["match_info"] = match_info
+        data_json["preview"]["match_info"] = match_info
     return {
         "content_text": dumps_json(data_json),
         "data_json": data_json,
@@ -85,6 +90,20 @@ def _normalize_validation_request(
         return _normalize_batch_create_request(explicit_request, original_input, config, table_fields)
     normalized_request = normalize_write_request(operation, explicit_request, original_input, config, table_fields, require_fields=require_fields)
     return normalized_request, list(normalized_request.get("validation_errors") or [])
+
+
+# 这个函数把 search_agent 匹配出的 record_id 合并到更新/删除请求中。
+def _request_with_record_match(explicit_request: Any, context: dict[str, Any], operation: str) -> dict[str, Any] | None:
+    if operation not in {"update_record", "delete_record"}:
+        return explicit_request if isinstance(explicit_request, dict) else None
+    request = deepcopy(explicit_request) if isinstance(explicit_request, dict) else {}
+    matched_record = _matched_record(context)
+    if matched_record:
+        record_id = str(matched_record.get("record_id") or "").strip()
+        if not record_id:
+            raise ValueError("search_agent 未输出可用 record_id。")
+        request["record_id"] = record_id
+    return request
 
 
 # 这个函数把 create_request.records 中的每条记录分别做字段和类型校验。
@@ -200,6 +219,43 @@ def _preview(request: dict[str, Any]) -> dict[str, Any]:
         "fields": request.get("fields") or {},
         "lookup": request.get("lookup") or {},
     }
+
+
+def _matched_record(context: dict[str, Any]) -> dict[str, Any] | None:
+    artifact = (context.get("artifacts") or {}).get("feishu.record_match") or {}
+    data_json = artifact.get("data_json") or {}
+    matched_record = data_json.get("matched_record")
+    return matched_record if isinstance(matched_record, dict) else None
+
+
+def _match_info(context: dict[str, Any]) -> dict[str, Any] | None:
+    matched_record = _matched_record(context)
+    if not matched_record:
+        return None
+    confidence = matched_record.get("confidence")
+    confidence_level = str(matched_record.get("confidence_level") or _confidence_level(confidence))
+    return {
+        "record_id": matched_record.get("record_id"),
+        "confidence": confidence,
+        "confidence_level": confidence_level,
+        "reason": matched_record.get("reason") or "",
+        "record_fields": matched_record.get("record_fields") or {},
+        "alternative_records": matched_record.get("alternative_records") or [],
+        "requires_careful_review": confidence_level == "low",
+        "warning": "低置信匹配，请核对后再确认。" if confidence_level == "low" else "",
+    }
+
+
+def _confidence_level(confidence: Any) -> str:
+    try:
+        value = float(confidence)
+    except (TypeError, ValueError):
+        return "low"
+    if value >= 0.8:
+        return "high"
+    if value >= 0.5:
+        return "medium"
+    return "low"
 
 
 # 这个函数根据 operation 返回 request key。

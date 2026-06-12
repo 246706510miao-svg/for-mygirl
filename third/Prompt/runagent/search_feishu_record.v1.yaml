@@ -1,0 +1,99 @@
+prompt_key: search_feishu_record.v1
+agent_name: search_agent
+role_name: feishu_record_semantic_matcher
+description: 在更新或删除飞书记录前，根据用户原话、候选记录和已解析 payload 选择最可能的目标 record_id。
+db_address: prompt_registry.prompt_key=search_feishu_record.v1
+version: "1"
+enabled: true
+
+input_schema_json:
+  type: object
+  required:
+    - original_input
+    - operation
+    - parsed_write_payload
+    - candidate_records
+    - table_fields
+  properties:
+    original_input:
+      type: string
+      description: 用户原始自然语言输入。
+    operation:
+      type: string
+      enum:
+        - update_record
+        - delete_record
+    parsed_write_payload:
+      type: object
+      description: business_agent 已生成的 update_request 或 delete_request。
+    candidate_records:
+      type: array
+      description: tool_ReadFeishuBitable 读出的候选记录，每条包含 record_id 和 fields。
+    table_fields:
+      type: object
+      description: 当前飞书多维表格字段定义。
+
+output_schema_json:
+  type: object
+  required:
+    - matched_record
+  properties:
+    matched_record:
+      type: object
+      required:
+        - record_id
+        - confidence
+        - confidence_level
+        - reason
+        - record_fields
+        - alternative_records
+      properties:
+        record_id:
+          type: string
+        confidence:
+          type: number
+        confidence_level:
+          type: string
+          enum:
+            - high
+            - medium
+            - low
+        reason:
+          type: string
+        record_fields:
+          type: object
+        alternative_records:
+          type: array
+
+metadata_json:
+  side_effect_level: read
+  output_artifacts:
+    - feishu.record_match
+
+prompt_text: |
+  你是 third 第三方服务模块的 search_agent。
+  你的任务是在更新或删除飞书记录前，从候选记录中选出最符合用户意图的一条记录。
+
+  你只能输出合法 JSON 对象，不要输出 Markdown，不要解释推理过程。
+
+  当前上下文 JSON 会包含：
+  - original_input：用户原始输入，可能是模糊描述。
+  - current_date：当前日期，用于理解“今天、昨天、今早”等相对表达。
+  - operation：update_record / delete_record。
+  - request_key：update_request / delete_request。
+  - parsed_write_payload：business_agent 已解析的候选更新或删除 payload。
+  - candidate_records：已经从飞书读取的候选记录。
+  - table_fields：当前飞书字段定义。
+  - output_schema_json：输出结构约束。
+
+  输出要求：
+  - 顶层必须只输出 matched_record。
+  - matched_record.record_id 必须来自 candidate_records 中的 record_id，不得编造。
+  - matched_record.record_fields 填入被选中候选记录的 fields。
+  - confidence 是 0 到 1 的数字。
+  - confidence_level 只能是 high、medium、low。
+  - 即使匹配不确定，也要选择最可能的一条，并把 confidence_level 设为 low，把不确定原因写进 reason。
+  - alternative_records 应列出其他可能候选的 record_id、关键 fields 和简短理由，最多 5 条。
+  - 如果用户描述里有明确字段、日期、事项名称、总结关键词、状态或用时，要综合这些信息判断，而不是只看第一条。
+  - 如果 parsed_write_payload 已经包含 record_id，并且候选中存在该 record_id，应优先选择它并给 high confidence。
+  - 不要输出 app_token、table_id、view_id，也不要调用 Tool；后续 validation 和确认门会处理安全校验。

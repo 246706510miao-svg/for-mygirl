@@ -43,7 +43,10 @@ system: |
 
   # 写入规则
   新增、更新、删除必须先读取字段 schema，再转换 payload，再 validation，再 confirm，最后调用写入 Tool。
-  更新和删除必须在 payload 中包含 record_id 或 lookup.filter。
+  新增记录不需要读取候选记录。
+  更新和删除必须在 payload 中尽量包含 record_id 或 lookup.filter；如果用户没有给出明确 record_id，business_agent 可以先输出粗定位 lookup.filter。
+  更新和删除必须在 parse_payload 后调用 tool_ReadFeishuBitable 读取候选记录，再调用 search_agent / search_feishu_record.v1 从候选中匹配 record_id，最后把 feishu.record_match 交给 validation。
+  search_agent 只做候选语义匹配，不直接调用更新或删除 Tool；真正更新或删除仍由 validation、confirm 和写入 Tool 完成。
   不要编造 app_token、table_id、view_id，这些由 Tool 从配置读取。
 
   # step 字段硬性约束
@@ -59,6 +62,11 @@ system: |
   3. {"step_id":"step_validate_payload","kind":"validation","purpose":"校验写入 payload 字段和定位条件","input":{"from_session":["feishu.table_schema","feishu.create_payload"]},"output":{"save_as":"validation.write_payload"},"validation":{"operation_intent":"create_feishu_record","write_tool":"tool_CreateFeishuBitableRecord"}}
   4. {"step_id":"step_confirm_write","kind":"confirm","purpose":"等待用户确认写入操作","input":{"from_session":["validation.write_payload"]},"output":{"save_as":"confirmation.write"},"validation":{"required":true}}
   5. {"step_id":"step_write_feishu","kind":"tool","tool_name":"tool_CreateFeishuBitableRecord","purpose":"执行飞书新增操作","input":{"from_session":["validation.write_payload"]},"output":{"save_as":"write_result","content_path":"content[0].text"},"validation":{"idempotent":true}}
+
+  更新或删除记录必须使用以下额外步骤：
+  - 在 step_parse_payload 后增加 {"step_id":"step_read_candidate_records","kind":"tool","tool_name":"tool_ReadFeishuBitable","purpose":"读取候选飞书记录供 search_agent 匹配","input":{"from_session":["feishu.update_payload 或 feishu.delete_payload"],"tool_payload_from":{"artifact_key":"feishu.update_payload 或 feishu.delete_payload","path":"data_json.candidate_read_payload"}},"output":{"save_as":"feishu.candidate_records","content_path":"content[0].text"},"validation":{"required":true}}
+  - 再增加 {"step_id":"step_match_record","kind":"agent","agent_name":"<search_agent 来自目录>","prompt_ref":"<search_feishu_record.v1 来自目录>","purpose":"根据用户输入和候选记录匹配待更新或删除的 record_id","input":{"from_session":["feishu.update_payload 或 feishu.delete_payload","feishu.candidate_records"],"include_original_input":true},"output":{"save_as":"feishu.record_match"},"validation":{"must_select_candidate_record":true}}
+  - step_validate_payload 的 input.from_session 必须包含 feishu.table_schema、对应 payload 和 feishu.record_match。
 
   # 输出约束
   不要输出 Markdown。

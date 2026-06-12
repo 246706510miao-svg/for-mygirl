@@ -18,13 +18,20 @@
 
 `workflowagent` 不直接调用 Tool，也不直接写入飞书。它输出 `workflow_plan`，说明每一步要做什么、输入来自哪里、输出保存到哪个 artifact。
 
-写入类计划会包含：
+新增类计划会包含：
 
 1. `tool_ReadFeishuBitableSchema`：读取字段定义，保存为 `feishu.table_schema`。
 2. `business_agent`：使用数据库 Agent 目录中 `prompt_ref=parse_feishu_record.v1` 的提示词，把用户输入转换成飞书写入 payload，保存为 `feishu.create_payload`。
 3. `validation`：校验字段、类型和定位条件，保存为 `validation.write_payload`。
 4. `confirm`：生成确认请求，状态进入 `waiting_user`。
 5. `tool_CreateFeishuBitableRecord`：用户确认后执行写入，保存为 `write_result`。
+
+更新和删除类计划会在 `business_agent` 后多两步：
+
+1. `tool_ReadFeishuBitable`：使用 `candidate_read_payload` 读取候选记录，保存为 `feishu.candidate_records`。
+2. `search_agent`：使用数据库 Agent 目录中 `prompt_ref=search_feishu_record.v1` 的提示词，从候选记录中匹配目标 `record_id`，保存为 `feishu.record_match`。
+
+随后 `validation` 会同时读取字段 schema、业务 payload 和 `feishu.record_match`，把匹配出的 `record_id` 合并进最终 Tool 请求。
 
 ## 3. Runtime 执行步骤
 
@@ -43,7 +50,7 @@
 
 说明：业务 Agent 每一轮都是无状态的，记忆来自 `session_artifacts`。LLM 模式下，workflowagent 只能选择 MySQL `prompt_registry` 中启用的 `agent_name/prompt_ref`；Agent Runner 也只从数据库读取提示词正文。
 
-业务 Agent 不直接调用 Tool，也不直接决定飞书 HTTP 字段。它只根据用户原话和 `feishu.table_schema` 生成候选业务 payload。字段名、字段类型、单选选项、日期/数字转换、更新或删除唯一定位、确认预览和幂等 key 都由后续 `validation` 节点确定；写入 Tool 在真正调用飞书前还会再次 normalize。新增请求中如果用户描述多个独立事项，business_agent 可以输出 `create_request.records`，validation 会逐条校验并在确认门展示多条预览。
+业务 Agent 不直接调用写入 Tool，也不直接决定飞书 HTTP 字段。`business_agent` 根据用户原话和 `feishu.table_schema` 生成候选业务 payload；新增请求中如果用户描述多个独立事项，可以输出 `create_request.records`。更新或删除时，`business_agent` 只提供粗定位或显式 `record_id`，系统会先读取候选记录，再由 `search_agent` 做语义匹配。字段名、字段类型、单选选项、日期/数字转换、匹配出的 `record_id`、确认预览和幂等 key 都由后续 `validation` 节点确定；写入 Tool 在真正调用飞书前还会再次 normalize。
 
 ## 4. Tool 输入输出
 
@@ -60,10 +67,10 @@
     "fields": {
       "事项名称": "测试新增",
       "总结": "联调记录",
-      "评级": "A"
+        "评级": "A"
+      }
     }
   }
-}
 ```
 
 Tool 输出仍然是 `tool_result`：
@@ -106,6 +113,8 @@ Tool 输出仍然是 `tool_result`：
   ]
 }
 ```
+
+更新或删除如果经过 `search_agent` 匹配，`preview_json` 还会包含 `match_info`，展示目标 `record_id`、置信度、匹配理由和备选候选。低置信匹配不会自动失败，但 `request_text` 会提示“低置信匹配，请核对后再确认”；用户拒绝后不会执行写入 Tool。
 
 SpringBoot 后续调用 `POST /workflows/{session_id}/resume` 后，worker 会继续执行剩余步骤。
 

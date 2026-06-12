@@ -25,6 +25,8 @@ UPDATE_TOOL = "tool_UpdateFeishuBitableRecord"
 DELETE_TOOL = "tool_DeleteFeishuBitableRecord"
 WRITE_TOOLS = {CREATE_TOOL, UPDATE_TOOL, DELETE_TOOL}
 ALLOWED_TOOLS = {READ_SCHEMA_TOOL, READ_TOOL, CREATE_TOOL, UPDATE_TOOL, DELETE_TOOL}
+PARSE_FEISHU_RECORD_PROMPT = "parse_feishu_record.v1"
+SEARCH_FEISHU_RECORD_PROMPT = "search_feishu_record.v1"
 TOOL_CATALOG = [
     {
         "tool_name": READ_SCHEMA_TOOL,
@@ -42,7 +44,7 @@ TOOL_CATALOG = [
         "category": "feishu_bitable_records",
         "side_effect_level": "read",
         "purpose": "查询或读取飞书多维表格已有记录。",
-        "when_to_use": "用户明确要求查询、读取、搜索、列出已有飞书记录时使用；不能用于把新内容写到飞书。",
+        "when_to_use": "用户明确要求查询、读取、搜索、列出已有飞书记录时使用；更新或删除已有记录时，也用于在 parse_payload 后读取候选记录交给 search_agent 匹配；不能用于把新内容写到飞书。",
         "input_contract": {
             "read_request": {
                 "operation": "search_records",
@@ -315,13 +317,14 @@ def _dedupe(items: list[str]) -> list[str]:
 
 # 这个函数生成新增、更新、删除类 workflow_plan。
 def _write_plan(input_text: str, intent: str, risk_level: str, write_tool: str, payload_key: str) -> dict[str, Any]:
-    return {
+    plan = {
         "type": "workflow_plan",
         "version": "workflow.v1",
         "intent": intent,
         "risk_level": risk_level,
         "requires_confirmation": True,
         "original_input": input_text,
+        "final": {"source": "write_result", "format": "answer"},
         "steps": [
             {
                 "step_id": "step_read_schema",
@@ -336,17 +339,52 @@ def _write_plan(input_text: str, intent: str, risk_level: str, write_tool: str, 
                 "step_id": "step_parse_payload",
                 "kind": "agent",
                 "agent_name": "business_agent",
-                "prompt_ref": "parse_feishu_record.v1",
+                "prompt_ref": PARSE_FEISHU_RECORD_PROMPT,
                 "purpose": "把用户输入转换为飞书写入 payload",
                 "input": {"from_session": ["feishu.table_schema"], "include_original_input": True},
                 "output": {"save_as": payload_key},
                 "validation": {"reject_unknown_fields": True, "must_match_feishu_schema": True},
             },
+        ]
+    }
+    if write_tool in {UPDATE_TOOL, DELETE_TOOL}:
+        plan["steps"].extend(
+            [
+                {
+                    "step_id": "step_read_candidate_records",
+                    "kind": "tool",
+                    "tool_name": READ_TOOL,
+                    "purpose": "读取候选飞书记录供 search_agent 匹配",
+                    "input": {
+                        "from_session": [payload_key],
+                        "tool_payload_from": {"artifact_key": payload_key, "path": "data_json.candidate_read_payload"},
+                    },
+                    "output": {"save_as": "feishu.candidate_records", "content_path": "content[0].text"},
+                    "validation": {"required": True},
+                },
+                {
+                    "step_id": "step_match_record",
+                    "kind": "agent",
+                    "agent_name": "search_agent",
+                    "prompt_ref": SEARCH_FEISHU_RECORD_PROMPT,
+                    "purpose": "根据用户输入和候选记录匹配待更新或删除的 record_id",
+                    "input": {"from_session": [payload_key, "feishu.candidate_records"], "include_original_input": True},
+                    "output": {"save_as": "feishu.record_match"},
+                    "validation": {"must_select_candidate_record": True},
+                },
+            ]
+        )
+        validation_inputs = ["feishu.table_schema", payload_key, "feishu.record_match"]
+    else:
+        validation_inputs = ["feishu.table_schema", payload_key]
+
+    plan["steps"].extend(
+        [
             {
                 "step_id": "step_validate_payload",
                 "kind": "validation",
-                "purpose": "校验写入 payload 字段和定位条件",
-                "input": {"from_session": ["feishu.table_schema", payload_key]},
+                "purpose": "校验写入 payload 字段、匹配记录和定位条件",
+                "input": {"from_session": validation_inputs},
                 "output": {"save_as": "validation.write_payload"},
                 "validation": {"operation_intent": intent, "write_tool": write_tool},
             },
@@ -367,6 +405,6 @@ def _write_plan(input_text: str, intent: str, risk_level: str, write_tool: str, 
                 "output": {"save_as": "write_result", "content_path": "content[0].text"},
                 "validation": {"idempotent": True},
             },
-        ],
-        "final": {"source": "write_result", "format": "answer"},
-    }
+        ]
+    )
+    return plan

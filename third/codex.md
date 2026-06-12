@@ -10,7 +10,7 @@
 6. `agents/graph.py`、`workflow/executor.py`：理解 LangGraph 固定入口和 runtime 执行方式。
 7. `agents/workflowagent/agent.py`、`Prompt/workflowagent.yaml`：查看动态计划生成逻辑和提示词。
 8. `Prompt/runagent/`、`scripts/seed_runagent_prompts.py`：查看业务 Agent 提示词文件来源和同步到数据库的脚本。
-9. `workflow/agent_runner.py`：查看 business_agent 按 `prompt_ref` 从数据库读取提示词并执行的逻辑。
+9. `workflow/agent_runner.py`：查看 business_agent、search_agent 按 `prompt_ref` 从数据库读取提示词并执行的逻辑。
 10. `Tool/`：查看飞书字段读取、查询、新增、更新、删除 Tool。
 11. `storage/`、`runtime/`：查看 MySQL Repository 和 Redis Stream 运行态。
 10. `debug/`：查看本地调试台、运行模式体检、时间线和动态图生成。
@@ -73,7 +73,7 @@ third/
 |   |-- executor.py                   # workflow 执行器
 |   |-- plan_validator.py             # workflow_plan 校验
 |   |-- tool_dispatcher.py            # Tool 分发
-|   |-- agent_runner.py               # 业务 Agent 执行封装
+|   |-- agent_runner.py               # 业务 Agent 执行封装，支持 payload 解析和候选记录匹配
 |   |-- content.py                    # content[0].text 输入输出辅助
 |   |-- field_cache.py                # 飞书字段缓存逻辑
 |   |-- validation.py                 # 写入确认和幂等校验

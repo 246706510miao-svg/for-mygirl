@@ -184,7 +184,7 @@ class WorkflowExecutor:
             schema_json=output.get("schema_json") or {},
         )
         self.runtime_store.set_temp_artifact(session_id, artifact_key, artifact)
-        if artifact_key == "validation.write_payload":
+        if _is_validation_payload_key(artifact_key):
             self._save_idempotency(session_id, artifact)
         return artifact
 
@@ -213,7 +213,7 @@ class WorkflowExecutor:
         step = context.get("step") or {}
         if step.get("tool_name") not in WRITE_TOOLS:
             return None
-        validation_data = (context.get("artifacts", {}).get("validation.write_payload") or {}).get("data_json") or {}
+        validation_data = (_validation_artifact(context) or {}).get("data_json") or {}
         idempotency_key = validation_data.get("idempotency_key")
         if not idempotency_key:
             return None
@@ -234,7 +234,7 @@ class WorkflowExecutor:
         step = context.get("step") or {}
         if step.get("tool_name") not in WRITE_TOOLS:
             return
-        data_json = (context.get("artifacts", {}).get("validation.write_payload") or {}).get("data_json") or {}
+        data_json = (_validation_artifact(context) or {}).get("data_json") or {}
         idempotency_key = data_json.get("idempotency_key")
         if not idempotency_key:
             return
@@ -266,7 +266,7 @@ class WorkflowExecutor:
         confirmation = self.repository.create_confirmation(
             session_id,
             step["step_id"],
-            "确认执行以下飞书写入操作吗？",
+            _confirmation_request_text(preview),
             preview,
         )
         self.repository.update_step(step["step_id"], status="waiting_user")
@@ -302,9 +302,33 @@ class WorkflowExecutor:
 
 # 这个函数从确认步骤依赖中提取展示预览。
 def _confirmation_preview(context: dict[str, Any]) -> dict[str, Any]:
-    artifact = context.get("artifacts", {}).get("validation.write_payload") or {}
+    artifact = _validation_artifact(context) or {}
     data_json = artifact.get("data_json") or {}
     return data_json.get("preview") or data_json
+
+
+def _is_validation_payload_key(artifact_key: Any) -> bool:
+    text = str(artifact_key or "")
+    return text == "validation.write_payload" or text.startswith("validation.")
+
+
+def _validation_artifact(context: dict[str, Any]) -> dict[str, Any] | None:
+    artifacts = context.get("artifacts") or {}
+    if "validation.write_payload" in artifacts:
+        return artifacts["validation.write_payload"]
+    for artifact_key, artifact in artifacts.items():
+        if _is_validation_payload_key(artifact_key) and isinstance(artifact, dict):
+            data_json = artifact.get("data_json") or {}
+            if isinstance(data_json, dict) and isinstance(data_json.get("tool_input_payload"), dict):
+                return artifact
+    return None
+
+
+def _confirmation_request_text(preview: dict[str, Any]) -> str:
+    match_info = preview.get("match_info") if isinstance(preview, dict) else None
+    if isinstance(match_info, dict) and match_info.get("requires_careful_review"):
+        return "确认执行以下飞书写入操作吗？低置信匹配，请核对 record_id、匹配理由和候选摘要后再确认。"
+    return "确认执行以下飞书写入操作吗？"
 
 
 # 这个函数把最终 artifact 转成用户可读答案。

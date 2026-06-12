@@ -6,9 +6,9 @@ from copy import deepcopy
 from typing import Any
 
 try:
-    from ..agents.workflowagent.agent import ALLOWED_TOOLS, WRITE_TOOLS
+    from ..agents.workflowagent.agent import ALLOWED_TOOLS, DELETE_TOOL, READ_TOOL, UPDATE_TOOL, WRITE_TOOLS
 except ImportError:
-    from agents.workflowagent.agent import ALLOWED_TOOLS, WRITE_TOOLS
+    from agents.workflowagent.agent import ALLOWED_TOOLS, DELETE_TOOL, READ_TOOL, UPDATE_TOOL, WRITE_TOOLS
 
 
 # 这个异常表示 workflow_plan 不能安全执行。
@@ -30,6 +30,7 @@ def validate_workflow_plan(plan: dict[str, Any], agent_prompts: list[dict[str, A
     seen_outputs: set[str] = set()
     seen_kinds: list[str] = []
     write_tool_seen = None
+    steps = plan["steps"]
     for index, step in enumerate(plan["steps"], start=1):
         _validate_step(index, step, seen_outputs, agent_catalog)
         seen_kinds.append(str(step.get("kind")))
@@ -42,6 +43,9 @@ def validate_workflow_plan(plan: dict[str, Any], agent_prompts: list[dict[str, A
 
     if write_tool_seen:
         _validate_write_plan(plan, seen_kinds)
+        _normalize_write_validation_artifact(plan)
+    if write_tool_seen in {UPDATE_TOOL, DELETE_TOOL}:
+        _validate_update_delete_match_flow(steps)
     _normalize_final(plan, write_tool_seen)
     return plan
 
@@ -108,6 +112,60 @@ def _validate_write_plan(plan: dict[str, Any], step_kinds: list[str]) -> None:
     for required_kind in ("agent", "validation", "confirm"):
         if required_kind not in step_kinds:
             raise PlanValidationError(f"写入类 workflow_plan 缺少 {required_kind} 步骤。")
+
+
+def _normalize_write_validation_artifact(plan: dict[str, Any]) -> None:
+    validation_keys: list[str] = []
+    for step in plan.get("steps") or []:
+        if step.get("kind") != "validation":
+            continue
+        output = step.get("output") if isinstance(step.get("output"), dict) else {}
+        save_as = str(output.get("save_as") or "")
+        if save_as.startswith("validation.") and save_as != "validation.write_payload":
+            validation_keys.append(save_as)
+            output["save_as"] = "validation.write_payload"
+            step["output"] = output
+    if not validation_keys:
+        return
+    replacements = set(validation_keys)
+    for step in plan.get("steps") or []:
+        input_spec = step.get("input")
+        if not isinstance(input_spec, dict):
+            continue
+        from_session = input_spec.get("from_session")
+        if not isinstance(from_session, list):
+            continue
+        input_spec["from_session"] = [
+            "validation.write_payload" if str(artifact_key) in replacements else artifact_key for artifact_key in from_session
+        ]
+
+
+def _validate_update_delete_match_flow(steps: list[dict[str, Any]]) -> None:
+    has_candidate_read = any(
+        step.get("kind") == "tool"
+        and step.get("tool_name") == READ_TOOL
+        and isinstance(step.get("output"), dict)
+        and step["output"].get("save_as") == "feishu.candidate_records"
+        for step in steps
+    )
+    has_record_match = any(
+        step.get("kind") == "agent"
+        and step.get("prompt_ref") == "search_feishu_record.v1"
+        and isinstance(step.get("output"), dict)
+        and step["output"].get("save_as") == "feishu.record_match"
+        for step in steps
+    )
+    validation_uses_match = any(
+        step.get("kind") == "validation"
+        and "feishu.record_match" in ((step.get("input") or {}).get("from_session") or [])
+        for step in steps
+    )
+    if not has_candidate_read:
+        raise PlanValidationError("更新或删除 workflow_plan 必须先读取 feishu.candidate_records。")
+    if not has_record_match:
+        raise PlanValidationError("更新或删除 workflow_plan 必须使用 search_feishu_record.v1 生成 feishu.record_match。")
+    if not validation_uses_match:
+        raise PlanValidationError("更新或删除 workflow_plan 的 validation 必须依赖 feishu.record_match。")
 
 
 # 这个函数识别用户原文里明确要求写入飞书的表达。

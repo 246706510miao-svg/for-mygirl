@@ -47,7 +47,7 @@ THIRD_WORKFLOWAGENT_MODEL=gpt-4o-mini
 THIRD_FINAGENT_USE_LLM=0
 ```
 
-说明：`THIRD_WORKFLOWAGENT_USE_LLM=1` 会同时启用 workflowagent 的计划生成和 business_agent 的写入 payload 解析。LLM 模式下，workflowagent 会拿到两类目录：代码内置的 Tool 能力目录（每个 `tool_name` 的用途、风险、输入输出和是否需要确认）以及 MySQL `prompt_registry` 中启用的 Agent 目录（`agent_name/prompt_ref/role_name/description/db_address/input_schema_json/output_schema_json/metadata_json/version/enabled`）。workflowagent 只在 plan 中引用 `agent_name/prompt_ref`；Agent Runner 执行时再从数据库读取对应 `prompt_text`。数据库没有启用 Agent、缺少对应 prompt、OpenAI 不可用或输出 JSON 非法都会让当前步骤失败，不读取文件兜底。
+说明：`THIRD_WORKFLOWAGENT_USE_LLM=1` 会同时启用 workflowagent 的计划生成、business_agent 的写入 payload 解析，以及 search_agent 的更新/删除候选记录匹配。LLM 模式下，workflowagent 会拿到两类目录：代码内置的 Tool 能力目录（每个 `tool_name` 的用途、风险、输入输出和是否需要确认）以及 MySQL `prompt_registry` 中启用的 Agent 目录（`agent_name/prompt_ref/role_name/description/db_address/input_schema_json/output_schema_json/metadata_json/version/enabled`）。workflowagent 只在 plan 中引用 `agent_name/prompt_ref`；Agent Runner 执行时再从数据库读取对应 `prompt_text`。数据库没有启用 Agent、缺少对应 prompt、OpenAI 不可用或输出 JSON 非法都会让当前步骤失败，不读取文件兜底。
 
 存储和异步执行配置：
 
@@ -117,7 +117,7 @@ alembic upgrade head
 python -m third.scripts.seed_runagent_prompts
 ```
 
-说明：`Prompt/runagent/` 是维护来源，MySQL `prompt_registry` 是运行时唯一事实来源。新增或修改业务 Agent 提示词后，需要重新执行 seed 脚本；同名 `prompt_key` 会覆盖更新。
+说明：`Prompt/runagent/` 是维护来源，MySQL `prompt_registry` 是运行时唯一事实来源。当前至少包含 `parse_feishu_record.v1` 和 `search_feishu_record.v1`；新增或修改业务 Agent 提示词后，需要重新执行 seed 脚本，同名 `prompt_key` 会覆盖更新。
 
 启动本地 API：
 
@@ -327,7 +327,9 @@ GET /debug/workflows/{session_id}/graph
 - `THIRD_WORKFLOWAGENT_USE_LLM=1` 时，workflowagent 只能从注入的 Tool 能力目录选择 `tool_name`，并只能从数据库 Agent 目录中选择 `agent_name/prompt_ref`；写入类 business_agent 也只从数据库读取提示词。
 - `THIRD_WORKFLOWAGENT_USE_LLM=0` 时，保留规则 workflowagent 和规则 payload 解析，用于 mock 或离线调试。
 - 写入、更新、删除前必须经过字段读取、字段转换、校验和确认门。
-- business_agent 只生成候选业务 payload；字段是否存在、类型转换、批量新增 records、确认预览和最终 Tool 入参由 validation 节点确定，写入 Tool 还会二次 normalize。
+- business_agent 只生成候选业务 payload；新增可输出批量 `create_request.records`，更新/删除会额外生成候选读取 payload。
+- 更新和删除会先调用 `tool_ReadFeishuBitable` 读取候选记录，再由 `search_agent/search_feishu_record.v1` 从候选中匹配 `record_id`；低置信匹配也会进入确认门，但确认文本和 preview 会显示置信度、理由和备选候选。
+- 字段是否存在、类型转换、匹配到的 `record_id`、确认预览和最终 Tool 入参由 validation 节点确定，写入 Tool 还会二次 normalize。
 - 写入类操作使用 `idempotency_key` 防止重试造成重复写入。
 - 飞书字段定义缓存到 `feishu_field_cache`，通过 `expires_at` 实现 TTL 刷新。
 - 当前不做权限传递；飞书访问能力与自建应用配置对齐。

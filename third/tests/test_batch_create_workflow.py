@@ -5,6 +5,8 @@ import unittest
 from unittest.mock import patch
 
 from third.Tool import tool_CreateFeishuBitableRecord as create_tool
+from third.workflow import executor
+from third.workflow import tool_dispatcher
 from third.workflow import validation
 from third.workflow.plan_validator import validate_workflow_plan
 
@@ -162,6 +164,153 @@ class BatchCreateWorkflowTests(unittest.TestCase):
         )
 
         self.assertEqual(validated["final"], {"source": "write_result", "format": "answer"})
+
+    def test_validation_merges_search_agent_record_match_for_delete(self) -> None:
+        context = {
+            "original_input": "删除昨天英语那条",
+            "artifacts": {
+                "feishu.delete_payload": {
+                    "data_json": {
+                        "tool_name": "tool_DeleteFeishuBitableRecord",
+                        "operation": "delete_record",
+                        "request_key": "delete_request",
+                        "table_fields": TABLE_FIELDS,
+                        "tool_input_payload": {
+                            "delete_request": {
+                                "operation": "delete_record",
+                                "service": "feishu_bitable",
+                                "lookup": {"filter": {"conjunction": "and", "conditions": []}},
+                            }
+                        },
+                    }
+                },
+                "feishu.record_match": {
+                    "data_json": {
+                        "matched_record": {
+                            "record_id": "rec_1",
+                            "confidence": 0.31,
+                            "confidence_level": "low",
+                            "reason": "英语关键词最接近",
+                            "record_fields": {"事项名称": "英语学习"},
+                            "alternative_records": [{"record_id": "rec_2", "fields": {"事项名称": "个人项目"}}],
+                        }
+                    }
+                },
+            },
+        }
+
+        with patch.object(validation, "load_config", return_value=FakeConfig()):
+            output = validation.run_validation_node(context)
+
+        data = output["data_json"]
+        delete_request = data["tool_input_payload"]["delete_request"]
+        self.assertEqual(delete_request["record_id"], "rec_1")
+        self.assertEqual(data["preview"]["match_info"]["confidence_level"], "low")
+        self.assertTrue(data["preview"]["match_info"]["requires_careful_review"])
+
+    def test_confirmation_text_warns_for_low_confidence_match(self) -> None:
+        text = executor._confirmation_request_text({"match_info": {"requires_careful_review": True}})
+
+        self.assertIn("低置信匹配", text)
+
+    def test_tool_dispatcher_reads_payload_from_artifact_path(self) -> None:
+        context = {
+            "original_input": "删除昨天英语那条",
+            "step": {
+                "tool_name": "tool_ReadFeishuBitable",
+                "input_spec_json": {
+                    "from_session": ["feishu.delete_payload"],
+                    "tool_payload_from": {"artifact_key": "feishu.delete_payload", "path": "data_json.candidate_read_payload"},
+                },
+            },
+            "artifacts": {
+                "feishu.delete_payload": {
+                    "data_json": {
+                        "candidate_read_payload": {
+                            "original_input": "删除昨天英语那条",
+                            "read_request": {"operation": "search_records", "page_size": 50},
+                        }
+                    }
+                }
+            },
+        }
+
+        payload = tool_dispatcher._build_tool_payload(context)
+        data = json.loads(payload["content"][0]["text"])
+
+        self.assertEqual(data["read_request"]["page_size"], 50)
+
+    def test_tool_dispatcher_falls_back_to_candidate_read_payload_for_read_tool(self) -> None:
+        context = {
+            "original_input": "删除昨天英语那条",
+            "step": {
+                "tool_name": "tool_ReadFeishuBitable",
+                "input_spec_json": {"from_session": ["feishu.delete_payload"]},
+            },
+            "artifacts": {
+                "feishu.delete_payload": {
+                    "data_json": {
+                        "candidate_read_payload": {
+                            "original_input": "删除昨天英语那条",
+                            "read_request": {"operation": "search_records", "page_size": 50},
+                        },
+                        "tool_input_payload": {"delete_request": {"lookup": {"filter": {"conditions": []}}}},
+                    }
+                }
+            },
+        }
+
+        payload = tool_dispatcher._build_tool_payload(context)
+        data = json.loads(payload["content"][0]["text"])
+
+        self.assertEqual(data["read_request"]["operation"], "search_records")
+        self.assertEqual(data["read_request"]["page_size"], 50)
+
+    def test_tool_dispatcher_rejects_read_tool_payload_without_read_request(self) -> None:
+        context = {
+            "original_input": "删除昨天英语那条",
+            "step": {
+                "tool_name": "tool_ReadFeishuBitable",
+                "input_spec_json": {
+                    "from_session": ["feishu.delete_payload"],
+                    "tool_payload_from": {"artifact_key": "feishu.delete_payload", "path": "data_json.tool_input_payload"},
+                },
+            },
+            "artifacts": {
+                "feishu.delete_payload": {
+                    "data_json": {
+                        "tool_input_payload": {"delete_request": {"lookup": {"filter": {"conditions": []}}}},
+                    }
+                }
+            },
+        }
+
+        with self.assertRaisesRegex(ValueError, "缺少 read_request"):
+            tool_dispatcher._build_tool_payload(context)
+
+    def test_tool_dispatcher_reads_tool_input_payload_from_any_validation_artifact(self) -> None:
+        context = {
+            "original_input": "删除昨天英语那条",
+            "step": {
+                "tool_name": "tool_DeleteFeishuBitableRecord",
+                "input_spec_json": {"from_session": ["validation.delete_payload"]},
+            },
+            "artifacts": {
+                "validation.delete_payload": {
+                    "data_json": {
+                        "tool_input_payload": {
+                            "original_input": "删除昨天英语那条",
+                            "delete_request": {"record_id": "rec_1"},
+                        }
+                    }
+                }
+            },
+        }
+
+        payload = tool_dispatcher._build_tool_payload(context)
+        data = json.loads(payload["content"][0]["text"])
+
+        self.assertEqual(data["delete_request"]["record_id"], "rec_1")
 
 
 if __name__ == "__main__":

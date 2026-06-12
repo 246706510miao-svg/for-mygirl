@@ -201,7 +201,7 @@ erDiagram
 | `artifact_id` | artifact ID。 |
 | `session_id` | 所属 workflow session。 |
 | `source_step_id` | 产生该 artifact 的步骤 ID。 |
-| `artifact_key` | 逻辑 key，例如 `feishu.table_schema`、`feishu.record_payload`。 |
+| `artifact_key` | 逻辑 key，例如 `feishu.table_schema`、`feishu.create_payload`、`feishu.candidate_records`、`feishu.record_match`、`validation.write_payload`。 |
 | `content_text` | 保留 `content[0].text` 形式的文本。 |
 | `data_json` | 结构化结果。 |
 | `schema_json` | 该 artifact 对应的数据结构约束。 |
@@ -218,7 +218,7 @@ erDiagram
 | `step_id` | 等待确认的步骤 ID。 |
 | `status` | `waiting`、`approved`、`rejected`、`expired`。 |
 | `request_text` | 展示给用户确认的文本。 |
-| `preview_json` | 即将写入或修改的数据预览。 |
+| `preview_json` | 即将写入或修改的数据预览。更新或删除经过 search_agent 时，会包含 `match_info`，展示目标 `record_id`、置信度、匹配理由和备选候选。 |
 | `user_response` | 用户确认或拒绝的原始回复。 |
 | `expires_at` | 确认超时时间。 |
 | `decided_at` | 用户做出选择的时间。 |
@@ -240,7 +240,7 @@ erDiagram
 
 ### prompt_registry
 
-保存可被 workflowagent 和 Agent Runner 使用的业务 Agent 目录及提示词。`Prompt/runagent/*.yaml` 是维护来源，执行 seed 脚本后写入本表；运行时只读取数据库，不读取文件兜底。`workflowagent` 会读取启用记录中的 `agent_name`、`prompt_key`、`role_name`、`description`、`db_address`、输入输出 schema、`metadata_json`、`version` 和 `enabled` 来规划 `kind=agent` 步骤；Agent Runner 再按 `prompt_ref` 读取同一条记录的 `prompt_text`。
+保存可被 workflowagent 和 Agent Runner 使用的业务 Agent 目录及提示词。`Prompt/runagent/*.yaml` 是维护来源，执行 seed 脚本后写入本表；运行时只读取数据库，不读取文件兜底。`workflowagent` 会读取启用记录中的 `agent_name`、`prompt_key`、`role_name`、`description`、`db_address`、输入输出 schema、`metadata_json`、`version` 和 `enabled` 来规划 `kind=agent` 步骤；Agent Runner 再按 `prompt_ref` 读取同一条记录的 `prompt_text`。当前内置 `parse_feishu_record.v1` 用于写入 payload 解析，`search_feishu_record.v1` 用于更新/删除前从候选记录中匹配目标 `record_id`。
 
 | 字段 | 说明 |
 |---|---|

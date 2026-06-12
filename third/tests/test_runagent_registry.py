@@ -27,11 +27,16 @@ class RunAgentRegistryTests(unittest.TestCase):
         second_rows = seed_runagent_prompts(prompt_dir, session_factory=session_factory)
 
         self.assertEqual(first_rows[0]["prompt_key"], "parse_feishu_record.v1")
+        self.assertEqual(first_rows[1]["prompt_key"], "search_feishu_record.v1")
         self.assertEqual(second_rows[0]["agent_name"], "business_agent")
+        self.assertEqual(second_rows[1]["agent_name"], "search_agent")
         with session_factory() as session:
             stored = session.get(PromptRegistryModel, "parse_feishu_record.v1")
             self.assertIn("你是 third 第三方服务模块的 business_agent", stored.prompt_text)
             self.assertEqual(stored.agent_name, "business_agent")
+            search_prompt = session.get(PromptRegistryModel, "search_feishu_record.v1")
+            self.assertIn("你是 third 第三方服务模块的 search_agent", search_prompt.prompt_text)
+            self.assertEqual(search_prompt.agent_name, "search_agent")
 
     def test_seed_runagent_prompts_rejects_missing_required_field(self) -> None:
         with self.assertRaises(RunAgentPromptValidationError):
@@ -177,6 +182,61 @@ class RunAgentRegistryTests(unittest.TestCase):
 
         self.assertEqual(plan["intent"], "create_feishu_record")
         self.assertEqual([step["kind"] for step in plan["steps"]], ["tool", "agent", "validation", "confirm", "tool"])
+
+    def test_rule_update_plan_reads_candidates_and_uses_search_agent(self) -> None:
+        config = SimpleNamespace(workflowagent_use_llm=False)
+
+        plan = workflowagent.build_workflow_plan("把昨天英语那条评级改成A", config=config)
+
+        self.assertEqual(plan["intent"], "update_feishu_record")
+        self.assertEqual(
+            [step["step_id"] for step in plan["steps"]],
+            [
+                "step_read_schema",
+                "step_parse_payload",
+                "step_read_candidate_records",
+                "step_match_record",
+                "step_validate_payload",
+                "step_confirm_write",
+                "step_write_feishu",
+            ],
+        )
+        self.assertEqual(plan["steps"][2]["tool_name"], "tool_ReadFeishuBitable")
+        self.assertEqual(plan["steps"][3]["prompt_ref"], "search_feishu_record.v1")
+        self.assertIn("feishu.record_match", plan["steps"][4]["input"]["from_session"])
+
+    def test_plan_validator_normalizes_dynamic_validation_artifact_key(self) -> None:
+        config = SimpleNamespace(workflowagent_use_llm=False)
+        plan = workflowagent.build_workflow_plan("把昨天英语那条评级改成A", config=config)
+        plan["steps"][4]["output"]["save_as"] = "validation.update_payload"
+        plan["steps"][5]["input"]["from_session"] = ["validation.update_payload"]
+        plan["steps"][6]["input"]["from_session"] = ["validation.update_payload"]
+
+        validated = validate_workflow_plan(
+            plan,
+            agent_prompts=[
+                {"prompt_key": "parse_feishu_record.v1", "agent_name": "business_agent"},
+                {"prompt_key": "search_feishu_record.v1", "agent_name": "search_agent"},
+            ],
+        )
+
+        self.assertEqual(validated["steps"][4]["output"]["save_as"], "validation.write_payload")
+        self.assertEqual(validated["steps"][5]["input"]["from_session"], ["validation.write_payload"])
+        self.assertEqual(validated["steps"][6]["input"]["from_session"], ["validation.write_payload"])
+
+    def test_plan_validator_rejects_update_without_search_agent_match(self) -> None:
+        plan = _write_plan_with_agent("parse_feishu_record.v1", "business_agent")
+        plan["intent"] = "update_feishu_record"
+        plan["steps"][-1]["tool_name"] = "tool_UpdateFeishuBitableRecord"
+
+        with self.assertRaisesRegex(PlanValidationError, "feishu.candidate_records"):
+            validate_workflow_plan(
+                plan,
+                agent_prompts=[
+                    {"prompt_key": "parse_feishu_record.v1", "agent_name": "business_agent"},
+                    {"prompt_key": "search_feishu_record.v1", "agent_name": "search_agent"},
+                ],
+            )
 
 
 def _sqlite_session_factory() -> sessionmaker:
