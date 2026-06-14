@@ -6,9 +6,9 @@ from copy import deepcopy
 from typing import Any
 
 try:
-    from ..agents.workflowagent.agent import ALLOWED_TOOLS, DELETE_TOOL, READ_TOOL, UPDATE_TOOL, WRITE_TOOLS
+    from .registry import ALLOWED_TOOLS, CHANGE_SCHEMA_TOOL, DELETE_TOOL, READ_SCHEMA_TOOL, READ_TOOL, TEMPLATE_CATALOG, UPDATE_TOOL, WRITE_TOOLS
 except ImportError:
-    from agents.workflowagent.agent import ALLOWED_TOOLS, DELETE_TOOL, READ_TOOL, UPDATE_TOOL, WRITE_TOOLS
+    from workflow.registry import ALLOWED_TOOLS, CHANGE_SCHEMA_TOOL, DELETE_TOOL, READ_SCHEMA_TOOL, READ_TOOL, TEMPLATE_CATALOG, UPDATE_TOOL, WRITE_TOOLS
 
 
 # 这个异常表示 workflow_plan 不能安全执行。
@@ -30,6 +30,7 @@ def validate_workflow_plan(plan: dict[str, Any], agent_prompts: list[dict[str, A
     seen_outputs: set[str] = set()
     seen_kinds: list[str] = []
     write_tool_seen = None
+    write_tools_seen: set[str] = set()
     steps = plan["steps"]
     for index, step in enumerate(plan["steps"], start=1):
         _validate_step(index, step, seen_outputs, agent_catalog)
@@ -37,16 +38,20 @@ def validate_workflow_plan(plan: dict[str, Any], agent_prompts: list[dict[str, A
         tool_name = step.get("tool_name")
         if tool_name in WRITE_TOOLS:
             write_tool_seen = tool_name
+            write_tools_seen.add(str(tool_name))
         output = step.get("output")
         if isinstance(output, dict) and output.get("save_as"):
             seen_outputs.add(str(output["save_as"]))
 
-    if write_tool_seen:
+    _validate_template_key(plan)
+    if write_tools_seen:
         _validate_write_plan(plan, seen_kinds)
         _normalize_write_validation_artifact(plan)
-    if write_tool_seen in {UPDATE_TOOL, DELETE_TOOL}:
+    if write_tools_seen.intersection({UPDATE_TOOL, DELETE_TOOL}):
         _validate_update_delete_match_flow(steps)
-    _normalize_final(plan, write_tool_seen)
+    if CHANGE_SCHEMA_TOOL in write_tools_seen:
+        _validate_schema_change_flow(plan, steps)
+    _normalize_final(plan, write_tool_seen, write_tools_seen)
     return plan
 
 
@@ -68,9 +73,12 @@ def _normalize_plan(plan: dict[str, Any]) -> dict[str, Any]:
 
 
 # 这个函数把 LLM 常见的 final 字符串输出归一成 runtime 可读取的结构。
-def _normalize_final(plan: dict[str, Any], write_tool_seen: str | None) -> None:
+def _normalize_final(plan: dict[str, Any], write_tool_seen: str | None, write_tools_seen: set[str] | None = None) -> None:
     final = plan.get("final")
-    default_source = "write_result" if write_tool_seen else "feishu.records"
+    if write_tools_seen == {CHANGE_SCHEMA_TOOL}:
+        default_source = "feishu.schema_change_result"
+    else:
+        default_source = "write_result" if write_tool_seen else "feishu.records"
     if not isinstance(final, dict):
         plan["final"] = {"source": default_source, "format": "answer"}
         return
@@ -114,6 +122,15 @@ def _validate_write_plan(plan: dict[str, Any], step_kinds: list[str]) -> None:
             raise PlanValidationError(f"写入类 workflow_plan 缺少 {required_kind} 步骤。")
 
 
+def _validate_template_key(plan: dict[str, Any]) -> None:
+    template_key = plan.get("template_key")
+    if not template_key:
+        return
+    allowed_templates = {str(item.get("template_key")) for item in TEMPLATE_CATALOG}
+    if str(template_key) not in allowed_templates:
+        raise PlanValidationError(f"workflow_plan.template_key 不受支持：{template_key}")
+
+
 def _normalize_write_validation_artifact(plan: dict[str, Any]) -> None:
     validation_keys: list[str] = []
     for step in plan.get("steps") or []:
@@ -121,6 +138,8 @@ def _normalize_write_validation_artifact(plan: dict[str, Any]) -> None:
             continue
         output = step.get("output") if isinstance(step.get("output"), dict) else {}
         save_as = str(output.get("save_as") or "")
+        if save_as == "validation.schema_change_payload":
+            continue
         if save_as.startswith("validation.") and save_as != "validation.write_payload":
             validation_keys.append(save_as)
             output["save_as"] = "validation.write_payload"
@@ -168,6 +187,67 @@ def _validate_update_delete_match_flow(steps: list[dict[str, Any]]) -> None:
         raise PlanValidationError("更新或删除 workflow_plan 的 validation 必须依赖 feishu.record_match。")
 
 
+def _validate_schema_change_flow(plan: dict[str, Any], steps: list[dict[str, Any]]) -> None:
+    required = {
+        "schema_payload": _step_index(
+            steps,
+            lambda step: step.get("kind") == "agent"
+            and step.get("prompt_ref") == "parse_feishu_schema_change.v1"
+            and isinstance(step.get("output"), dict)
+            and step["output"].get("save_as") == "feishu.schema_change_payload",
+        ),
+        "schema_validation": _step_index(
+            steps,
+            lambda step: step.get("kind") == "validation"
+            and isinstance(step.get("output"), dict)
+            and step["output"].get("save_as") == "validation.schema_change_payload",
+        ),
+        "schema_confirm": _step_index(
+            steps,
+            lambda step: step.get("kind") == "confirm"
+            and "validation.schema_change_payload" in ((step.get("input") or {}).get("from_session") or []),
+        ),
+        "change_tool": _step_index(
+            steps,
+            lambda step: step.get("kind") == "tool"
+            and step.get("tool_name") == CHANGE_SCHEMA_TOOL
+            and "validation.schema_change_payload" in ((step.get("input") or {}).get("from_session") or []),
+        ),
+        "refresh_schema": _step_index(
+            steps,
+            lambda step: step.get("kind") == "tool"
+            and step.get("tool_name") == READ_SCHEMA_TOOL
+            and isinstance(step.get("output"), dict)
+            and step["output"].get("save_as") == "feishu.table_schema_after",
+        ),
+    }
+    missing = [key for key, index in required.items() if index < 0]
+    if missing:
+        raise PlanValidationError(f"字段变更 workflow_plan 缺少必要步骤：{', '.join(missing)}")
+    ordered = [required["schema_payload"], required["schema_validation"], required["schema_confirm"], required["change_tool"], required["refresh_schema"]]
+    if ordered != sorted(ordered):
+        raise PlanValidationError("字段变更 workflow_plan 步骤顺序必须是 parse -> validation -> confirm -> change_fields -> refresh_schema。")
+    if _looks_like_field_delete(plan.get("original_input")) and plan.get("risk_level") != "delete":
+        raise PlanValidationError("删除字段 workflow_plan 必须 risk_level=delete。")
+    record_parse_after_refresh = _step_index(
+        steps,
+        lambda step: step.get("kind") == "agent"
+        and step.get("prompt_ref") == "parse_feishu_record.v1"
+        and "feishu.table_schema_after" in ((step.get("input") or {}).get("from_session") or []),
+    )
+    if plan.get("template_key") == "change_schema_then_create_record" and record_parse_after_refresh < 0:
+        raise PlanValidationError("字段变更后写记录 workflow_plan 必须使用 feishu.table_schema_after 解析记录 payload。")
+    if record_parse_after_refresh >= 0 and record_parse_after_refresh < required["refresh_schema"]:
+        raise PlanValidationError("字段变更后写记录必须先刷新 feishu.table_schema_after。")
+
+
+def _step_index(steps: list[dict[str, Any]], predicate: Any) -> int:
+    for index, step in enumerate(steps):
+        if predicate(step):
+            return index
+    return -1
+
+
 # 这个函数识别用户原文里明确要求写入飞书的表达。
 def _looks_like_write_to_feishu(value: Any) -> bool:
     text = str(value or "")
@@ -177,6 +257,11 @@ def _looks_like_write_to_feishu(value: Any) -> bool:
         keyword in text
         for keyword in ("写入", "写到", "写进", "保存到", "存到", "同步到", "记录到", "记到", "填到", "新增到", "添加到")
     )
+
+
+def _looks_like_field_delete(value: Any) -> bool:
+    text = str(value or "")
+    return "字段" in text and any(keyword in text for keyword in ("删除", "移除", "清理"))
 
 
 # 这个函数把启用的 Agent 提示词目录转换为 prompt_ref 到 agent_name 的索引。

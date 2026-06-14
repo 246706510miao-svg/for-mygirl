@@ -6,14 +6,14 @@ from typing import Any
 
 try:
     from ..agents.shared.config import ThirdServiceConfig, load_config
-    from ..agents.shared.mock_feishu import MOCK_RECORDS
     from ..agents.shared.time_utils import now_iso
     from ..workflow.field_cache import acquire_field_refresh_lock, load_cached_fields, save_cached_fields
+    from .mock_repository import list_mock_field_definitions
 except ImportError:
     from agents.shared.config import ThirdServiceConfig, load_config
-    from agents.shared.mock_feishu import MOCK_RECORDS
     from agents.shared.time_utils import now_iso
     from workflow.field_cache import acquire_field_refresh_lock, load_cached_fields, save_cached_fields
+    from Tool.mock_repository import list_mock_field_definitions
 
 from .feishu_client import FeishuBitableClient, FeishuClientError
 
@@ -103,18 +103,4 @@ def _load_mock_table_fields(base_context: dict[str, Any]) -> dict[str, Any]:
 
 # 这个函数把 mock 记录里的 fields 转换成类似飞书字段接口的定义。
 def _mock_field_definitions() -> list[dict[str, Any]]:
-    if not MOCK_RECORDS:
-        return []
-
-    first_record_fields = MOCK_RECORDS[0].get("fields", {})
-    definitions: list[dict[str, Any]] = []
-    for index, field_name in enumerate(first_record_fields.keys(), start=1):
-        definitions.append(
-            {
-                "field_id": f"mock_field_{index}",
-                "field_name": field_name,
-                "type": "mock",
-                "property": {},
-            }
-        )
-    return definitions
+    return list_mock_field_definitions()

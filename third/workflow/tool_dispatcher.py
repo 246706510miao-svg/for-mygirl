@@ -6,6 +6,7 @@ import json
 from typing import Any, Callable
 
 try:
+    from ..Tool.tool_ChangeFeishuBitableFields import run_tool_ChangeFeishuBitableFields
     from ..Tool.tool_CreateFeishuBitableRecord import run_tool_CreateFeishuBitableRecord
     from ..Tool.tool_DeleteFeishuBitableRecord import run_tool_DeleteFeishuBitableRecord
     from ..Tool.tool_ReadFeishuBitable import run_tool_ReadFeishuBitable
@@ -13,6 +14,7 @@ try:
     from ..Tool.tool_UpdateFeishuBitableRecord import run_tool_UpdateFeishuBitableRecord
     from .content import extract_content_text, load_json_object
 except ImportError:
+    from Tool.tool_ChangeFeishuBitableFields import run_tool_ChangeFeishuBitableFields
     from Tool.tool_CreateFeishuBitableRecord import run_tool_CreateFeishuBitableRecord
     from Tool.tool_DeleteFeishuBitableRecord import run_tool_DeleteFeishuBitableRecord
     from Tool.tool_ReadFeishuBitable import run_tool_ReadFeishuBitable
@@ -28,6 +30,7 @@ TOOL_REGISTRY: dict[str, Callable[[dict[str, Any]], dict[str, list[dict[str, str
     "tool_CreateFeishuBitableRecord": run_tool_CreateFeishuBitableRecord,
     "tool_UpdateFeishuBitableRecord": run_tool_UpdateFeishuBitableRecord,
     "tool_DeleteFeishuBitableRecord": run_tool_DeleteFeishuBitableRecord,
+    "tool_ChangeFeishuBitableFields": run_tool_ChangeFeishuBitableFields,
 }
 
 

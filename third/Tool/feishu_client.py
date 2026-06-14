@@ -130,6 +130,53 @@ class FeishuBitableClient:
     def list_fields(self, app_token: str, table_id: str) -> list[str]:
         return [field["field_name"] for field in self.list_field_definitions(app_token, table_id)]
 
+    # 这个方法调用飞书新增字段接口。
+    def create_field(self, request: dict[str, Any]) -> dict[str, Any]:
+        app_token = request["app_token"]
+        table_id = request["table_id"]
+        url = f"https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/fields"
+        body = _clean_body(
+            {
+                "field_name": request.get("field_name"),
+                "type": request.get("type"),
+                "property": request.get("property") or {},
+            }
+        )
+        response = self._post_json(url, body, with_auth=True)
+        field = response.get("data", {}).get("field") or response.get("data", {})
+        normalized = _normalize_field_definition(field)
+        if not normalized:
+            raise FeishuClientError(f"飞书新增字段响应缺少 field：{response}")
+        return normalized
+
+    # 这个方法调用飞书更新字段接口。
+    def update_field(self, request: dict[str, Any]) -> dict[str, Any]:
+        app_token = request["app_token"]
+        table_id = request["table_id"]
+        field_id = request["field_id"]
+        url = f"https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/fields/{field_id}"
+        body = _clean_body(
+            {
+                "field_name": request.get("field_name"),
+                "property": request.get("property") or {},
+            }
+        )
+        response = self._put_json(url, body, with_auth=True)
+        field = response.get("data", {}).get("field") or response.get("data", {})
+        normalized = _normalize_field_definition(field)
+        if not normalized:
+            raise FeishuClientError(f"飞书更新字段响应缺少 field：{response}")
+        return normalized
+
+    # 这个方法调用飞书删除字段接口。
+    def delete_field(self, request: dict[str, Any]) -> dict[str, Any]:
+        app_token = request["app_token"]
+        table_id = request["table_id"]
+        field_id = request["field_id"]
+        url = f"https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/fields/{field_id}"
+        self._delete_json(url, with_auth=True)
+        return {"field_id": field_id, "field_name": request.get("field_name")}
+
     # 这个方法调用飞书检索单条记录接口，用于用户明确给出 record_id 的场景。
     def get_record(self, request: dict[str, Any]) -> dict[str, Any] | None:
         app_token = request["app_token"]

@@ -26,10 +26,14 @@ class RunAgentRegistryTests(unittest.TestCase):
         first_rows = seed_runagent_prompts(prompt_dir, session_factory=session_factory)
         second_rows = seed_runagent_prompts(prompt_dir, session_factory=session_factory)
 
-        self.assertEqual(first_rows[0]["prompt_key"], "parse_feishu_record.v1")
-        self.assertEqual(first_rows[1]["prompt_key"], "search_feishu_record.v1")
-        self.assertEqual(second_rows[0]["agent_name"], "business_agent")
-        self.assertEqual(second_rows[1]["agent_name"], "search_agent")
+        first_by_key = {row["prompt_key"]: row for row in first_rows}
+        second_by_key = {row["prompt_key"]: row for row in second_rows}
+        self.assertIn("parse_feishu_record.v1", first_by_key)
+        self.assertIn("parse_feishu_schema_change.v1", first_by_key)
+        self.assertIn("search_feishu_record.v1", first_by_key)
+        self.assertEqual(second_by_key["parse_feishu_record.v1"]["agent_name"], "business_agent")
+        self.assertEqual(second_by_key["parse_feishu_schema_change.v1"]["agent_name"], "schema_agent")
+        self.assertEqual(second_by_key["search_feishu_record.v1"]["agent_name"], "search_agent")
         with session_factory() as session:
             stored = session.get(PromptRegistryModel, "parse_feishu_record.v1")
             self.assertIn("你是 third 第三方服务模块的 business_agent", stored.prompt_text)
@@ -37,6 +41,9 @@ class RunAgentRegistryTests(unittest.TestCase):
             search_prompt = session.get(PromptRegistryModel, "search_feishu_record.v1")
             self.assertIn("你是 third 第三方服务模块的 search_agent", search_prompt.prompt_text)
             self.assertEqual(search_prompt.agent_name, "search_agent")
+            schema_prompt = session.get(PromptRegistryModel, "parse_feishu_schema_change.v1")
+            self.assertIn("你是 third 第三方服务模块的 schema_agent", schema_prompt.prompt_text)
+            self.assertEqual(schema_prompt.agent_name, "schema_agent")
 
     def test_seed_runagent_prompts_rejects_missing_required_field(self) -> None:
         with self.assertRaises(RunAgentPromptValidationError):

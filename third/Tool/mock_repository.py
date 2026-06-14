@@ -13,6 +13,28 @@ except ImportError:
 
 # 这一段定义进程内 mock 表数据，写入类 Tool 会修改它，便于本地联调 CRUD。
 MOCK_STORE: list[dict[str, Any]] = deepcopy(MOCK_RECORDS)
+MOCK_FIELDS: list[dict[str, Any]] = []
+
+
+MOCK_FIELD_TYPE_BY_NAME = {
+    "标题": 1,
+    "内容": 1,
+    "状态": 3,
+    "分类": 3,
+    "优先级": 3,
+    "负责人": 1,
+    "截止时间": 5,
+    "创建时间": 5,
+    "更新时间": 5,
+}
+
+
+def reset_mock_state() -> None:
+    """Reset mock records and fields for tests."""
+    MOCK_STORE.clear()
+    MOCK_STORE.extend(deepcopy(MOCK_RECORDS))
+    MOCK_FIELDS.clear()
+    MOCK_FIELDS.extend(_initial_mock_fields())
 
 
 # 这个函数用 mock 数据执行读取请求，保持和真实飞书返回的 record 结构一致。
@@ -51,6 +73,57 @@ def delete_mock_record(record_id: str) -> dict[str, Any] | None:
     return None
 
 
+# 这个函数返回 mock 字段定义，保持字段变更 Tool 和字段读取 Tool 使用同一份状态。
+def list_mock_field_definitions() -> list[dict[str, Any]]:
+    return deepcopy(MOCK_FIELDS)
+
+
+# 这个函数新增 mock 字段，返回类似飞书字段接口的字段定义。
+def create_mock_field(request: dict[str, Any]) -> dict[str, Any]:
+    field_name = str(request.get("field_name") or "").strip()
+    field_type = request.get("type")
+    property_config = deepcopy(request.get("property") or {})
+    field = {
+        "field_id": _next_mock_field_id(),
+        "field_name": field_name,
+        "type": field_type,
+        "property": property_config,
+    }
+    MOCK_FIELDS.append(field)
+    return deepcopy(field)
+
+
+# 这个函数更新 mock 字段名称或属性；不支持修改字段类型。
+def update_mock_field(field_id: str, request: dict[str, Any]) -> dict[str, Any] | None:
+    field = _find_field_by_id(field_id)
+    if not field:
+        return None
+    old_name = field["field_name"]
+    new_name = str(request.get("field_name") or old_name).strip()
+    if new_name and new_name != old_name:
+        field["field_name"] = new_name
+        for record in MOCK_STORE:
+            fields = record.get("fields") or {}
+            if old_name in fields:
+                fields[new_name] = fields.pop(old_name)
+    if isinstance(request.get("property"), dict):
+        field["property"] = deepcopy(request["property"])
+    return deepcopy(field)
+
+
+# 这个函数删除 mock 字段，并从 mock 记录中移除该字段值。
+def delete_mock_field(field_id: str) -> dict[str, Any] | None:
+    for index, field in enumerate(MOCK_FIELDS):
+        if field["field_id"] != field_id:
+            continue
+        removed = MOCK_FIELDS.pop(index)
+        field_name = removed["field_name"]
+        for record in MOCK_STORE:
+            record.get("fields", {}).pop(field_name, None)
+        return deepcopy(removed)
+    return None
+
+
 # 这个函数根据 operation 和 filter 从 mock 数据中筛选记录。
 def _select_records(request: dict[str, Any]) -> list[dict[str, Any]]:
     operation = request["operation"]
@@ -83,6 +156,50 @@ def _next_mock_record_id() -> str:
         if record_id not in existing_ids:
             return record_id
         index += 1
+
+
+def _next_mock_field_id() -> str:
+    index = len(MOCK_FIELDS) + 1
+    existing_ids = {field["field_id"] for field in MOCK_FIELDS}
+    while True:
+        field_id = f"mock_field_{index:03d}"
+        if field_id not in existing_ids:
+            return field_id
+        index += 1
+
+
+def _find_field_by_id(field_id: str) -> dict[str, Any] | None:
+    for field in MOCK_FIELDS:
+        if field["field_id"] == field_id:
+            return field
+    return None
+
+
+def _initial_mock_fields() -> list[dict[str, Any]]:
+    if not MOCK_RECORDS:
+        return []
+    first_record_fields = MOCK_RECORDS[0].get("fields", {})
+    fields: list[dict[str, Any]] = []
+    for index, field_name in enumerate(first_record_fields.keys(), start=1):
+        fields.append(
+            {
+                "field_id": f"mock_field_{index:03d}",
+                "field_name": field_name,
+                "type": MOCK_FIELD_TYPE_BY_NAME.get(field_name, "mock"),
+                "property": _mock_field_property(field_name),
+            }
+        )
+    return fields
+
+
+def _mock_field_property(field_name: str) -> dict[str, Any]:
+    if field_name == "状态":
+        return {"options": [{"name": "进行中"}, {"name": "已完成"}, {"name": "待开始"}]}
+    if field_name == "分类":
+        return {"options": [{"name": "生活"}, {"name": "系统"}, {"name": "第三方服务"}]}
+    if field_name == "优先级":
+        return {"options": [{"name": "高"}, {"name": "中"}, {"name": "低"}]}
+    return {}
 
 
 # 这个函数判断单条 mock 记录是否满足过滤条件。
@@ -130,3 +247,6 @@ def _project_fields(record: dict[str, Any], field_names: list[str]) -> dict[str,
         "record_id": record["record_id"],
         "fields": selected,
     }
+
+
+reset_mock_state()

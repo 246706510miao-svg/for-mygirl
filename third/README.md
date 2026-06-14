@@ -4,9 +4,10 @@
 
 ## 当前结构
 
-- `agents/workflowagent/`：规划 Agent，接收 `content[0].text`，输出 `workflow_plan`。
+- `agents/workflowagent/`：规划 Agent，接收 `content[0].text`，优先选择 workflow template，再由代码生成 `workflow_plan`。
 - `workflow/`：固定 runtime，负责计划校验、步骤执行、上下文构造、Tool 分发、确认门和最终答案。
-- `Tool/`：飞书多维表格 Tool，包括字段读取、查询、新增、更新、删除。
+- `workflow/registry/`：Tool、Agent、Workflow Template 的结构化注册目录；workflowagent 读取这些目录做选择，复杂步骤由模板 builder 生成。
+- `Tool/`：飞书多维表格 Tool，包括字段读取、字段变更、查询、新增、更新、删除。
 - `storage/`：MySQL/内存 Repository，保存 session、plan、step、artifact、确认和幂等数据。
 - `runtime/`：Redis Stream/内存运行态，保存队列、锁、游标、短期 artifact 和幂等缓存。
 - `api.py`：FastAPI 入口，提供 workflow 提交、查询、resume。
@@ -47,7 +48,7 @@ THIRD_WORKFLOWAGENT_MODEL=gpt-4o-mini
 THIRD_FINAGENT_USE_LLM=0
 ```
 
-说明：`THIRD_WORKFLOWAGENT_USE_LLM=1` 会同时启用 workflowagent 的计划生成、business_agent 的写入 payload 解析，以及 search_agent 的更新/删除候选记录匹配。LLM 模式下，workflowagent 会拿到两类目录：代码内置的 Tool 能力目录（每个 `tool_name` 的用途、风险、输入输出和是否需要确认）以及 MySQL `prompt_registry` 中启用的 Agent 目录（`agent_name/prompt_ref/role_name/description/db_address/input_schema_json/output_schema_json/metadata_json/version/enabled`）。workflowagent 只在 plan 中引用 `agent_name/prompt_ref`；Agent Runner 执行时再从数据库读取对应 `prompt_text`。数据库没有启用 Agent、缺少对应 prompt、OpenAI 不可用或输出 JSON 非法都会让当前步骤失败，不读取文件兜底。
+说明：`THIRD_WORKFLOWAGENT_USE_LLM=1` 会同时启用 workflowagent 的模板选择、business_agent 的写入 payload 解析、schema_agent 的字段变更解析，以及 search_agent 的更新/删除候选记录匹配。LLM 模式下，workflowagent 会拿到三类目录：代码内置 Tool 能力目录、代码内置 Workflow Template 目录，以及 MySQL `prompt_registry` 中启用的 Agent 目录。workflowagent 优先输出 `template_key`，由代码模板 builder 生成完整 `workflow_plan.steps`；Agent Runner 执行时再从数据库读取对应 `prompt_text`。数据库没有启用 Agent、缺少对应 prompt、OpenAI 不可用或输出 JSON 非法都会让当前步骤失败，不读取文件兜底。
 
 存储和异步执行配置：
 
@@ -117,7 +118,7 @@ alembic upgrade head
 python -m third.scripts.seed_runagent_prompts
 ```
 
-说明：`Prompt/runagent/` 是维护来源，MySQL `prompt_registry` 是运行时唯一事实来源。当前至少包含 `parse_feishu_record.v1` 和 `search_feishu_record.v1`；新增或修改业务 Agent 提示词后，需要重新执行 seed 脚本，同名 `prompt_key` 会覆盖更新。
+说明：`Prompt/runagent/` 是维护来源，MySQL `prompt_registry` 是运行时唯一事实来源。当前至少包含 `parse_feishu_record.v1`、`parse_feishu_schema_change.v1` 和 `search_feishu_record.v1`；新增或修改业务 Agent 提示词后，需要重新执行 seed 脚本，同名 `prompt_key` 会覆盖更新。
 
 启动本地 API：
 
@@ -223,7 +224,7 @@ THIRD_FINAGENT_USE_LLM=0
 THIRD_ALLOW_IN_MEMORY_FALLBACK=0
 ```
 
-真实模式下不会读取 `.env.docker.mock`，也不会把缺失的飞书 `app_token/table_id` 替换成 mock 默认值。飞书配置缺失、字段读取失败或接口失败时，workflow 会返回错误状态。
+真实模式下不会读取 `.env.docker.mock`，也不会把缺失的飞书 `app_token/table_id` 替换成 mock 默认值。飞书配置缺失、字段读取失败或接口失败时，workflow 会返回错误状态。字段变更还要求飞书自建应用具备多维表格字段管理权限；权限不足时字段 Tool 会返回飞书接口错误。
 
 ### 同步 LangGraph / LangSmith 调试
 
@@ -313,7 +314,7 @@ GET /debug/workflows/{session_id}/artifacts
 GET /debug/workflows/{session_id}/graph
 ```
 
-`/debug/workflows/{session_id}/timeline` 会从现有 MySQL 表推导执行过程，不依赖新增事件表。读取类 workflow 通常直接到 `success`；新增、更新、删除会先停在 `waiting_user`，调试台确认后 worker 才会继续执行写入 Tool。
+`/debug/workflows/{session_id}/timeline` 会从现有 MySQL 表推导执行过程，不依赖新增事件表。读取类 workflow 通常直接到 `success`；新增、更新、删除和字段变更会先停在 `waiting_user`，调试台确认后 worker 才会继续执行有副作用的 Tool。
 
 页面顶部“自动刷新”开关用于控制当前 session 详情轮询。关闭后页面不再自动请求详情接口；手动刷新仍会更新运行模式、最近 session 和当前详情，并尽量保留 `Artifacts`、`JSON` 视图的滚动位置。
 
@@ -324,14 +325,17 @@ GET /debug/workflows/{session_id}/graph
 - 调试台只读取实际写入的 session、plan、step、artifact、confirmation，因此同时兼容 mock、真实飞书、规则 workflowagent 和 LLM workflowagent。
 - 如果 LLM 生成的 `workflow_plan` 未通过校验，executor 会保存 `workflow.plan.invalid` artifact，里面包含校验错误和原始 plan，便于定位模型漏字段或误判意图。
 - 调试日志由 `THIRD_WORKFLOW_DEBUG_LOG` 控制，本地开启时会输出脱敏后的 workflow plan、无效 plan 和失败 step 摘要。
-- `THIRD_WORKFLOWAGENT_USE_LLM=1` 时，workflowagent 只能从注入的 Tool 能力目录选择 `tool_name`，并只能从数据库 Agent 目录中选择 `agent_name/prompt_ref`；写入类 business_agent 也只从数据库读取提示词。
+- `THIRD_WORKFLOWAGENT_USE_LLM=1` 时，workflowagent 只能从注入的 Tool 能力目录、Workflow Template 目录和数据库 Agent 目录中选择能力；复杂流程优先输出 `template_key`，由代码模板 builder 生成步骤。
 - `THIRD_WORKFLOWAGENT_USE_LLM=0` 时，保留规则 workflowagent 和规则 payload 解析，用于 mock 或离线调试。
 - 写入、更新、删除前必须经过字段读取、字段转换、校验和确认门。
+- 字段变更走同一套 workflow runtime，不新建执行流；典型步骤是 `read_schema -> schema_agent -> schema_validation -> confirm -> change_fields_tool -> refresh_schema`。
+- 用户一句话同时要求改字段再写记录时，先确认并执行字段变更，刷新 schema 后再进入现有记录写入链路和写入确认门。
 - business_agent 只生成候选业务 payload；新增可输出批量 `create_request.records`，更新/删除会额外生成候选读取 payload。
+- schema_agent 只生成候选字段变更 payload；字段是否重复、字段类型、删除字段风险、确认预览和最终 Tool 入参由 validation 节点确定。
 - 更新和删除会先调用 `tool_ReadFeishuBitable` 读取候选记录，再由 `search_agent/search_feishu_record.v1` 从候选中匹配 `record_id`；低置信匹配也会进入确认门，但确认文本和 preview 会显示置信度、理由和备选候选。
 - 字段是否存在、类型转换、匹配到的 `record_id`、确认预览和最终 Tool 入参由 validation 节点确定，写入 Tool 还会二次 normalize。
 - 写入类操作使用 `idempotency_key` 防止重试造成重复写入。
-- 飞书字段定义缓存到 `feishu_field_cache`，通过 `expires_at` 实现 TTL 刷新。
+- 飞书字段定义缓存到 `feishu_field_cache`，通过 `expires_at` 实现 TTL 刷新；字段变更成功后会立即刷新字段缓存，避免后续记录写入继续使用旧 schema。
 - 当前不做权限传递；飞书访问能力与自建应用配置对齐。
 
 ## 常见问题

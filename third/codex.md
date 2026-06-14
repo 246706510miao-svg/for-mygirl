@@ -8,15 +8,16 @@
 4. `docs/workflowagent-fixed-graph.md`：查看固定执行图和每个节点职责。
 5. `docs/router-read00.md`：查看当前 workflowagent 到 Tool 的输入输出流程。
 6. `agents/graph.py`、`workflow/executor.py`：理解 LangGraph 固定入口和 runtime 执行方式。
-7. `agents/workflowagent/agent.py`、`Prompt/workflowagent.yaml`：查看动态计划生成逻辑和提示词。
-8. `Prompt/runagent/`、`scripts/seed_runagent_prompts.py`：查看业务 Agent 提示词文件来源和同步到数据库的脚本。
-9. `workflow/agent_runner.py`：查看 business_agent、search_agent 按 `prompt_ref` 从数据库读取提示词并执行的逻辑。
-10. `Tool/`：查看飞书字段读取、查询、新增、更新、删除 Tool。
-11. `storage/`、`runtime/`：查看 MySQL Repository 和 Redis Stream 运行态。
-10. `debug/`：查看本地调试台、运行模式体检、时间线和动态图生成。
-11. `api.py`、`worker.py`：查看 SpringBoot 后续要调用的 API 和 worker 消费入口。
-12. `../docker-compose.yml`、`.env.local.docker.example`：查看本地 MySQL/Redis Docker 验证入口。
-13. `Dockerfile`、`.env.docker.mock`：查看后续完整 third 容器部署入口。
+7. `workflow/registry/`：查看 Tool、Agent、Workflow Template 能力目录和模板 builder。
+8. `agents/workflowagent/agent.py`、`Prompt/workflowagent.yaml`：查看 template 选择逻辑和提示词。
+9. `Prompt/runagent/`、`scripts/seed_runagent_prompts.py`：查看业务 Agent 提示词文件来源和同步到数据库的脚本。
+10. `workflow/agent_runner.py`：查看 business_agent、schema_agent、search_agent 按 `prompt_ref` 从数据库读取提示词并执行的逻辑。
+11. `Tool/`：查看飞书字段读取、字段变更、查询、新增、更新、删除 Tool。
+12. `storage/`、`runtime/`：查看 MySQL Repository 和 Redis Stream 运行态。
+13. `debug/`：查看本地调试台、运行模式体检、时间线和动态图生成。
+14. `api.py`、`worker.py`：查看 SpringBoot 后续要调用的 API 和 worker 消费入口。
+15. `../docker-compose.yml`、`.env.local.docker.example`：查看本地 MySQL/Redis Docker 验证入口。
+16. `Dockerfile`、`.env.docker.mock`：查看后续完整 third 容器部署入口。
 
 ## 目录结构
 
@@ -63,6 +64,7 @@ third/
 |   |-- feishu_client.py              # 飞书 OpenAPI HTTP 客户端
 |   |-- field_context.py              # 字段上下文读取，接入 TTL 字段缓存
 |   |-- mock_repository.py            # mock 多维表格 CRUD 逻辑
+|   |-- tool_ChangeFeishuBitableFields.py
 |   |-- tool_ReadFeishuBitableSchema.py
 |   |-- tool_ReadFeishuBitable.py
 |   |-- tool_CreateFeishuBitableRecord.py
@@ -73,10 +75,15 @@ third/
 |   |-- executor.py                   # workflow 执行器
 |   |-- plan_validator.py             # workflow_plan 校验
 |   |-- tool_dispatcher.py            # Tool 分发
-|   |-- agent_runner.py               # 业务 Agent 执行封装，支持 payload 解析和候选记录匹配
+|   |-- agent_runner.py               # 业务 Agent 执行封装，支持记录 payload、字段变更 payload 和候选记录匹配
+|   |-- registry/                     # Tool、Agent、Workflow Template 结构化注册目录
+|   |   |-- tools.py                  # Tool 能力目录，必须与 dispatcher 注册一致
+|   |   |-- templates.py              # workflow 模板目录和 builder
+|   |   |-- agents.py                 # prompt_registry Agent 目录压缩
+|   |   `-- __init__.py
 |   |-- content.py                    # content[0].text 输入输出辅助
 |   |-- field_cache.py                # 飞书字段缓存逻辑
-|   |-- validation.py                 # 写入确认和幂等校验
+|   |-- validation.py                 # 写入、字段变更确认和幂等校验
 |   `-- api_schema.py                 # API 输入输出结构
 |-- storage/
 |   |-- database.py                   # SQLAlchemy Engine、Session 和本地建表辅助

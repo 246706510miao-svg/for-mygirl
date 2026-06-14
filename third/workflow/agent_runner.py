@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from copy import deepcopy
 from typing import Any
 
@@ -11,21 +12,32 @@ try:
     from ..agents.shared.config import load_config
     from ..agents.shared.json_utils import dumps_json
     from ..agents.shared.time_utils import now_iso
-    from ..agents.workflowagent.agent import CREATE_TOOL, DELETE_TOOL, UPDATE_TOOL
     from ..storage.factory import get_workflow_repository
     from .content import load_json_object
+    from .registry import CREATE_TOOL, DELETE_TOOL, UPDATE_TOOL
 except ImportError:
     from Tool.write_support import build_write_request
     from agents.shared.config import load_config
     from agents.shared.json_utils import dumps_json
     from agents.shared.time_utils import now_iso
-    from agents.workflowagent.agent import CREATE_TOOL, DELETE_TOOL, UPDATE_TOOL
     from storage.factory import get_workflow_repository
     from workflow.content import load_json_object
+    from workflow.registry import CREATE_TOOL, DELETE_TOOL, UPDATE_TOOL
 
 
 PARSE_FEISHU_RECORD_PROMPT = "parse_feishu_record.v1"
 SEARCH_FEISHU_RECORD_PROMPT = "search_feishu_record.v1"
+PARSE_FEISHU_SCHEMA_CHANGE_PROMPT = "parse_feishu_schema_change.v1"
+
+REPORT_SCHEMA_FIELDS = [
+    {"field_name": "记录类型", "field_type": "single_select", "property": {"options": ["每日内容", "周报", "月报"]}, "reason": "用于区分记录粒度"},
+    {"field_name": "日期", "field_type": "date", "property": {}, "reason": "用于记录每日内容日期"},
+    {"field_name": "周期开始", "field_type": "date", "property": {}, "reason": "用于记录周报或月报周期开始时间"},
+    {"field_name": "周期结束", "field_type": "date", "property": {}, "reason": "用于记录周报或月报周期结束时间"},
+    {"field_name": "事项名称", "field_type": "text", "property": {}, "reason": "用于保存记录标题或事项名称"},
+    {"field_name": "总结", "field_type": "text", "property": {}, "reason": "用于保存每日内容、周报或月报正文摘要"},
+    {"field_name": "下阶段计划", "field_type": "text", "property": {}, "reason": "用于保存后续计划"},
+]
 
 
 # 这个函数运行当前步骤指定的业务 Agent；第一版只实现飞书写入 payload 解析。
@@ -35,6 +47,8 @@ def run_business_agent(context: dict[str, Any]) -> dict[str, Any]:
         return _parse_feishu_record(context)
     if prompt_ref == SEARCH_FEISHU_RECORD_PROMPT:
         return _search_feishu_record(context)
+    if prompt_ref == PARSE_FEISHU_SCHEMA_CHANGE_PROMPT:
+        return _parse_feishu_schema_change(context)
     raise ValueError(f"当前业务 Agent 暂不支持该 prompt_ref：{prompt_ref}")
 
 
@@ -42,8 +56,7 @@ def run_business_agent(context: dict[str, Any]) -> dict[str, Any]:
 def _parse_feishu_record(context: dict[str, Any]) -> dict[str, Any]:
     config = load_config()
     original_input = str(context.get("original_input") or "")
-    table_schema = context.get("artifacts", {}).get("feishu.table_schema", {}).get("data_json", {})
-    table_fields = table_schema.get("table_fields") or {}
+    table_fields = _table_fields_from_artifacts(context)
     intent = str(context.get("plan", {}).get("intent") or "")
     operation, tool_name, request_key = _operation_mapping(intent)
     if config.workflowagent_use_llm:
@@ -77,6 +90,80 @@ def _parse_feishu_record(context: dict[str, Any]) -> dict[str, Any]:
         "content_text": json.dumps(data_json, ensure_ascii=False, default=str),
         "data_json": data_json,
         "schema_json": {"request_key": request_key, "tool_name": tool_name, "source": source},
+    }
+
+
+# 这个函数把用户输入转换成飞书字段变更请求。
+def _parse_feishu_schema_change(context: dict[str, Any]) -> dict[str, Any]:
+    config = load_config()
+    original_input = str(context.get("original_input") or "")
+    table_fields = _table_fields_from_artifacts(context)
+    if config.workflowagent_use_llm:
+        schema_change_request = _parse_schema_change_with_llm(context, original_input, table_fields, config)
+        source = "llm"
+    else:
+        schema_change_request = _parse_schema_change_without_llm(original_input, table_fields)
+        source = "rule"
+    schema_change_request["operation"] = "change_fields"
+    schema_change_request["service"] = "feishu_bitable"
+    tool_input_payload = {
+        "original_input": original_input,
+        "schema_change_request": schema_change_request,
+    }
+    data_json = {
+        "tool_name": "tool_ChangeFeishuBitableFields",
+        "operation": "change_fields",
+        "request_key": "schema_change_request",
+        "tool_input_payload": tool_input_payload,
+        "table_fields": table_fields,
+        "source": source,
+    }
+    return {
+        "content_text": json.dumps(data_json, ensure_ascii=False, default=str),
+        "data_json": data_json,
+        "schema_json": {"request_key": "schema_change_request", "tool_name": "tool_ChangeFeishuBitableFields", "source": source},
+    }
+
+
+def _parse_schema_change_with_llm(
+    context: dict[str, Any],
+    original_input: str,
+    table_fields: dict[str, Any],
+    config: Any,
+) -> dict[str, Any]:
+    if not config.openai_api_key:
+        raise RuntimeError("THIRD_WORKFLOWAGENT_USE_LLM=1 但 OPENAI_API_KEY 未配置，无法运行 schema_agent。")
+    prompt_config = _load_business_prompt(PARSE_FEISHU_SCHEMA_CHANGE_PROMPT, context)
+    prompt_text = str(prompt_config.get("prompt_text") or "").strip()
+    if not prompt_text:
+        raise RuntimeError(f"业务 Agent 提示词为空：{PARSE_FEISHU_SCHEMA_CHANGE_PROMPT}")
+    output_schema = prompt_config.get("output_schema_json") or _default_schema_change_output_schema()
+    model_prompt = _build_schema_change_llm_prompt(prompt_text, original_input, table_fields, output_schema)
+    response_text = _invoke_business_agent_model(model_prompt, config)
+    payload = load_json_object(response_text)
+    if not isinstance(payload, dict):
+        raise ValueError("schema_agent LLM 输出不是合法 JSON 对象。")
+    request = payload.get("schema_change_request")
+    if not isinstance(request, dict):
+        raise ValueError("schema_agent LLM 输出缺少 schema_change_request 对象。")
+    return request
+
+
+def _parse_schema_change_without_llm(original_input: str, table_fields: dict[str, Any]) -> dict[str, Any]:
+    actions: list[dict[str, Any]] = []
+    existing_names = set(str(name) for name in table_fields.get("field_names", []) if name)
+    if _looks_like_report_schema_request(original_input):
+        for field in REPORT_SCHEMA_FIELDS:
+            if field["field_name"] in existing_names:
+                continue
+            actions.append({"action": "create_field", **field})
+    actions.extend(_extract_rename_field_actions(original_input))
+    actions.extend(_extract_delete_field_actions(original_input))
+    actions.extend(_extract_create_field_actions(original_input, existing_names | {str(action.get("field_name")) for action in actions}))
+    return {
+        "operation": "change_fields",
+        "service": "feishu_bitable",
+        "actions": actions,
     }
 
 
@@ -332,6 +419,154 @@ def _candidate_summary(record: dict[str, Any]) -> dict[str, Any]:
         "record_id": record.get("record_id"),
         "fields": record.get("fields") or {},
     }
+
+
+def _table_fields_from_artifacts(context: dict[str, Any]) -> dict[str, Any]:
+    artifacts = context.get("artifacts") or {}
+    for artifact_key in ("feishu.table_schema_after", "feishu.table_schema"):
+        table_schema = (artifacts.get(artifact_key) or {}).get("data_json") or {}
+        table_fields = table_schema.get("table_fields")
+        if isinstance(table_fields, dict):
+            return table_fields
+    return {}
+
+
+def _build_schema_change_llm_prompt(
+    prompt_text: str,
+    original_input: str,
+    table_fields: dict[str, Any],
+    output_schema: dict[str, Any],
+) -> str:
+    current_datetime = now_iso()
+    context_payload = {
+        "original_input": original_input,
+        "current_datetime": current_datetime,
+        "current_date": current_datetime.split("T", 1)[0],
+        "table_fields": table_fields,
+        "default_report_schema_fields": REPORT_SCHEMA_FIELDS,
+        "output_schema_json": output_schema,
+    }
+    return f"{prompt_text}\n\n当前上下文 JSON：\n{dumps_json(context_payload)}"
+
+
+def _default_schema_change_output_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "required": ["schema_change_request"],
+        "properties": {
+            "schema_change_request": {
+                "operation": "change_fields",
+                "service": "feishu_bitable",
+                "actions": [
+                    {
+                        "action": "create_field | update_field | delete_field",
+                        "field_name": "目标字段名",
+                        "source_field_name": "更新或删除时的原字段名",
+                        "field_type": "text | number | single_select | multi_select | date | checkbox | phone | url",
+                        "property": {"options": ["选项A", "选项B"]},
+                        "reason": "字段变更理由",
+                    }
+                ],
+            }
+        },
+    }
+
+
+def _looks_like_report_schema_request(original_input: str) -> bool:
+    has_report = any(keyword in original_input for keyword in ("每日", "日记", "日报", "周报", "月报", "每周", "每月"))
+    has_schema = any(keyword in original_input for keyword in ("字段", "列", "表结构", "结构", "表"))
+    return has_report and has_schema
+
+
+def _extract_create_field_actions(original_input: str, existing_names: set[str]) -> list[dict[str, Any]]:
+    actions: list[dict[str, Any]] = []
+    for match in re.finditer(r"(?:新增|添加|创建)(?:一个|一列)?(?:字段|列)\s*(?:叫|为|名为|是|:|：)?\s*([^，。；;\n]+)", original_input):
+        field_name = _clean_schema_field_name(match.group(1))
+        if not field_name or field_name in existing_names:
+            continue
+        field_type = _infer_schema_field_type(original_input, field_name)
+        property_config = _infer_schema_field_property(original_input, field_type)
+        actions.append(
+            {
+                "action": "create_field",
+                "field_name": field_name,
+                "field_type": field_type,
+                "property": property_config,
+                "reason": "用户要求新增字段",
+            }
+        )
+        existing_names.add(field_name)
+    return actions
+
+
+def _extract_rename_field_actions(original_input: str) -> list[dict[str, Any]]:
+    actions: list[dict[str, Any]] = []
+    for match in re.finditer(r"(?:把)?字段\s*([^，。；;\n]+?)\s*(?:重命名为|改名为|改成|改为)\s*([^，。；;\n]+)", original_input):
+        source = _clean_schema_field_name(match.group(1))
+        target = _clean_schema_field_name(match.group(2))
+        if source and target:
+            actions.append(
+                {
+                    "action": "update_field",
+                    "source_field_name": source,
+                    "field_name": target,
+                    "reason": "用户要求重命名字段",
+                }
+            )
+    return actions
+
+
+def _extract_delete_field_actions(original_input: str) -> list[dict[str, Any]]:
+    actions: list[dict[str, Any]] = []
+    for match in re.finditer(r"(?:删除|移除|清理)(?:一个|一列)?(?:字段|列)\s*(?:叫|为|名为|是|:|：)?\s*([^，。；;\n]+)", original_input):
+        field_name = _clean_schema_field_name(match.group(1))
+        if field_name:
+            actions.append(
+                {
+                    "action": "delete_field",
+                    "field_name": field_name,
+                    "reason": "用户明确要求删除字段",
+                }
+            )
+    return actions
+
+
+def _clean_schema_field_name(value: str) -> str:
+    cleaned = value.strip(" \t\r\n，。；;")
+    cleaned = re.sub(r"(字段|这一列|这个列|这一字段|这个字段)$", "", cleaned).strip()
+    for separator in ("，", "。", "；", ";", "并", "然后"):
+        if separator in cleaned:
+            cleaned = cleaned.split(separator, 1)[0].strip()
+    return cleaned
+
+
+def _infer_schema_field_type(original_input: str, field_name: str) -> str:
+    around_text = f"{field_name} {original_input}"
+    if any(keyword in around_text for keyword in ("单选", "类型", "状态", "评级", "优先级")):
+        return "single_select"
+    if any(keyword in around_text for keyword in ("多选", "标签")):
+        return "multi_select"
+    if any(keyword in around_text for keyword in ("日期", "时间", "周期")):
+        return "date"
+    if any(keyword in around_text for keyword in ("数字", "数量", "用时", "金额", "分数")):
+        return "number"
+    if any(keyword in around_text for keyword in ("是否", "复选", "完成")):
+        return "checkbox"
+    if "链接" in around_text or "URL" in around_text.upper():
+        return "url"
+    if "电话" in around_text or "手机" in around_text:
+        return "phone"
+    return "text"
+
+
+def _infer_schema_field_property(original_input: str, field_type: str) -> dict[str, Any]:
+    if field_type not in {"single_select", "multi_select"}:
+        return {}
+    option_match = re.search(r"选项(?:为|是|包括|包含|:|：)?\s*([^。；;\n]+)", original_input)
+    if not option_match:
+        return {"options": ["待定"]}
+    options = [item.strip(" \t\r\n，。；;") for item in re.split(r"[、,，/]\s*", option_match.group(1)) if item.strip()]
+    return {"options": options or ["待定"]}
 
 
 # 这个函数只从 prompt_registry 读取提示词，运行时不读取文件兜底。

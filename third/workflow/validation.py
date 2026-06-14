@@ -14,21 +14,46 @@ try:
     from ..Tool.write_support import build_lookup_read_request, normalize_write_request, validation_warnings
     from ..agents.shared.config import load_config
     from ..agents.shared.json_utils import dumps_json
-    from ..agents.workflowagent.agent import CREATE_TOOL, DELETE_TOOL, UPDATE_TOOL
     from ..storage.repository import now
+    from .registry import CHANGE_SCHEMA_TOOL, CREATE_TOOL, DELETE_TOOL, UPDATE_TOOL
 except ImportError:
     from Tool.feishu_client import FeishuBitableClient, FeishuClientError
     from Tool.mock_repository import read_mock_records
     from Tool.write_support import build_lookup_read_request, normalize_write_request, validation_warnings
     from agents.shared.config import load_config
     from agents.shared.json_utils import dumps_json
-    from agents.workflowagent.agent import CREATE_TOOL, DELETE_TOOL, UPDATE_TOOL
     from storage.repository import now
+    from workflow.registry import CHANGE_SCHEMA_TOOL, CREATE_TOOL, DELETE_TOOL, UPDATE_TOOL
+
+
+FIELD_TYPE_ALIASES = {
+    "text": 1,
+    "文本": 1,
+    "number": 2,
+    "数字": 2,
+    "single_select": 3,
+    "single": 3,
+    "单选": 3,
+    "multi_select": 4,
+    "multiple_select": 4,
+    "多选": 4,
+    "date": 5,
+    "日期": 5,
+    "checkbox": 7,
+    "复选框": 7,
+    "phone": 13,
+    "电话号码": 13,
+    "url": 15,
+    "链接": 15,
+}
+SUPPORTED_SCHEMA_FIELD_TYPES = {1, 2, 3, 4, 5, 7, 13, 15}
 
 
 # 这个函数校验写入 payload，并生成后续 Tool 可直接使用的结构化输入。
 def run_validation_node(context: dict[str, Any]) -> dict[str, Any]:
     config = load_config()
+    if "feishu.schema_change_payload" in (context.get("artifacts") or {}):
+        return _run_schema_change_validation(context, config)
     payload_artifact = _find_payload_artifact(context)
     payload = payload_artifact.get("data_json") or {}
     table_fields = payload.get("table_fields") or _schema_fields(context)
@@ -75,6 +100,331 @@ def run_validation_node(context: dict[str, Any]) -> dict[str, Any]:
         "data_json": data_json,
         "schema_json": {"operation": operation, "tool_name": tool_name},
     }
+
+
+# 这个函数校验字段变更 payload，并生成字段变更 Tool 可直接执行的结构化输入。
+def _run_schema_change_validation(context: dict[str, Any], config: Any) -> dict[str, Any]:
+    payload_artifact = (context.get("artifacts") or {}).get("feishu.schema_change_payload") or {}
+    payload = payload_artifact.get("data_json") or {}
+    table_fields = payload.get("table_fields") or _schema_fields(context)
+    original_input = str(context.get("original_input") or "")
+    explicit_request = (payload.get("tool_input_payload") or {}).get("schema_change_request")
+    normalized_request, errors = _normalize_schema_change_request(explicit_request, original_input, config, table_fields)
+    if errors:
+        raise ValueError("；".join(errors))
+
+    tool_input_payload = {
+        "original_input": original_input,
+        "schema_change_request": normalized_request,
+    }
+    idempotency_key, payload_hash = _idempotency_key("change_fields", tool_input_payload)
+    preview = _schema_change_preview(normalized_request)
+    data_json = {
+        "tool_name": CHANGE_SCHEMA_TOOL,
+        "operation": "change_fields",
+        "request_key": "schema_change_request",
+        "tool_input_payload": tool_input_payload,
+        "idempotency_key": idempotency_key,
+        "payload_hash": payload_hash,
+        "warnings": [],
+        "preview": preview,
+        "expires_at": (now() + timedelta(seconds=config.workflow_idempotency_ttl_seconds)).isoformat(),
+    }
+    return {
+        "content_text": dumps_json(data_json),
+        "data_json": data_json,
+        "schema_json": {"operation": "change_fields", "tool_name": CHANGE_SCHEMA_TOOL},
+    }
+
+
+def _normalize_schema_change_request(
+    explicit_request: Any,
+    original_input: str,
+    config: Any,
+    table_fields: dict[str, Any],
+) -> tuple[dict[str, Any], list[str]]:
+    table_context = config.table_context
+    request = dict(explicit_request) if isinstance(explicit_request, dict) else {}
+    request.setdefault("operation", "change_fields")
+    request.setdefault("service", "feishu_bitable")
+    request.setdefault("app_token", table_context["app_token"])
+    request.setdefault("table_id", table_context["table_id"])
+    request.setdefault("table_name", table_context["table_name"])
+    request.setdefault("view_id", table_context["view_id"] or None)
+    request.setdefault("user_id_type", table_context["user_id_type"])
+    request.setdefault("mock", not config.feishu_use_real)
+    request["table_fields"] = table_fields or {}
+
+    errors: list[str] = []
+    config_error = _schema_change_configuration_error(config, table_fields, force_real=request.get("mock") is False)
+    if config_error:
+        errors.append(config_error)
+
+    raw_actions = request.get("actions") or []
+    if not isinstance(raw_actions, list) or not raw_actions:
+        errors.append("字段变更至少需要一个 action。")
+        raw_actions = []
+
+    normalized_actions, action_errors = _normalize_schema_actions(raw_actions, original_input, table_fields)
+    errors.extend(action_errors)
+    request["actions"] = normalized_actions
+    request["validation_errors"] = _dedupe_keep_order(errors)
+    return request, request["validation_errors"]
+
+
+def _schema_change_configuration_error(config: Any, table_fields: dict[str, Any], force_real: bool = False) -> str | None:
+    if not config.feishu_use_real and not force_real:
+        return None
+    if not config.can_write_real_feishu:
+        return f"真实飞书字段变更配置不完整，缺少：{'、'.join(config.missing_real_feishu_fields)}"
+    if table_fields.get("source") != "feishu":
+        return f"无法读取真实飞书表字段，已停止字段变更：{table_fields.get('error') or '字段上下文不可用'}"
+    return None
+
+
+def _normalize_schema_actions(
+    raw_actions: list[Any],
+    original_input: str,
+    table_fields: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    normalized: list[dict[str, Any]] = []
+    errors: list[str] = []
+    fields_by_name = _field_definitions_by_name(table_fields)
+    fields_by_id = _field_definitions_by_id(table_fields)
+    planned_names = set(fields_by_name.keys())
+
+    for index, raw_action in enumerate(raw_actions, start=1):
+        if not isinstance(raw_action, dict):
+            errors.append(f"第 {index} 个字段变更 action 必须是 JSON 对象。")
+            continue
+        action = str(raw_action.get("action") or "").strip()
+        if action == "create_field":
+            normalized_action, action_errors = _normalize_create_field_action(raw_action, planned_names)
+        elif action == "update_field":
+            normalized_action, action_errors = _normalize_update_field_action(raw_action, fields_by_name, fields_by_id, planned_names)
+        elif action == "delete_field":
+            normalized_action, action_errors = _normalize_delete_field_action(raw_action, original_input, fields_by_name, fields_by_id, planned_names)
+        else:
+            normalized_action, action_errors = None, [f"第 {index} 个字段变更 action 不受支持：{action}"]
+        if action_errors:
+            errors.extend([f"第 {index} 个字段变更：{error}" for error in action_errors])
+        if normalized_action:
+            normalized.append(normalized_action)
+
+    return normalized, errors
+
+
+def _normalize_create_field_action(raw_action: dict[str, Any], planned_names: set[str]) -> tuple[dict[str, Any] | None, list[str]]:
+    errors: list[str] = []
+    field_name = str(raw_action.get("field_name") or "").strip()
+    field_type, type_error = _normalize_schema_field_type(raw_action.get("field_type") or raw_action.get("type"))
+    if not field_name:
+        errors.append("新增字段缺少 field_name。")
+    if field_name in planned_names:
+        errors.append(f"字段 `{field_name}` 已存在。")
+    if type_error:
+        errors.append(type_error)
+    property_config, property_error = _normalize_schema_field_property(field_type, raw_action.get("property"))
+    if property_error:
+        errors.append(property_error)
+    if errors:
+        return None, errors
+    planned_names.add(field_name)
+    return {
+        "action": "create_field",
+        "field_name": field_name,
+        "field_type": _field_type_name(field_type),
+        "type": field_type,
+        "property": property_config,
+        "reason": str(raw_action.get("reason") or "").strip(),
+    }, []
+
+
+def _normalize_update_field_action(
+    raw_action: dict[str, Any],
+    fields_by_name: dict[str, dict[str, Any]],
+    fields_by_id: dict[str, dict[str, Any]],
+    planned_names: set[str],
+) -> tuple[dict[str, Any] | None, list[str]]:
+    errors: list[str] = []
+    source = _resolve_schema_field(raw_action, fields_by_name, fields_by_id)
+    if not source:
+        errors.append("更新字段必须提供存在的 field_id、source_field_name 或 field_name。")
+        return None, errors
+    old_name = str(source.get("field_name") or "")
+    new_name = str(raw_action.get("new_field_name") or raw_action.get("target_field_name") or raw_action.get("field_name") or old_name).strip()
+    if raw_action.get("field_type") or raw_action.get("type"):
+        requested_type, type_error = _normalize_schema_field_type(raw_action.get("field_type") or raw_action.get("type"))
+        if type_error:
+            errors.append(type_error)
+        elif requested_type != source.get("type"):
+            errors.append("第一版不支持修改字段类型。")
+    if not new_name:
+        errors.append("更新字段缺少目标 field_name。")
+    if new_name != old_name and new_name in planned_names:
+        errors.append(f"字段 `{new_name}` 已存在，不能重命名为该字段。")
+    property_config, property_error = _normalize_schema_field_property(source.get("type"), raw_action.get("property"))
+    if property_error:
+        errors.append(property_error)
+    if errors:
+        return None, errors
+    if new_name != old_name:
+        planned_names.discard(old_name)
+        planned_names.add(new_name)
+    return {
+        "action": "update_field",
+        "field_id": source.get("field_id"),
+        "source_field_name": old_name,
+        "field_name": new_name,
+        "type": source.get("type"),
+        "property": property_config if raw_action.get("property") is not None else source.get("property") or {},
+        "reason": str(raw_action.get("reason") or "").strip(),
+    }, []
+
+
+def _normalize_delete_field_action(
+    raw_action: dict[str, Any],
+    original_input: str,
+    fields_by_name: dict[str, dict[str, Any]],
+    fields_by_id: dict[str, dict[str, Any]],
+    planned_names: set[str],
+) -> tuple[dict[str, Any] | None, list[str]]:
+    errors: list[str] = []
+    source = _resolve_schema_field(raw_action, fields_by_name, fields_by_id)
+    if not source:
+        errors.append("删除字段必须提供存在的 field_id、source_field_name 或 field_name。")
+        return None, errors
+    if not _explicit_field_delete_intent(original_input):
+        errors.append("删除字段必须来自用户明确的删除字段意图。")
+    if errors:
+        return None, errors
+    field_name = str(source.get("field_name") or "")
+    planned_names.discard(field_name)
+    return {
+        "action": "delete_field",
+        "field_id": source.get("field_id"),
+        "field_name": field_name,
+        "type": source.get("type"),
+        "property": source.get("property") or {},
+        "reason": str(raw_action.get("reason") or "").strip(),
+    }, []
+
+
+def _resolve_schema_field(
+    action: dict[str, Any],
+    fields_by_name: dict[str, dict[str, Any]],
+    fields_by_id: dict[str, dict[str, Any]],
+) -> dict[str, Any] | None:
+    field_id = str(action.get("field_id") or "").strip()
+    if field_id and field_id in fields_by_id:
+        return fields_by_id[field_id]
+    for key in ("source_field_name", "old_field_name", "field_name"):
+        field_name = str(action.get(key) or "").strip()
+        if field_name and field_name in fields_by_name:
+            return fields_by_name[field_name]
+    return None
+
+
+def _normalize_schema_field_type(value: Any) -> tuple[int | None, str | None]:
+    if isinstance(value, int):
+        field_type = value
+    else:
+        text = str(value or "text").strip()
+        field_type = int(text) if text.isdigit() else FIELD_TYPE_ALIASES.get(text.lower()) or FIELD_TYPE_ALIASES.get(text)
+    if field_type not in SUPPORTED_SCHEMA_FIELD_TYPES:
+        return None, f"字段类型 `{value}` 暂不支持。"
+    return field_type, None
+
+
+def _normalize_schema_field_property(field_type: Any, property_value: Any) -> tuple[dict[str, Any], str | None]:
+    if not isinstance(property_value, dict):
+        property_value = {}
+    property_config = deepcopy(property_value)
+    if field_type not in {3, 4}:
+        return property_config, None
+    raw_options = property_config.get("options") or []
+    if not isinstance(raw_options, list) or not raw_options:
+        return property_config, "单选或多选字段必须提供 options。"
+    options: list[dict[str, Any]] = []
+    seen_names: set[str] = set()
+    for option in raw_options:
+        name = str(option.get("name") if isinstance(option, dict) else option).strip()
+        if not name:
+            return property_config, "选项名称不能为空。"
+        if name in seen_names:
+            return property_config, f"选项 `{name}` 重复。"
+        options.append({"name": name})
+        seen_names.add(name)
+    property_config["options"] = options
+    return property_config, None
+
+
+def _schema_change_preview(request: dict[str, Any]) -> dict[str, Any]:
+    actions = [
+        {
+            "action": action.get("action"),
+            "field_id": action.get("field_id"),
+            "source_field_name": action.get("source_field_name"),
+            "field_name": action.get("field_name"),
+            "field_type": action.get("field_type") or _field_type_name(action.get("type")),
+            "property": action.get("property") or {},
+            "reason": action.get("reason") or "",
+        }
+        for action in request.get("actions") or []
+    ]
+    delete_field_names = [action.get("field_name") for action in actions if action.get("action") == "delete_field"]
+    return {
+        "operation": "change_fields",
+        "action_count": len(actions),
+        "actions": actions,
+        "delete_field_names": delete_field_names,
+        "requires_careful_review": bool(delete_field_names),
+    }
+
+
+def _field_definitions_by_id(table_fields: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    definitions: dict[str, dict[str, Any]] = {}
+    for field in table_fields.get("fields", []) if isinstance(table_fields, dict) else []:
+        field_id = field.get("field_id")
+        if field_id:
+            definitions[str(field_id)] = field
+    return definitions
+
+
+def _field_definitions_by_name(table_fields: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    definitions: dict[str, dict[str, Any]] = {}
+    for field in table_fields.get("fields", []) if isinstance(table_fields, dict) else []:
+        field_name = field.get("field_name")
+        if field_name:
+            definitions[str(field_name)] = field
+    return definitions
+
+
+def _explicit_field_delete_intent(input_text: str) -> bool:
+    return "字段" in input_text and any(keyword in input_text for keyword in ("删除", "移除", "清理"))
+
+
+def _field_type_name(field_type: Any) -> str:
+    return {
+        1: "text",
+        2: "number",
+        3: "single_select",
+        4: "multi_select",
+        5: "date",
+        7: "checkbox",
+        13: "phone",
+        15: "url",
+    }.get(field_type, str(field_type or ""))
+
+
+def _dedupe_keep_order(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for item in items:
+        if item not in seen:
+            deduped.append(item)
+            seen.add(item)
+    return deduped
 
 
 # 这个函数统一处理单条写入和批量新增写入。
@@ -159,7 +509,8 @@ def _find_payload_artifact(context: dict[str, Any]) -> dict[str, Any]:
 
 # 这个函数从 schema artifact 中提取 table_fields。
 def _schema_fields(context: dict[str, Any]) -> dict[str, Any]:
-    schema_artifact = context.get("artifacts", {}).get("feishu.table_schema") or {}
+    artifacts = context.get("artifacts", {})
+    schema_artifact = artifacts.get("feishu.table_schema_after") or artifacts.get("feishu.table_schema") or {}
     schema_data = schema_artifact.get("data_json") or {}
     return schema_data.get("table_fields") or {}
 

@@ -1,0 +1,83 @@
+prompt_key: parse_feishu_schema_change.v1
+agent_name: schema_agent
+role_name: feishu_schema_change_parser
+description: 把用户原话和当前飞书字段 schema 转换成字段变更 actions，用于新增字段、重命名字段、调整选项、删除字段和日报周报月报结构改造。
+db_address: prompt_registry.prompt_key=parse_feishu_schema_change.v1
+version: "1"
+enabled: true
+
+input_schema_json:
+  type: object
+  required:
+    - original_input
+    - table_fields
+  properties:
+    original_input:
+      type: string
+      description: 用户原始自然语言输入。
+    current_date:
+      type: string
+      description: 当前日期。
+    current_datetime:
+      type: string
+      description: 当前时间。
+    table_fields:
+      type: object
+      description: 当前飞书多维表格字段定义。
+    default_report_schema_fields:
+      type: array
+      description: 日报、周报、月报统一表结构的默认字段建议。
+
+output_schema_json:
+  type: object
+  required:
+    - schema_change_request
+  properties:
+    schema_change_request:
+      operation: change_fields
+      service: feishu_bitable
+      actions:
+        - action: create_field
+          field_name: 记录类型
+          field_type: single_select
+          property:
+            options:
+              - 每日内容
+              - 周报
+              - 月报
+          reason: 用于区分记录粒度
+
+metadata_json:
+  side_effect_level: write
+  output_artifacts:
+    - feishu.schema_change_payload
+
+prompt_text: |
+  你是 third 第三方服务模块的 schema_agent。
+  你的任务是把用户原话转换成飞书多维表格字段变更请求 JSON。
+
+  你只能输出合法 JSON 对象，不要输出 Markdown，不要解释推理过程。
+
+  当前上下文 JSON 会包含：
+  - original_input：用户原始输入。
+  - current_date：当前日期。
+  - current_datetime：当前时间。
+  - table_fields：当前飞书表字段定义，包含 field_names、fields、字段类型和选项。
+  - default_report_schema_fields：系统默认的日报、周报、月报统一表结构字段。
+  - output_schema_json：输出结构约束。
+
+  输出要求：
+  - 顶层必须输出 {"schema_change_request": {...}}。
+  - schema_change_request.operation 必须是 change_fields。
+  - schema_change_request.service 必须是 feishu_bitable。
+  - actions 只能包含 create_field、update_field、delete_field。
+  - 不要输出 app_token、table_id、view_id，这些由 validation 和 Tool 从配置补齐。
+  - 不要创建 table_fields.field_names 中已存在的字段。
+  - 不要删除字段，除非用户明确说“删除字段、移除字段、清理字段”。
+  - 第一版不允许修改字段类型；如果用户要求修改字段类型，不要输出 update_field 改类型。
+  - update_field 只用于重命名字段或调整单选/多选选项；重命名时输出 source_field_name 和新的 field_name。
+  - delete_field 必须输出 field_name 或 source_field_name，且必须来自当前表字段。
+  - create_field 必须输出 field_name、field_type、property、reason。
+  - field_type 只能是 text、number、single_select、multi_select、date、checkbox、phone、url。
+  - single_select 和 multi_select 必须在 property.options 中输出选项名称数组。
+  - 用户要求“让表能记录每日内容、周报、月报”或类似表结构目标时，使用 default_report_schema_fields，补齐当前表缺失字段；记录类型字段使用 single_select，选项为 每日内容、周报、月报。

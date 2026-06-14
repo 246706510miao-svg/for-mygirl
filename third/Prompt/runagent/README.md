@@ -37,12 +37,13 @@ python -m third.scripts.seed_runagent_prompts
 
 1. 新增一个 YAML 文件，填完整上述字段。
 2. 执行 migration 和 seed 脚本。
-3. 确保 `workflowagent` 生成的 `agent_name` 和 `prompt_ref` 与数据库记录一致。
+3. 确保 `workflowagent` 选择的 template 或兼容旧 plan 中的 `agent_name`、`prompt_ref` 与数据库记录一致。
 4. 确保 Agent Runner 已支持该 `agent_name/prompt_ref` 对应的执行逻辑。
 
 ## 当前 Agent
 
 - `business_agent / parse_feishu_record.v1`：把用户原话和飞书字段 schema 转成新增、更新或删除候选 payload。新增可以输出多条 `create_request.records`；更新和删除会尽量输出 `record_id` 或粗定位 `lookup.filter`。
+- `schema_agent / parse_feishu_schema_change.v1`：把用户原话和当前飞书字段 schema 转成字段变更 actions，用于新增字段、重命名字段、调整单选/多选选项、删除字段，以及把表补齐为可记录每日内容、周报、月报的统一结构。
 - `search_agent / search_feishu_record.v1`：更新或删除前读取候选记录后，根据用户原话、候选记录和已解析 payload 匹配目标 `record_id`。它只从候选记录中选择，不直接调用更新或删除 Tool。
 
-运行时以 MySQL `prompt_registry` 为准；修改本目录 YAML 后必须重新执行 seed，workflowagent 和 Agent Runner 才会使用新内容。
+运行时以 MySQL `prompt_registry` 为准；修改本目录 YAML 后必须重新执行 seed，workflowagent 和 Agent Runner 才会使用新内容。Tool 能力目录和 Workflow Template 目录不在这里维护，它们来自 `workflow/registry/`。

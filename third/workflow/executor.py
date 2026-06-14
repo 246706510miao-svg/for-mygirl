@@ -11,7 +11,6 @@ from typing import Any
 try:
     from ..agents.shared.config import load_config
     from ..agents.workflowagent.agent import build_workflow_plan
-    from ..agents.workflowagent.agent import WRITE_TOOLS
     from ..runtime.factory import get_workflow_runtime_store
     from ..storage.factory import get_workflow_repository
     from ..storage.repository import WorkflowRepository, now
@@ -20,10 +19,10 @@ try:
     from .plan_validator import PlanValidationError, validate_workflow_plan
     from .tool_dispatcher import dispatch_tool
     from .validation import run_validation_node
+    from .registry import WRITE_TOOLS
 except ImportError:
     from agents.shared.config import load_config
     from agents.workflowagent.agent import build_workflow_plan
-    from agents.workflowagent.agent import WRITE_TOOLS
     from runtime.factory import get_workflow_runtime_store
     from storage.factory import get_workflow_repository
     from storage.repository import WorkflowRepository, now
@@ -32,6 +31,7 @@ except ImportError:
     from workflow.plan_validator import PlanValidationError, validate_workflow_plan
     from workflow.tool_dispatcher import dispatch_tool
     from workflow.validation import run_validation_node
+    from workflow.registry import WRITE_TOOLS
 
 
 # 这一段定义 workflow 执行日志，worker 和 API 都会通过标准 logging 输出。
@@ -325,6 +325,10 @@ def _validation_artifact(context: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def _confirmation_request_text(preview: dict[str, Any]) -> str:
+    if preview.get("operation") == "change_fields":
+        if preview.get("delete_field_names"):
+            return "确认执行以下飞书字段变更吗？包含删除字段，请核对字段名后再确认。"
+        return "确认执行以下飞书字段变更吗？"
     match_info = preview.get("match_info") if isinstance(preview, dict) else None
     if isinstance(match_info, dict) and match_info.get("requires_careful_review"):
         return "确认执行以下飞书写入操作吗？低置信匹配，请核对 record_id、匹配理由和候选摘要后再确认。"
