@@ -99,13 +99,6 @@ TEMPLATE_CATALOG: list[dict[str, Any]] = [
             "write_feishu",
         ],
     },
-    {
-        "template_key": REVIEW_WORKFLOW_MISTAKE_TEMPLATE,
-        "intent": "review_workflow_mistake",
-        "risk_level": "read",
-        "purpose": "复盘对话、失败现象或新需求，生成 Tool、Agent Prompt、Workflow Template、Validator、测试和文档的能力更新建议，不直接改代码或调用有副作用 Tool。",
-        "step_order": ["analyze_workflow_mistake"],
-    },
 ]
 
 
@@ -238,32 +231,6 @@ def _schema_then_create_plan(input_text: str, risk_level: str) -> dict[str, Any]
         ]
     )
     return schema_plan
-
-
-# 这个函数生成能力复盘 plan；它只产出建议，不直接修改 registry、prompt 或 Tool 代码。
-def _review_workflow_mistake_plan(input_text: str) -> dict[str, Any]:
-    return {
-        "type": "workflow_plan",
-        "version": "workflow.v1",
-        "template_key": REVIEW_WORKFLOW_MISTAKE_TEMPLATE,
-        "intent": "review_workflow_mistake",
-        "risk_level": "read",
-        "requires_confirmation": False,
-        "original_input": input_text,
-        "final": {"source": "workflow.capability_update_proposal", "format": "answer"},
-        "steps": [
-            {
-                "step_id": "step_analyze_workflow_mistake",
-                "kind": "agent",
-                "agent_name": "mistake_agent",
-                "prompt_ref": SUMMARIZE_WORKFLOW_MISTAKE_PROMPT,
-                "purpose": "总结对话或失败现象，输出能力更新建议",
-                "input": {"include_original_input": True},
-                "output": {"save_as": "workflow.capability_update_proposal"},
-                "validation": {"analysis_only": True},
-            }
-        ],
-    }
 
 
 # 这个函数生成读取 schema 的步骤。
