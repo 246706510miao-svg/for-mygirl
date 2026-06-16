@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-
 READ_SCHEMA_TOOL = "tool_ReadFeishuBitableSchema"
 READ_TOOL = "tool_ReadFeishuBitable"
 CREATE_TOOL = "tool_CreateFeishuBitableRecord"

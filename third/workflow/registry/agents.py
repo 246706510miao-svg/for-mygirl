@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 
+# 这个函数把业务 prompt 整理成 workflowagent 可用的 catalog。
 def build_agent_catalog(agent_prompts: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Return the prompt_registry fields workflowagent is allowed to see."""
     return [
         {
             "agent_name": prompt.get("agent_name"),

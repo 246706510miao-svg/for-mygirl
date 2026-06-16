@@ -12,6 +12,7 @@ from .tools import CHANGE_SCHEMA_TOOL, CREATE_TOOL, DELETE_TOOL, READ_SCHEMA_TOO
 PARSE_FEISHU_RECORD_PROMPT = "parse_feishu_record.v1"
 SEARCH_FEISHU_RECORD_PROMPT = "search_feishu_record.v1"
 PARSE_FEISHU_SCHEMA_CHANGE_PROMPT = "parse_feishu_schema_change.v1"
+SUMMARIZE_WORKFLOW_MISTAKE_PROMPT = "summarize_workflow_mistake.v1"
 
 READ_RECORDS_TEMPLATE = "read_records"
 CREATE_RECORD_TEMPLATE = "create_record"
@@ -19,6 +20,7 @@ UPDATE_RECORD_TEMPLATE = "update_record"
 DELETE_RECORD_TEMPLATE = "delete_record"
 CHANGE_SCHEMA_TEMPLATE = "change_schema"
 CHANGE_SCHEMA_THEN_CREATE_RECORD_TEMPLATE = "change_schema_then_create_record"
+REVIEW_WORKFLOW_MISTAKE_TEMPLATE = "review_workflow_mistake"
 
 TEMPLATE_CATALOG: list[dict[str, Any]] = [
     {
@@ -97,9 +99,17 @@ TEMPLATE_CATALOG: list[dict[str, Any]] = [
             "write_feishu",
         ],
     },
+    {
+        "template_key": REVIEW_WORKFLOW_MISTAKE_TEMPLATE,
+        "intent": "review_workflow_mistake",
+        "risk_level": "read",
+        "purpose": "复盘对话、失败现象或新需求，生成 Tool、Agent Prompt、Workflow Template、Validator、测试和文档的能力更新建议，不直接改代码或调用有副作用 Tool。",
+        "step_order": ["analyze_workflow_mistake"],
+    },
 ]
 
 
+# 这个函数根据模板 key 生成对应的 workflow plan。
 def build_plan_from_template(template_key: str, input_text: str, risk_level: str | None = None) -> dict[str, Any]:
     if template_key == READ_RECORDS_TEMPLATE:
         return _read_plan(input_text)
@@ -113,9 +123,12 @@ def build_plan_from_template(template_key: str, input_text: str, risk_level: str
         return _schema_change_plan(input_text, risk_level or _schema_risk_level(input_text))
     if template_key == CHANGE_SCHEMA_THEN_CREATE_RECORD_TEMPLATE:
         return _schema_then_create_plan(input_text, risk_level or _schema_risk_level(input_text))
+    if template_key == REVIEW_WORKFLOW_MISTAKE_TEMPLATE:
+        return _review_workflow_mistake_plan(input_text)
     raise ValueError(f"不支持的 workflow template：{template_key}")
 
 
+# 这个函数生成读取记录的 plan。
 def _read_plan(input_text: str) -> dict[str, Any]:
     read_input = json.dumps(
         {
@@ -155,6 +168,7 @@ def _read_plan(input_text: str) -> dict[str, Any]:
     }
 
 
+# 这个函数生成创建、更新、删除类的 plan。
 def _write_plan(input_text: str, template_key: str, intent: str, risk_level: str, write_tool: str, payload_key: str) -> dict[str, Any]:
     plan = {
         "type": "workflow_plan",
@@ -185,6 +199,7 @@ def _write_plan(input_text: str, template_key: str, intent: str, risk_level: str
     return plan
 
 
+# 这个函数生成字段变更 plan。
 def _schema_change_plan(input_text: str, risk_level: str) -> dict[str, Any]:
     return {
         "type": "workflow_plan",
@@ -206,6 +221,7 @@ def _schema_change_plan(input_text: str, risk_level: str) -> dict[str, Any]:
     }
 
 
+# 这个函数生成“先改字段再写记录”的 plan。
 def _schema_then_create_plan(input_text: str, risk_level: str) -> dict[str, Any]:
     schema_plan = _schema_change_plan(input_text, risk_level)
     schema_plan["template_key"] = CHANGE_SCHEMA_THEN_CREATE_RECORD_TEMPLATE
@@ -224,6 +240,33 @@ def _schema_then_create_plan(input_text: str, risk_level: str) -> dict[str, Any]
     return schema_plan
 
 
+# 这个函数生成能力复盘 plan；它只产出建议，不直接修改 registry、prompt 或 Tool 代码。
+def _review_workflow_mistake_plan(input_text: str) -> dict[str, Any]:
+    return {
+        "type": "workflow_plan",
+        "version": "workflow.v1",
+        "template_key": REVIEW_WORKFLOW_MISTAKE_TEMPLATE,
+        "intent": "review_workflow_mistake",
+        "risk_level": "read",
+        "requires_confirmation": False,
+        "original_input": input_text,
+        "final": {"source": "workflow.capability_update_proposal", "format": "answer"},
+        "steps": [
+            {
+                "step_id": "step_analyze_workflow_mistake",
+                "kind": "agent",
+                "agent_name": "mistake_agent",
+                "prompt_ref": SUMMARIZE_WORKFLOW_MISTAKE_PROMPT,
+                "purpose": "总结对话或失败现象，输出能力更新建议",
+                "input": {"include_original_input": True},
+                "output": {"save_as": "workflow.capability_update_proposal"},
+                "validation": {"analysis_only": True},
+            }
+        ],
+    }
+
+
+# 这个函数生成读取 schema 的步骤。
 def _read_schema_step(step_id: str, output_key: str, purpose: str) -> dict[str, Any]:
     return {
         "step_id": step_id,
@@ -236,6 +279,7 @@ def _read_schema_step(step_id: str, output_key: str, purpose: str) -> dict[str, 
     }
 
 
+# 这个函数把用户输入解析成写入 payload。
 def _parse_record_payload_step(payload_key: str, from_session: list[str], step_id: str = "step_parse_payload") -> dict[str, Any]:
     return {
         "step_id": step_id,
@@ -249,6 +293,7 @@ def _parse_record_payload_step(payload_key: str, from_session: list[str], step_i
     }
 
 
+# 这个函数把字段变更请求解析成 schema change payload。
 def _parse_schema_change_step() -> dict[str, Any]:
     return {
         "step_id": "step_parse_schema_change",
@@ -262,6 +307,7 @@ def _parse_schema_change_step() -> dict[str, Any]:
     }
 
 
+# 这个函数生成字段变更校验步骤。
 def _schema_change_validation_step(from_session: list[str]) -> dict[str, Any]:
     return {
         "step_id": "step_validate_schema_change",
@@ -273,6 +319,7 @@ def _schema_change_validation_step(from_session: list[str]) -> dict[str, Any]:
     }
 
 
+# 这个函数生成确认步骤。
 def _confirm_step(step_id: str, purpose: str, from_session: list[str], output_key: str) -> dict[str, Any]:
     return {
         "step_id": step_id,
@@ -284,6 +331,7 @@ def _confirm_step(step_id: str, purpose: str, from_session: list[str], output_ke
     }
 
 
+# 这个函数生成执行字段变更的步骤。
 def _change_fields_step() -> dict[str, Any]:
     return {
         "step_id": "step_change_fields",
@@ -296,6 +344,7 @@ def _change_fields_step() -> dict[str, Any]:
     }
 
 
+# 这个函数生成读取候选记录的步骤。
 def _read_candidate_records_step(payload_key: str) -> dict[str, Any]:
     return {
         "step_id": "step_read_candidate_records",
@@ -311,6 +360,7 @@ def _read_candidate_records_step(payload_key: str) -> dict[str, Any]:
     }
 
 
+# 这个函数把候选记录匹配到目标 record。
 def _match_record_step(payload_key: str) -> dict[str, Any]:
     return {
         "step_id": "step_match_record",
@@ -324,6 +374,7 @@ def _match_record_step(payload_key: str) -> dict[str, Any]:
     }
 
 
+# 这个函数补齐写入操作的校验、确认和执行步骤。
 def _record_write_tail(intent: str, write_tool: str, validation_inputs: list[str]) -> list[dict[str, Any]]:
     return [
         {
@@ -347,14 +398,17 @@ def _record_write_tail(intent: str, write_tool: str, validation_inputs: list[str
     ]
 
 
+# 这个函数判断字段变更属于写入还是删除风险。
 def _schema_risk_level(input_text: str) -> str:
     return "delete" if _looks_like_field_delete(input_text) else "write"
 
 
+# 这个函数检查文本里是否有字段删除关键词。
 def _looks_like_field_delete(input_text: str) -> bool:
     return "字段" in input_text and any(keyword in input_text for keyword in ("删除", "移除", "清理"))
 
 
+# 这个函数从查询文本里提取字段名。
 def _extract_read_field_names(input_text: str) -> list[str]:
     match = re.search(r"(?:返回|输出|只看|只返回|字段)\s*[:：]?\s*([^，。；;]+(?:[、,，]\s*[^，。；;]+)*)", input_text)
     if not match:
@@ -363,6 +417,7 @@ def _extract_read_field_names(input_text: str) -> list[str]:
     return _dedupe(fields)
 
 
+# 这个函数从查询文本里提取筛选条件。
 def _extract_read_conditions(input_text: str) -> list[dict[str, Any]]:
     conditions: list[dict[str, Any]] = []
     status_match = re.search(r"状态(?:为|是|=|：|:)?\s*([^\s，。；;]+)", input_text)
@@ -380,6 +435,7 @@ def _extract_read_conditions(input_text: str) -> list[dict[str, Any]]:
     return conditions
 
 
+# 这个函数清理条件值。
 def _clean_condition_value(value: str) -> str:
     cleaned = value.strip()
     for known in ("进行中", "已完成", "待开始", "未完成"):
@@ -388,6 +444,7 @@ def _clean_condition_value(value: str) -> str:
     return re.sub(r"(的)?记录$", "", cleaned)
 
 
+# 这个函数去重并保留原有顺序。
 def _dedupe(items: list[str]) -> list[str]:
     seen: set[str] = set()
     result: list[str] = []
