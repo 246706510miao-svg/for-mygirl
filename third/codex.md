@@ -5,8 +5,8 @@
 1. `README.md`：先看模块目标、运行方式、API 和环境变量。
 2. `docs/总架构图.md`：查看 SpringBoot、third、Redis、MySQL、OpenAI、飞书之间的边界。
 3. `docs/workflow-db-er.md`：查看 MySQL 表、Redis key、字段缓存 TTL 和幂等规则。
-4. `docs/workflowagent-fixed-graph.md`：查看固定执行图和每个节点职责。
-5. `docs/router-read00.md`：查看当前 workflowagent 到 Tool 的输入输出流程。
+4. `docs/workflowagent-graph.md`：查看固定执行图、动态模板步骤和每个节点职责。
+5. `docs/能力更改方式.md`：执行 Prompt、Workflow Template、Tool 能力变更前先读。
 6. `agents/graph.py`、`workflow/executor.py`：理解 LangGraph 固定入口和 runtime 执行方式。
 7. `workflow/registry/`：查看 Tool、Agent、Workflow Template 能力目录和模板 builder。
 8. `agents/workflowagent/agent.py`、`Prompt/workflowagent.yaml`：查看 template 选择逻辑和提示词。
@@ -100,8 +100,8 @@ third/
 `-- docs/
     |-- 总架构图.md
     |-- workflow-db-er.md
-    |-- workflowagent-fixed-graph.md
-    `-- router-read00.md
+    |-- workflowagent-graph.md
+    `-- 能力更改方式.md
 ```
 
 ## 数据库配置入口
@@ -117,63 +117,3 @@ third/
 - `THIRD_ALLOW_IN_MEMORY_FALLBACK=0` 会禁止 MySQL/Redis 失败时回退到进程内内存，Docker 和真实联调建议保持为 `0`。
 - `THIRD_DEBUG_ENABLED=1` 会启用 `/debug` 调试台，本地默认开启，服务器部署建议关闭。
 - `THIRD_WORKFLOW_DEBUG_LOG=1` 会输出脱敏后的 workflow plan JSON 和失败步骤摘要；未配置时默认跟随 `THIRD_DEBUG_ENABLED`。
-
-## 建表方式
-
-生产和联调环境优先使用 Alembic：
-
-```bash
-alembic upgrade head
-```
-
-项目根目录和 `third/` 目录都保留 Alembic 配置；推荐从项目根目录执行上面的命令。
-
-重建本地 Docker MySQL 业务库时，可以先删除并重建 `third_service`，再重新执行 Alembic：
-
-```bash
-docker compose exec mysql mysql -uroot -pthird_root_password -e "DROP DATABASE IF EXISTS third_service; CREATE DATABASE third_service CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci; GRANT ALL PRIVILEGES ON third_service.* TO 'third_user'@'%'; FLUSH PRIVILEGES;"
-alembic upgrade head
-```
-
-本地临时调试也可以调用 `storage/database.py` 里的 `create_all_tables()`，但正式流程不要依赖它，后续表结构演进应继续走 Alembic migration。
-
-## Docker Compose 验证入口
-
-本地开发默认只启动 MySQL/Redis：
-
-```bash
-docker compose up -d
-```
-
-本地启动 API 时可以使用 reload：
-
-```bash
-uvicorn third.api:app --host 0.0.0.0 --port 8001 --reload
-```
-
-本地调试台入口：
-
-```text
-http://127.0.0.1:8001/debug
-```
-
-调试台读取现有 workflow 表生成时间线和 Mermaid 文本，不新增数据库表。真实飞书和 LLM 联调时，先看 `/debug/health` 的 Feishu、WorkflowAgent、OpenAI、MySQL、Redis 和内存兜底状态。
-
-调试台默认只在当前 session 处于 `queued` 或 `running` 时自动刷新详情；进入 `waiting_user`、`success`、`failed`、`cancelled` 后会暂停自动重绘，避免查看 `Artifacts` 或 `JSON` 时滚动位置被重置。需要最新数据时使用页面右上角“刷新”。
-
-本地 worker 使用标准 logging，`python -m third.worker` 会在 `THIRD_WORKFLOW_DEBUG_LOG=1` 时打印 workflowagent 生成的 plan JSON 和失败步骤上下文，日志会脱敏密钥、token、DSN 和 Redis URL。
-
-后续完整 third 容器验证：
-
-```bash
-docker compose --profile third-container up -d --build
-```
-
-完整 third 容器真实飞书验证：
-
-```powershell
-$env:THIRD_ENV_FILE = "./third/.env.docker.real"
-docker compose --profile third-container up -d --build
-```
-
-说明：默认本地开发不会构建 third 镜像。只有使用 `third-container` profile 时，才会构建并运行 third API、worker 和 migration 容器。
