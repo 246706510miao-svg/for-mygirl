@@ -1,6 +1,6 @@
 package com.formygirl.trace;
 
-import com.formygirl.record.BusinessRepository;
+import com.formygirl.persistence.BusinessRepository;
 import com.formygirl.thirdclient.ThirdWorkflowClient;
 import java.util.LinkedHashMap;
 import java.util.List;

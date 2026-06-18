@@ -1,8 +1,11 @@
 package com.formygirl.record;
 
-import com.formygirl.auth.CurrentPerson;
 import com.formygirl.common.ApiException;
 import com.formygirl.common.JsonSupport;
+import com.formygirl.comment.CommentRepository;
+import com.formygirl.comment.CommentService;
+import com.formygirl.identity.CurrentPerson;
+import com.formygirl.persistence.BusinessRepository;
 import com.formygirl.thirdclient.ThirdWorkflowClient;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -18,11 +21,15 @@ public class RecordService {
     private final BusinessRepository repository;
     private final ThirdWorkflowClient thirdClient;
     private final JsonSupport json;
+    private final CommentRepository commentRepository;
+    private final CommentService commentService;
 
-    public RecordService(BusinessRepository repository, ThirdWorkflowClient thirdClient, JsonSupport json) {
+    public RecordService(BusinessRepository repository, ThirdWorkflowClient thirdClient, JsonSupport json, CommentRepository commentRepository, CommentService commentService) {
         this.repository = repository;
         this.thirdClient = thirdClient;
         this.json = json;
+        this.commentRepository = commentRepository;
+        this.commentService = commentService;
     }
 
     // 这个函数组装用户首页接口数据。
@@ -51,12 +58,17 @@ public class RecordService {
 
     // 这个函数组装用户最近记录列表。
     public Map<String, Object> userRecords(CurrentPerson person, LocalDate fromDate, LocalDate toDate, int page, int pageSize) {
-        List<Map<String, Object>> rows = repository.userRecords(person.id(), fromDate, toDate, page, pageSize);
+        return recordsForOwner(person.id(), fromDate, toDate, page, pageSize);
+    }
+
+    // 这个函数组装指定用户的最近记录列表并附带绑定评论。
+    public Map<String, Object> recordsForOwner(String ownerUserId, LocalDate fromDate, LocalDate toDate, int page, int pageSize) {
+        List<Map<String, Object>> rows = repository.userRecords(ownerUserId, fromDate, toDate, page, pageSize);
         return Map.of(
-                "items", rows.stream().map(this::displayDto).toList(),
+                "items", rows.stream().map(this::displayWithCommentDto).toList(),
                 "page", page,
                 "pageSize", pageSize,
-                "total", repository.userRecordCount(person.id(), fromDate, toDate)
+                "total", repository.userRecordCount(ownerUserId, fromDate, toDate)
         );
     }
 
@@ -247,6 +259,16 @@ public class RecordService {
             return Map.of();
         }
         return dto("recordId", row.get("record_id"), "recordDate", row.get("record_date"), "title", row.get("title"), "summary", row.get("summary"), "score", row.get("score"), "displayStatus", row.get("display_status"), "adminContent", json.map(String.valueOf(row.get("admin_content_json"))), "updatedAt", row.get("updated_at"));
+    }
+
+    // 这个函数转换带绑定评论的展示记录 DTO。
+    private Map<String, Object> displayWithCommentDto(Map<String, Object> row) {
+        Map<String, Object> result = new LinkedHashMap<>(displayDto(row));
+        Map<String, Object> comment = commentRepository.latestComment(String.valueOf(row.get("record_id")));
+        result.put("boundComment", commentService.commentDto(comment));
+        result.put("managerComment", comment.get("content"));
+        result.put("managerScore", comment.get("score"));
+        return result;
     }
 
     // 这个函数转换飞书同步 DTO。

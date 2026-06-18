@@ -1,7 +1,8 @@
-package com.formygirl.auth;
+package com.formygirl.identity;
 
 import com.formygirl.common.ApiResponse;
 import com.formygirl.common.RequestIds;
+import com.formygirl.relationship.RelationshipService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -15,24 +16,26 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/auth")
-public class AuthController {
-    private final AuthService authService;
+public class IdentityController {
+    private final IdentityService identityService;
+    private final RelationshipService relationshipService;
 
-    public AuthController(AuthService authService) {
-        this.authService = authService;
+    public IdentityController(IdentityService identityService, RelationshipService relationshipService) {
+        this.identityService = identityService;
+        this.relationshipService = relationshipService;
     }
 
     // 这个接口使用 MVP 固定账号登录。
     @PostMapping("/login")
     public ApiResponse<Map<String, Object>> login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest) {
-        return ApiResponse.ok(authService.login(request.loginName(), request.password()), requestId(httpRequest));
+        return ApiResponse.ok(identityService.login(request.loginName(), request.password()), requestId(httpRequest));
     }
 
     // 这个接口返回当前登录人。
     @GetMapping("/me")
     public ApiResponse<Map<String, Object>> me(@RequestHeader("Authorization") String authorization, HttpServletRequest httpRequest) {
-        CurrentPerson person = authService.requirePerson(authorization);
-        return ApiResponse.ok(Map.of("id", person.id(), "role", person.role(), "displayName", person.displayName(), "enabled", true), requestId(httpRequest));
+        CurrentPerson person = identityService.requirePerson(authorization);
+        return ApiResponse.ok(relationshipService.viewContext(person), requestId(httpRequest));
     }
 
     private String requestId(HttpServletRequest request) {

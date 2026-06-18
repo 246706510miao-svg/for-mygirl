@@ -5,6 +5,7 @@
 ## 文档入口
 
 - docs 总入口：[docs/codex.md](./docs/codex.md)
+- 后续功能模板：[docs/future/codex.md](./docs/future/codex.md)
 - UI 页面说明：[docs/ui/codex.md](./docs/ui/codex.md)
 - UI 页面流程图：[docs/ui/页面流程图.md](./docs/ui/页面流程图.md)
 - 总架构图：[docs/架构图/01_总架构图.md](./docs/架构图/01_总架构图.md)
@@ -35,6 +36,8 @@ docker compose --profile third-container --profile app up -d --build
 
 - `third_service` 给 Python `third` 服务和 Alembic 使用。
 - `for_mygirl_app` 给 SpringBoot 后端和 Flyway 使用。
+
+后续功能按模块增加：先写 `docs/future/<功能名>.md`，再分别更新 `backend/`、`frontend/`、数据库 migration 和对应 `codex.md`。
 
 Compose 会在 `third` 容器内覆盖数据库和 Redis 地址：
 

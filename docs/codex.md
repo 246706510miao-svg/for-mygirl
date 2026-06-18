@@ -1,137 +1,87 @@
 # docs 目录 Codex 入口
 
-本文件是 `docs` 目录的总入口。Codex 需要理解项目设计、补充接口、实现业务流程、设计数据库或排查记录闭环问题时，先读这里，再进入对应子文档。
+本文件是 `docs` 目录的总入口。后续新增内容优先按 `future` 文档模板描述模块、权限、接口、数据库和排查入口；旧的活动图和 UI 原型只作为历史参考，不再作为新增功能的主要来源。
 
 ## 推荐阅读顺序
 
-1. 先读 [架构图/01_总架构图.md](架构图/01_总架构图.md)，理解用户端、管理员端、后端、数据库、AI、ASR、third workflow 和飞书的整体关系。
-2. 再读 [序列图/codex.md](序列图/codex.md)，理解前端、SpringBoot API、third、数据库和外部服务之间的调用顺序。
-3. 再读 [数据库/codex.md](数据库/codex.md)，理解核心表、状态字段、数据不变量和 API 到表的对应关系。
-4. 需要实现前后端联调或 Controller 时，读 [接口文档.md](接口文档.md)。
-5. 需要确认一次记录如何从输入走到飞书写入时，读 [活动图/整体新增记录闭环活动图_优化版.md](活动图/整体新增记录闭环活动图_优化版.md)。
-6. 需要实现用户新增记录交互时，读 [活动图/用户新增记录活动图_优化版.md](活动图/用户新增记录活动图_优化版.md)。
-7. 需要实现确认、生成 payload、校验、写入和失败重试时，读 [活动图/AI理解总结生成MCP格式活动图_优化版.md](活动图/AI理解总结生成MCP格式活动图_优化版.md) 与 [活动图/记录状态流转图_优化版.md](活动图/记录状态流转图_优化版.md)。
-8. 需要实现管理员后台、异常处理或每日内容配置时，读 [活动图/管理员相关活动图_优化版.md](活动图/管理员相关活动图_优化版.md)。
-9. 需要部署或判断边界时，读 [架构图/02_部署边界图.md](架构图/02_部署边界图.md)。
+1. 新增功能或改功能，先读 [future/codex.md](future/codex.md)，再按 [future/模板.md](future/模板.md) 写功能文档。
+2. 实现后端时读 [../backend/codex.md](../backend/codex.md)，确认功能应该落在哪个模块。
+3. 实现前端时读 [../frontend/codex.md](../frontend/codex.md)，确认 feature、API helper 和 DTO 位置。
+4. 涉及接口契约时读 [接口文档.md](接口文档.md)。
+5. 涉及表、状态、幂等和追踪 ID 时读 [数据库/codex.md](数据库/codex.md)。
+6. 排查旧记录闭环时再读 [序列图/codex.md](序列图/codex.md)、[架构图/01_总架构图.md](架构图/01_总架构图.md) 和活动图。
+
+## 当前架构口径
+
+系统按模块而不是页面拆分：
+
+| 领域 | 后端模块 | 前端 feature | 数据边界 |
+|---|---|---|---|
+| 身份和视角 | `identity` | `src/App.tsx`、`features/relationship` | `APP_PERSON.current_view_role` |
+| 用户首页和记录展示 | `user`、`record/display` | `features/record` | `DAILY_RECORD`、`RECORD_DISPLAY` |
+| 记录写入主链路 | `record/session`、`record` | `features/record` | `RECORD_SESSION`、`RECORD_MESSAGE`、`RECORD_DRAFT` |
+| 飞书同步 | `sync`、`thirdclient` | `features/ops` 触发后台动作 | `FEISHU_SYNC` |
+| 链路排查 | `trace` | `features/ops` | 业务表 + third workflow 表 |
+| 用户绑定 | `relationship` | `features/relationship` | `USER_BINDING`、`USER_PERMISSION` |
+| 背景风格 | `style` | `features/style` | `USER_STYLE` |
+| 记录评论和打分 | `comment` | `features/comment` | `RECORD_COMMENT` |
+| 积分、奖品和兑换 | `points` | `features/points` | `POINT_ACCOUNT`、`POINT_LEDGER`、`REWARD_*` |
+| 后台人员 | `ops` | `features/ops` | `OPS_AUDIT_LOG` 和被操作业务表 |
+
+## 后续新增功能方式
+
+新增功能不要先改 UI 原型或活动图，按下面顺序做：
+
+1. 复制 [future/模板.md](future/模板.md) 为 `future/<功能名>.md`。
+2. 在文档里写清楚接入模块、用户权限、前端位置、后端位置、数据库、接口、外部服务、排查入口。
+3. 如果功能跨模块，写清楚主模块和协作模块。例如“奖品权利交给对方”：主模块是 `points`，授权协作模块是 `relationship`。
+4. 再改 `backend/`、`frontend/` 和 Flyway migration。
+5. 最后更新对应 `codex.md`，让下一次 Codex 能直接知道从哪里进入。
 
 ## 目录
 
-### 数据库
+### future
 
 | 文档 | 用途 |
 |---|---|
-| [数据库/codex.md](数据库/codex.md) | 数据库模块主入口，说明表结构、记录闭环数据流、状态值、关键关系、数据不变量、API 到表的对应关系和实现提示。 |
-| [数据库/ER图.md](数据库/ER图.md) | Mermaid ER 图，描述 APP_PERSON、RECORD_SESSION、RECORD_MESSAGE、RECORD_DRAFT、DAILY_RECORD、RECORD_DISPLAY、DAILY_CONTENT、RESOURCE_FILE、FEISHU_SYNC、APP_CONFIG 等表及关系。 |
-
-### 接口
-
-| 文档 | 用途 |
-|---|---|
-| [接口文档.md](接口文档.md) | 给 Codex 和开发实现使用的前后端 API 设计，包含统一响应、鉴权、幂等字段、记录追踪、用户端接口、记录会话接口、管理员端接口、接口到表映射和 MVP 优先级。 |
+| [future/codex.md](future/codex.md) | 后续功能文档入口，说明模板使用方式、模块归属和落地检查项。 |
+| [future/模板.md](future/模板.md) | 新功能文档模板。 |
+| [future/01-优化mvp功能.md](future/01-优化mvp功能.md) | 当前手机端双向绑定 MVP，实现两个普通用户、绑定管理员视角、积分奖品、评论打分和兑换记录。 |
 
 ### 实现工程
 
 | 文档 | 用途 |
 |---|---|
-| [../backend/codex.md](../backend/codex.md) | SpringBoot 业务后端入口，说明 common、auth、record、admin、trace、thirdclient 和 Flyway 模块边界。 |
-| [../frontend/codex.md](../frontend/codex.md) | Vite React TypeScript 前端入口，说明 shared/api、shared/types、用户端、管理员端和 iPhone-first 样式边界。 |
+| [../backend/codex.md](../backend/codex.md) | SpringBoot 后端模块入口，说明 identity、record、relationship、style、comment、points、sync、trace、ops 等边界。 |
+| [../frontend/codex.md](../frontend/codex.md) | React 前端 feature 入口，说明 record、style、relationship、comment、points、ops 等边界。 |
 
-### 序列图
-
-| 文档 | 用途 |
-|---|---|
-| [序列图/codex.md](序列图/codex.md) | 序列图目录入口，说明参与方口径、设计边界和推荐阅读顺序。 |
-| [序列图/01_用户首页与最近记录序列图.md](序列图/01_用户首页与最近记录序列图.md) | 用户首页和最近记录页的查询链路，强调用户端读取本地展示数据而不是飞书。 |
-| [序列图/02_记录草稿生成序列图.md](序列图/02_记录草稿生成序列图.md) | 记录对话页从文本或语音输入、ASR、消息落库、调用 third 到生成草稿的链路。 |
-| [序列图/03_确认写入与飞书同步序列图.md](序列图/03_确认写入与飞书同步序列图.md) | 用户确认写入后的幂等、payload 生成校验、飞书同步、本地正式记录和展示数据落库链路。 |
-| [序列图/04_管理员每日内容配置序列图.md](序列图/04_管理员每日内容配置序列图.md) | 管理员保存每日内容，以及用户首页读取配置后的展示链路。 |
-| [序列图/05_管理员异常处理与重试序列图.md](序列图/05_管理员异常处理与重试序列图.md) | 管理员查看异常、重试飞书同步和修正用户端展示数据的链路。 |
-
-### 架构图
+### 接口和数据
 
 | 文档 | 用途 |
 |---|---|
-| [架构图/01_总架构图.md](架构图/01_总架构图.md) | 总体系统架构。访问设备进入 TypeScript 前端，后端为 Java Spring Boot，核心模块包括登录认证、记录业务、每日内容、展示查询和外部服务适配；本地侧包括业务数据库、外部配置、日志；外部侧包括大模型、语音识别、飞书 MCP 和飞书文档或多维表格。 |
-| [架构图/02_部署边界图.md](架构图/02_部署边界图.md) | 部署边界。用户和管理员通过域名访问公网入口，Nginx 承载前端静态文件并转发 Spring Boot 服务；服务连接数据库、外部配置、日志和外部 AI/ASR/飞书服务。 |
+| [接口文档.md](接口文档.md) | 当前前后端 API 设计，包含统一响应、鉴权、幂等字段、记录追踪、用户端接口、记录会话接口和后台接口。 |
+| [数据库/codex.md](数据库/codex.md) | 数据库模块主入口，说明核心表、状态值、数据不变量和 API 到表的对应关系。 |
+| [数据库/ER图.md](数据库/ER图.md) | Mermaid ER 图。后续新增表后需要同步更新。 |
 
-### 活动图
+### 旧流程资料
+
+这些资料仍可用于理解现有 MVP，但新增功能不优先从这里设计：
 
 | 文档 | 用途 |
 |---|---|
-| [活动图/用户新增记录活动图_优化版.md](活动图/用户新增记录活动图_优化版.md) | 用户新增记录的完整交互。覆盖文本或语音输入、语音转文字、AI 理解新增/修改/删除/补充意图、草稿预览、继续修改、放弃、确认写入、payload 校验、飞书写入、成功展示和失败提示。 |
-| [活动图/整体新增记录闭环活动图_优化版.md](活动图/整体新增记录闭环活动图_优化版.md) | 从开始记录到结束的业务闭环。重点描述 AI 维护草稿、用户确认、AI 生成 MCP payload、后端校验、飞书写入、本地展示数据保存、同步失败后重试。 |
-| [活动图/AI理解总结生成MCP格式活动图_优化版.md](活动图/AI理解总结生成MCP格式活动图_优化版.md) | 用户确认后生成飞书 MCP payload 的细节。重点包括上下文准备、字段 Schema、payload 规范、安全和结构校验、AI 修正、保存 payload 快照、写入飞书、成功或失败状态落库。 |
-| [活动图/记录状态流转图_优化版.md](活动图/记录状态流转图_优化版.md) | 记录状态机。描述 editing、previewing、confirmed、generating_payload、validating、blocked、syncing、success、sync_failed、displayed 等状态及转换。 |
-| [活动图/管理员相关活动图_优化版.md](活动图/管理员相关活动图_优化版.md) | 管理员后台流程。覆盖查看记录概览、设置每日内容、查看记录状态和同步结果、添加反馈、处理 AI 异常或飞书同步失败、重试、手动修正和忽略。 |
+| [ui/codex.md](ui/codex.md) | 静态 UI 原型说明。 |
+| [ui/页面流程图.md](ui/页面流程图.md) | 旧页面级流程。 |
+| [序列图/codex.md](序列图/codex.md) | 旧序列图目录入口。 |
+| [架构图/01_总架构图.md](架构图/01_总架构图.md) | 旧总体架构图。 |
+| [架构图/02_部署边界图.md](架构图/02_部署边界图.md) | 部署边界。 |
+| [活动图/整体新增记录闭环活动图_优化版.md](活动图/整体新增记录闭环活动图_优化版.md) | 旧记录闭环活动图。 |
+| [活动图/管理员相关活动图_优化版.md](活动图/管理员相关活动图_优化版.md) | 旧管理员流程，后续应拆成 `relationship/style/comment/points/ops`。 |
 
-## 核心设计索引
+## 排查提示
 
-### 记录闭环
-
-记录闭环的主链路是：
-
-```text
-用户输入文本或语音
-  -> AI 维护记录草稿
-  -> 用户预览并继续修改或确认
-  -> AI 生成飞书 MCP payload
-  -> 后端校验 payload
-  -> 飞书写入
-  -> 本地保存正式记录、同步状态和展示数据
-  -> 用户端最近记录展示
-```
-
-优先参考：
-
-- [活动图/整体新增记录闭环活动图_优化版.md](活动图/整体新增记录闭环活动图_优化版.md)
-- [活动图/用户新增记录活动图_优化版.md](活动图/用户新增记录活动图_优化版.md)
-- [数据库/codex.md](数据库/codex.md)
-
-### 数据落库
-
-正式记录不能只依赖飞书。用户确认后，需要本地保存：
-
-- 记录会话：`RECORD_SESSION`
-- 会话消息：`RECORD_MESSAGE`
-- 草稿版本：`RECORD_DRAFT`
-- 正式记录：`DAILY_RECORD`
-- 用户端展示数据：`RECORD_DISPLAY`
-- 飞书同步状态：`FEISHU_SYNC`
-
-优先参考：
-
-- [数据库/codex.md](数据库/codex.md)
-- [数据库/ER图.md](数据库/ER图.md)
-
-### 飞书 MCP 写入
-
-飞书写入必须经过后端校验，AI 不能直接执行外部写入。后端需要校验目标位置、字段 Schema、字段类型、必要字段、权限和内容安全。失败时不能丢本地记录，必须保存 payload 快照、错误原因和可重试状态。
-
-优先参考：
-
-- [活动图/AI理解总结生成MCP格式活动图_优化版.md](活动图/AI理解总结生成MCP格式活动图_优化版.md)
-- [活动图/记录状态流转图_优化版.md](活动图/记录状态流转图_优化版.md)
-- [数据库/codex.md](数据库/codex.md)
-
-### 管理员能力
-
-管理员后台主要负责：
-
-- 配置每日内容。
-- 查看用户记录概览、摘要、评分和同步结果。
-- 针对记录添加反馈，并影响用户最近记录展示。
-- 处理 AI 异常或飞书同步失败，包括重试、手动修正或保持异常状态。
-
-优先参考：
-
-- [活动图/管理员相关活动图_优化版.md](活动图/管理员相关活动图_优化版.md)
-- [数据库/codex.md](数据库/codex.md)
-
-## 实现时的注意事项
-
-- 用户端首页和最近记录读取本地展示数据，不直接读取飞书。
-- 每次用户输入、语音识别结果、修改指令都应保存为 `RECORD_MESSAGE`。
-- 每次 AI 生成或修改草稿都应保存为新的 `RECORD_DRAFT`，不能只覆盖旧草稿。
-- 用户确认时必须锁定明确的草稿版本，并做好幂等处理。
-- 飞书同步失败时，本地 `DAILY_RECORD`、`FEISHU_SYNC.payload_json`、错误原因和展示状态都要保留。
-- 敏感密钥不进入数据库，放环境变量或外部配置文件。
+- 用户写记录出问题：`features/record` -> `backend record/session` -> `record` -> `thirdclient` / `sync`。
+- 对方权限出问题：`features/relationship` -> `backend relationship` -> `USER_BINDING` / `USER_PERMISSION`。
+- 评论没显示：`features/comment` -> `backend comment` -> `RECORD_COMMENT`，不要查飞书。
+- 背景风格异常：`features/style` -> `backend style` -> `USER_STYLE`。
+- 积分、奖品或兑换异常：`features/points` -> `backend points` -> `POINT_LEDGER` / `REWARD_*`。
+- 后台重试或重写入异常：`features/ops` -> `backend ops` -> `trace` -> `sync` -> `thirdclient`。

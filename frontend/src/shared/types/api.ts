@@ -1,4 +1,5 @@
-export type Role = "USER" | "ADMIN";
+export type Role = "USER" | "PARTNER" | "OPS_ADMIN" | "ADMIN";
+export type ViewRole = "USER" | "BOUND_ADMIN" | "OPS_ADMIN";
 
 export interface ApiResponse<T> {
   code: string;
@@ -18,6 +19,20 @@ export interface AuthResult {
   accessToken: string;
   expiresIn: number;
   person: Person;
+}
+
+export interface BindingInfo {
+  active: boolean;
+  bindingId?: string;
+  boundUser?: Person | null;
+  permissions: string[];
+}
+
+export interface IdentityContext {
+  person: Person;
+  currentViewRole: ViewRole;
+  viewOwner: Person;
+  binding: BindingInfo;
 }
 
 export interface RecordSession {
@@ -51,6 +66,19 @@ export interface RecordDisplay {
   score?: number;
   displayStatus: string;
   adminContent?: Record<string, unknown>;
+  boundComment?: RecordComment;
+  managerComment?: string;
+  managerScore?: number;
+}
+
+export interface RecordComment {
+  id: string;
+  recordId: string;
+  authorUserId: string;
+  authorDisplayName?: string;
+  content: string;
+  score: number;
+  updatedAt?: string;
 }
 
 export interface UserHome {
@@ -79,4 +107,50 @@ export interface SendMessageResult {
   userMessage: Record<string, unknown>;
   aiMessage: Record<string, unknown>;
   draft: RecordDraft;
+}
+
+export interface PointAccount {
+  ownerUserId: string;
+  balance: number;
+  checkedInToday: boolean;
+}
+
+export interface PointSummary {
+  currentUser: PointAccount;
+  viewOwner: PointAccount;
+  currentViewRole: ViewRole;
+}
+
+export interface RewardItem {
+  id: string;
+  ownerUserId: string;
+  title: string;
+  description?: string;
+  costPoints: number;
+  status: string;
+  redeemable: boolean;
+  createdByUserId?: string;
+  redeemedAt?: string | null;
+}
+
+export interface RewardList {
+  ownerUserId: string;
+  items: RewardItem[];
+}
+
+export interface RewardRedemption {
+  id: string;
+  rewardId: string;
+  userId: string;
+  title: string;
+  description?: string;
+  costPoints: number;
+  status: string;
+  createdAt?: string;
+  notifiedAt?: string | null;
+}
+
+export interface RewardRedemptionList {
+  ownerUserId: string;
+  items: RewardRedemption[];
 }

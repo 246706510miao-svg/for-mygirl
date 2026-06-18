@@ -1,6 +1,6 @@
 # frontend 初始化说明
 
-`frontend` 是 Vite React TypeScript 前端。第一版以接口联调为主，页面内容按 `docs/接口文档.md` 的返回结构展示，详细组件和视觉内容后续补充。
+`frontend` 是 Vite React TypeScript 前端。第一版以接口联调为主，后续按 `features/record`、`features/style`、`features/relationship`、`features/comment`、`features/points`、`features/ops` 继续补充。
 
 ## 本地运行
 
@@ -37,7 +37,11 @@ npm run build
 
 ## 当前页面
 
-- 用户端：用户首页、记录输入、草稿卡片、确认写入、最近记录。
-- 管理员端：今日统计、记录列表、记录详情 JSON、记录追踪 JSON。
+- 记录端：用户首页、记录输入、草稿卡片、确认写入、最近记录。
+- 后台端：今日统计、记录列表、记录详情 JSON、记录追踪 JSON。
 
 第一版自动使用 dev 账号登录，不提供正式登录页。
+
+## 后续开发
+
+新增功能先写 `../docs/future/<功能名>.md`，再进入对应 feature。后台人员能力放 `features/ops`，绑定用户互动能力不要放进 ops。

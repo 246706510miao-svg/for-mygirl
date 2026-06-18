@@ -4,6 +4,13 @@ erDiagram
     APP_PERSON ||--o{ DAILY_RECORD : owns
     APP_PERSON ||--o{ DAILY_CONTENT : target_user
     APP_PERSON ||--o{ RESOURCE_FILE : uploads
+    APP_PERSON ||--o{ USER_BINDING : requests
+    APP_PERSON ||--o{ USER_PERMISSION : receives_permission
+    APP_PERSON ||--o| USER_STYLE : owns_style
+    APP_PERSON ||--o{ RECORD_COMMENT : writes
+    APP_PERSON ||--o| POINT_ACCOUNT : owns_points
+    APP_PERSON ||--o{ REWARD_ITEM : owns_rewards
+    APP_PERSON ||--o{ OPS_AUDIT_LOG : operates
 
     RECORD_SESSION ||--o{ RECORD_MESSAGE : contains
     RECORD_SESSION ||--o{ RECORD_DRAFT : produces
@@ -13,13 +20,19 @@ erDiagram
 
     DAILY_RECORD ||--|| RECORD_DISPLAY : has
     DAILY_RECORD ||--o{ FEISHU_SYNC : syncs
+    DAILY_RECORD ||--o{ RECORD_COMMENT : receives_comment
+    DAILY_RECORD ||--o{ POINT_LEDGER : may_source_points
 
     DAILY_CONTENT }o--o| RESOURCE_FILE : uses
     APP_CONFIG ||--o{ FEISHU_SYNC : provides_rule
+    USER_BINDING ||--o{ USER_PERMISSION : grants
+    POINT_ACCOUNT ||--o{ POINT_LEDGER : records
+    REWARD_ITEM ||--o{ REWARD_GRANT : grants
+    REWARD_ITEM ||--o{ REWARD_REDEMPTION : redeems
 
     APP_PERSON {
         string id PK
-        string role "USER or ADMIN"
+        string role "USER or PARTNER or OPS_ADMIN"
         string display_name
         boolean enabled
         datetime created_at
@@ -131,5 +144,100 @@ erDiagram
         json config_value
         boolean enabled
         datetime updated_at
+    }
+
+    USER_BINDING {
+        string id PK
+        string requester_user_id FK
+        string target_user_id FK
+        string status
+        datetime created_at
+        datetime updated_at
+    }
+
+    USER_PERMISSION {
+        string id PK
+        string binding_id FK
+        string grantee_user_id FK
+        string permission_key
+        boolean enabled
+        datetime created_at
+        datetime updated_at
+    }
+
+    USER_STYLE {
+        string id PK
+        string owner_user_id FK
+        json style_json
+        string updated_by FK
+        datetime updated_at
+    }
+
+    RECORD_COMMENT {
+        string id PK
+        string record_id FK
+        string author_user_id FK
+        text content
+        string visibility
+        datetime created_at
+    }
+
+    POINT_ACCOUNT {
+        string id PK
+        string owner_user_id FK
+        int balance
+        datetime updated_at
+    }
+
+    POINT_LEDGER {
+        string id PK
+        string account_id FK
+        string owner_user_id FK
+        int change_amount
+        string reason
+        string source_record_id FK
+        json metadata_json
+        datetime created_at
+    }
+
+    REWARD_ITEM {
+        string id PK
+        string owner_user_id FK
+        string title
+        text description
+        int cost_points
+        string status
+        datetime created_at
+        datetime updated_at
+    }
+
+    REWARD_GRANT {
+        string id PK
+        string reward_id FK
+        string from_user_id FK
+        string to_user_id FK
+        string status
+        datetime created_at
+        datetime updated_at
+    }
+
+    REWARD_REDEMPTION {
+        string id PK
+        string reward_id FK
+        string user_id FK
+        string point_ledger_id FK
+        string status
+        datetime created_at
+        datetime updated_at
+    }
+
+    OPS_AUDIT_LOG {
+        string id PK
+        string operator_id FK
+        string action
+        string target_type
+        string target_id
+        json payload_json
+        datetime created_at
     }
 ```

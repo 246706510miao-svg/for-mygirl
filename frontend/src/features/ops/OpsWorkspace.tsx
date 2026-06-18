@@ -1,44 +1,44 @@
 import { useEffect, useState } from "react";
-import { apiRequest, login } from "../../shared/api/client";
+import { fetchOpsDashboard, fetchOpsRecordDetail, fetchOpsRecords, fetchOpsRecordTrace, loginOpsUser, type OpsRecord } from "./api";
 
-// 这个组件承载管理员 PC 后台基础页面。
-export function AdminWorkspace() {
+// 这个组件承载后台运维 PC 基础页面。
+export function OpsWorkspace() {
   const [dashboard, setDashboard] = useState<Record<string, unknown>>({});
-  const [records, setRecords] = useState<Record<string, unknown>[]>([]);
+  const [records, setRecords] = useState<OpsRecord[]>([]);
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null);
   const [trace, setTrace] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
-    void bootstrapAdmin();
+    void bootstrapOps();
   }, []);
 
-  // 这个函数初始化管理员 token 和后台列表。
-  async function bootstrapAdmin() {
-    await login("admin");
-    const dashboardData = await apiRequest<Record<string, unknown>>("/api/admin/dashboard", { role: "admin" });
-    const recordData = await apiRequest<{ items: Record<string, unknown>[] }>("/api/admin/records?page=1&pageSize=20", { role: "admin" });
+  // 这个函数初始化后台人员 token 和后台列表。
+  async function bootstrapOps() {
+    await loginOpsUser();
+    const dashboardData = await fetchOpsDashboard();
+    const recordItems = await fetchOpsRecords();
     setDashboard(dashboardData);
-    setRecords(recordData.items);
+    setRecords(recordItems);
   }
 
-  // 这个函数读取管理员记录详情。
+  // 这个函数读取后台记录详情。
   async function openDetail(recordId: string) {
-    const data = await apiRequest<Record<string, unknown>>(`/api/admin/records/${recordId}`, { role: "admin" });
+    const data = await fetchOpsRecordDetail(recordId);
     setDetail(data);
     setTrace(null);
   }
 
   // 这个函数读取记录追踪。
   async function openTrace(recordId: string) {
-    const data = await apiRequest<Record<string, unknown>>(`/api/admin/records/${recordId}/trace`, { role: "admin" });
+    const data = await fetchOpsRecordTrace(recordId);
     setTrace(data);
   }
 
   return (
-    <section className="admin-layout">
+    <section className="ops-layout">
       <aside>
-        <b>Admin</b>
-        <button onClick={bootstrapAdmin}>刷新</button>
+        <b>Ops</b>
+        <button onClick={bootstrapOps}>刷新</button>
       </aside>
       <main>
         <section className="summary">

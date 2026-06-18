@@ -6,6 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class AppProperties {
     private String corsOrigin;
     private String userToken;
+    private String partnerToken;
     private String adminToken;
     private String thirdBaseUrl;
     private int thirdPollTimes;
@@ -25,6 +26,14 @@ public class AppProperties {
 
     public void setUserToken(String userToken) {
         this.userToken = userToken;
+    }
+
+    public String getPartnerToken() {
+        return partnerToken;
+    }
+
+    public void setPartnerToken(String partnerToken) {
+        this.partnerToken = partnerToken;
     }
 
     public String getAdminToken() {

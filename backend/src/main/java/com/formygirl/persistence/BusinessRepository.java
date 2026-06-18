@@ -1,4 +1,4 @@
-package com.formygirl.record;
+package com.formygirl.persistence;
 
 import com.formygirl.common.Ids;
 import com.formygirl.common.JsonSupport;
@@ -292,7 +292,7 @@ public class BusinessRepository {
         return requireSession(sessionId);
     }
 
-    // 这个函数统计管理员首页数据。
+    // 这个函数统计后台首页数据。
     public Map<String, Object> dashboard(LocalDate date) {
         Integer today = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM DAILY_RECORD WHERE record_date = ?", Integer.class, Date.valueOf(date));
         Integer abnormal = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM DAILY_RECORD WHERE status IN ('sync_failed', 'blocked')", Integer.class);
@@ -300,7 +300,7 @@ public class BusinessRepository {
         return Map.of("date", date.toString(), "todayRecordCount", safe(today), "pendingFeedbackCount", safe(pending), "abnormalCount", safe(abnormal));
     }
 
-    // 这个函数分页查询管理员记录列表。
+    // 这个函数分页查询后台记录列表。
     public List<Map<String, Object>> adminRecords(LocalDate date, String status, boolean onlyAbnormal, int page, int pageSize) {
         StringBuilder sql = new StringBuilder(
                 """
@@ -330,7 +330,7 @@ public class BusinessRepository {
         return jdbcTemplate.queryForList(sql.toString(), params.toArray());
     }
 
-    // 这个函数查询管理员记录列表总数。
+    // 这个函数查询后台记录列表总数。
     public int adminRecordCount(LocalDate date, String status, boolean onlyAbnormal) {
         StringBuilder sql = new StringBuilder("SELECT COUNT(*) FROM DAILY_RECORD WHERE 1=1");
         List<Object> params = new ArrayList<>();

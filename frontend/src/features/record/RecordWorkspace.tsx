@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { apiRequest, login } from "../../shared/api/client";
-import type { PageResult, RecordDisplay, RecordDraft, RecordSession, SendMessageResult, UserHome } from "../../shared/types/api";
+import type { RecordDisplay, RecordDraft, RecordSession, UserHome } from "../../shared/types/api";
+import { confirmRecordDraft, createRecordSession, fetchRecordHome, loginRecordUser, sendRecordMessage } from "./api";
 
-// 这个组件承载用户端 iPhone 优先页面。
-export function UserWorkspace() {
+// 这个组件承载记录主链路的 iPhone 优先页面。
+export function RecordWorkspace() {
   const [home, setHome] = useState<UserHome | null>(null);
   const [records, setRecords] = useState<RecordDisplay[]>([]);
   const [session, setSession] = useState<RecordSession | null>(null);
@@ -17,20 +17,15 @@ export function UserWorkspace() {
 
   // 这个函数初始化用户端 token 和首页数据。
   async function bootstrapUser() {
-    await login("user");
-    const homeData = await apiRequest<UserHome>("/api/user/home", { role: "user" });
-    const recordData = await apiRequest<PageResult<RecordDisplay>>("/api/user/records?page=1&pageSize=10", { role: "user" });
-    setHome(homeData);
-    setRecords(recordData.items);
+    await loginRecordUser();
+    const data = await fetchRecordHome("user");
+    setHome(data.home);
+    setRecords(data.records);
   }
 
   // 这个函数创建记录会话。
   async function startSession() {
-    const created = await apiRequest<RecordSession>("/api/record-sessions", {
-      method: "POST",
-      role: "user",
-      body: JSON.stringify({ recordDate: new Date().toISOString().slice(0, 10), source: "user_home" })
-    });
+    const created = await createRecordSession("user", new Date().toISOString().slice(0, 10));
     setSession(created);
     setDraft(null);
     setStatus("会话已创建");
@@ -40,18 +35,10 @@ export function UserWorkspace() {
   async function sendMessage() {
     let current = session;
     if (!current) {
-      current = await apiRequest<RecordSession>("/api/record-sessions", {
-        method: "POST",
-        role: "user",
-        body: JSON.stringify({ recordDate: new Date().toISOString().slice(0, 10), source: "user_home" })
-      });
+      current = await createRecordSession("user", new Date().toISOString().slice(0, 10));
     }
     setSession(current);
-    const result = await apiRequest<SendMessageResult>(`/api/record-sessions/${current.id}/messages`, {
-      method: "POST",
-      role: "user",
-      body: JSON.stringify({ clientMessageId: `cmid_${Date.now()}`, content: input })
-    });
+    const result = await sendRecordMessage("user", current.id, input);
     setSession(result.session);
     setDraft(result.draft);
     setStatus("草稿已生成");
@@ -62,14 +49,10 @@ export function UserWorkspace() {
     if (!session || !draft) {
       return;
     }
-    const result = await apiRequest<Record<string, unknown>>(`/api/record-sessions/${session.id}/confirm`, {
-      method: "POST",
-      role: "user",
-      body: JSON.stringify({ clientConfirmId: `cfid_${Date.now()}`, draftId: draft.id })
-    });
+    const result = await confirmRecordDraft("user", session.id, draft.id);
     setStatus(`确认完成：${JSON.stringify(result.record ?? {})}`);
-    const recordData = await apiRequest<PageResult<RecordDisplay>>("/api/user/records?page=1&pageSize=10", { role: "user" });
-    setRecords(recordData.items);
+    const data = await fetchRecordHome("user");
+    setRecords(data.records);
   }
 
   return (

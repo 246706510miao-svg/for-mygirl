@@ -19,6 +19,7 @@ spring:
 app:
   cors-origin: ${BACKEND_CORS_ORIGIN:http://localhost:5173}
   user-token: ${BACKEND_USER_TOKEN:dev-user-token}
+  partner-token: ${BACKEND_PARTNER_TOKEN:dev-partner-token}
   admin-token: ${BACKEND_ADMIN_TOKEN:dev-admin-token}
   third-base-url: ${THIRD_BASE_URL:http://127.0.0.1:8001}
   third-poll-times: ${THIRD_POLL_TIMES:12}

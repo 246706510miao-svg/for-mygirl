@@ -1,7 +1,7 @@
-package com.formygirl.admin;
+package com.formygirl.ops;
 
-import com.formygirl.auth.AuthService;
-import com.formygirl.auth.CurrentPerson;
+import com.formygirl.identity.CurrentPerson;
+import com.formygirl.identity.IdentityService;
 import com.formygirl.common.ApiResponse;
 import com.formygirl.common.RequestIds;
 import com.formygirl.trace.TraceService;
@@ -20,25 +20,25 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-public class AdminController {
-    private final AuthService authService;
-    private final AdminService adminService;
+public class OpsController {
+    private final IdentityService identityService;
+    private final OpsService opsService;
     private final TraceService traceService;
 
-    public AdminController(AuthService authService, AdminService adminService, TraceService traceService) {
-        this.authService = authService;
-        this.adminService = adminService;
+    public OpsController(IdentityService identityService, OpsService opsService, TraceService traceService) {
+        this.identityService = identityService;
+        this.opsService = opsService;
         this.traceService = traceService;
     }
 
-    // 这个接口返回管理员首页统计。
+    // 这个接口返回后台首页统计。
     @GetMapping("/api/admin/dashboard")
     public ApiResponse<Map<String, Object>> dashboard(@RequestHeader("Authorization") String authorization, @RequestParam(required = false) LocalDate date, HttpServletRequest request) {
-        authService.requireAdmin(authorization);
-        return ApiResponse.ok(adminService.dashboard(date == null ? LocalDate.now() : date), requestId(request));
+        identityService.requireOpsAdmin(authorization);
+        return ApiResponse.ok(opsService.dashboard(date == null ? LocalDate.now() : date), requestId(request));
     }
 
-    // 这个接口返回管理员记录列表。
+    // 这个接口返回后台记录列表。
     @GetMapping("/api/admin/records")
     public ApiResponse<Map<String, Object>> records(
             @RequestHeader("Authorization") String authorization,
@@ -49,43 +49,43 @@ public class AdminController {
             @RequestParam(defaultValue = "20") int pageSize,
             HttpServletRequest request
     ) {
-        authService.requireAdmin(authorization);
-        return ApiResponse.ok(adminService.records(date, status, onlyAbnormal, page, pageSize), requestId(request));
+        identityService.requireOpsAdmin(authorization);
+        return ApiResponse.ok(opsService.records(date, status, onlyAbnormal, page, pageSize), requestId(request));
     }
 
-    // 这个接口返回管理员记录详情。
+    // 这个接口返回后台记录详情。
     @GetMapping("/api/admin/records/{recordId}")
     public ApiResponse<Map<String, Object>> recordDetail(@RequestHeader("Authorization") String authorization, @PathVariable String recordId, HttpServletRequest request) {
-        authService.requireAdmin(authorization);
-        return ApiResponse.ok(adminService.recordDetail(recordId), requestId(request));
+        identityService.requireOpsAdmin(authorization);
+        return ApiResponse.ok(opsService.recordDetail(recordId), requestId(request));
     }
 
     // 这个接口查询每日内容配置。
     @GetMapping("/api/admin/daily-contents")
     public ApiResponse<Map<String, Object>> dailyContents(@RequestHeader("Authorization") String authorization, @RequestParam String targetUserId, @RequestParam LocalDate date, HttpServletRequest request) {
-        authService.requireAdmin(authorization);
-        return ApiResponse.ok(adminService.dailyContents(targetUserId, date), requestId(request));
+        identityService.requireOpsAdmin(authorization);
+        return ApiResponse.ok(opsService.dailyContents(targetUserId, date), requestId(request));
     }
 
     // 这个接口保存每日内容配置。
     @PutMapping("/api/admin/daily-contents")
     public ApiResponse<Map<String, Object>> saveDailyContents(@RequestHeader("Authorization") String authorization, @RequestBody SaveDailyContentRequest body, HttpServletRequest request) {
-        CurrentPerson admin = authService.requireAdmin(authorization);
-        return ApiResponse.ok(adminService.saveDailyContents(admin.id(), body.targetUserId(), body.date(), body.contents()), requestId(request));
+        CurrentPerson admin = identityService.requireOpsAdmin(authorization);
+        return ApiResponse.ok(opsService.saveDailyContents(admin.id(), body.targetUserId(), body.date(), body.contents()), requestId(request));
     }
 
     // 这个接口重试飞书同步。
     @PostMapping("/api/admin/records/{recordId}/retry-sync")
     public ApiResponse<Map<String, Object>> retrySync(@RequestHeader("Authorization") String authorization, @PathVariable String recordId, @RequestBody RetryRequest body, HttpServletRequest request) {
-        authService.requireAdmin(authorization);
-        return ApiResponse.ok(adminService.retrySync(recordId, body.mode() == null ? "reuse_payload" : body.mode(), requestId(request)), requestId(request));
+        identityService.requireOpsAdmin(authorization);
+        return ApiResponse.ok(opsService.retrySync(recordId, body.mode() == null ? "reuse_payload" : body.mode(), requestId(request)), requestId(request));
     }
 
     // 这个接口更新用户端展示数据。
     @PatchMapping("/api/admin/records/{recordId}/display")
     public ApiResponse<Map<String, Object>> updateDisplay(@RequestHeader("Authorization") String authorization, @PathVariable String recordId, @RequestBody Map<String, Object> body, HttpServletRequest request) {
-        authService.requireAdmin(authorization);
-        return ApiResponse.ok(adminService.updateDisplay(recordId, body), requestId(request));
+        identityService.requireOpsAdmin(authorization);
+        return ApiResponse.ok(opsService.updateDisplay(recordId, body), requestId(request));
     }
 
     // 这个接口按条件聚合记录追踪。
@@ -97,21 +97,21 @@ public class AdminController {
             @RequestParam(required = false) String thirdSessionId,
             HttpServletRequest request
     ) {
-        authService.requireAdmin(authorization);
+        identityService.requireOpsAdmin(authorization);
         return ApiResponse.ok(traceService.trace(sessionId, recordId, thirdSessionId), requestId(request));
     }
 
     // 这个接口按会话 ID 查询记录追踪。
     @GetMapping("/api/admin/record-sessions/{sessionId}/trace")
     public ApiResponse<Map<String, Object>> sessionTrace(@RequestHeader("Authorization") String authorization, @PathVariable String sessionId, HttpServletRequest request) {
-        authService.requireAdmin(authorization);
+        identityService.requireOpsAdmin(authorization);
         return ApiResponse.ok(traceService.trace(sessionId, null, null), requestId(request));
     }
 
     // 这个接口按正式记录 ID 查询记录追踪。
     @GetMapping("/api/admin/records/{recordId}/trace")
     public ApiResponse<Map<String, Object>> recordTrace(@RequestHeader("Authorization") String authorization, @PathVariable String recordId, HttpServletRequest request) {
-        authService.requireAdmin(authorization);
+        identityService.requireOpsAdmin(authorization);
         return ApiResponse.ok(traceService.trace(null, recordId, null), requestId(request));
     }
 

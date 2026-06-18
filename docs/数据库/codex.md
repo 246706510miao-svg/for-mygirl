@@ -20,10 +20,11 @@
 | 字段 | 说明 |
 |---|---|
 | id | 主键，人员 ID |
-| role | USER 或 ADMIN |
+| role | USER 或 OPS_ADMIN；旧 PARTNER、ADMIN 只作为兼容口径 |
 | display_name | 显示名称 |
 | enabled | 是否启用 |
 | created_at | 创建时间 |
+| current_view_role | 手机端当前视角：USER、BOUND_ADMIN；OPS_ADMIN 固定为后台人员视角 |
 
 ### RECORD_SESSION
 
@@ -223,6 +224,76 @@
 | enabled | 是否启用 |
 | updated_at | 更新时间 |
 
+### USER_BINDING
+
+保存用户之间的绑定关系。
+
+后续如果“对方可以评论、改风格、管理奖品权利”，先查绑定关系和授权，不要直接在业务模块里硬编码。
+
+### USER_PERMISSION
+
+保存绑定关系下的授权项。
+
+例如：
+
+- `comment_record`
+- `update_style`
+- `manage_reward_grant`
+
+### USER_STYLE
+
+保存用户端背景、主题和风格配置。
+
+这类数据只影响本地展示，不进入飞书同步链路。
+
+### RECORD_COMMENT
+
+保存绑定用户或本人对记录的评论。
+
+评论关联本地 `record_id` 和作者，不写飞书。
+
+V4 起保存绑定用户打分：
+
+| 字段 | 说明 |
+|---|---|
+| score | 绑定用户给记录的 0-100 分打分 |
+| updated_at | 评论或打分最近更新时间 |
+| record_id + author_user_id | 每个评论人对每条记录只有一条有效评论，重复保存走更新 |
+
+### POINT_ACCOUNT 与 POINT_LEDGER
+
+保存积分账户和积分流水。
+
+积分余额从流水归集而来，排查积分问题时优先看 `POINT_LEDGER`，不要只看余额。
+
+V4 起积分来源需要可幂等定位：
+
+| 来源 | source_type | source_key |
+|---|---|---|
+| 每日签到 | `checkin` | `checkin:<userId>:<date>` |
+| 绑定用户记录打分 | `record_score` | `record_score:<recordId>` |
+| 奖品兑换扣分 | `reward_redeem` | `reward:<rewardId>` |
+
+记录打分积分规则为 `floor((AI 分数 * 50% + 绑定用户打分 * 50%) / 10)`，单条记录最高 10 分；重复改分只按差额调整。
+
+### REWARD_ITEM、REWARD_GRANT、REWARD_REDEMPTION
+
+保存奖品、奖品权利授权和兑换记录。
+
+“把奖品权利交给对方”属于 `points` 主模块，权限校验依赖 `relationship`。
+
+V4 起 `REWARD_ITEM` 保存 `created_by_user_id` 和 `redeemed_at`。用户兑换后：
+
+- `REWARD_ITEM.status` 从 `active` 改为 `redeemed`，可兑换列表不再返回。
+- `REWARD_REDEMPTION` 记录兑换事实。
+- 绑定管理员视角通过兑换记录看到奖品已被兑换提示。
+
+### OPS_AUDIT_LOG
+
+保存后台人员的高权限操作审计。
+
+后台重试、重写入、测试类操作后续都应记录 operator、action、target 和 payload 摘要。
+
 ---
 
 ## 核心数据流
@@ -257,16 +328,22 @@ DAILY_CONTENT
 
 | 分组 | 表 | 作用 |
 |---|---|---|
-| 身份 | APP_PERSON | 保存用户、管理员等系统使用者 |
+| 身份 | APP_PERSON | 保存用户、绑定用户、后台人员等系统使用者 |
+| 绑定和授权 | USER_BINDING、USER_PERMISSION | 保存用户之间的绑定关系和授权范围 |
 | 记录过程 | RECORD_SESSION | 一次对话式记录过程 |
 | 记录过程 | RECORD_MESSAGE | 用户文本、语音识别文本、修改指令、AI 或系统消息 |
 | 记录过程 | RECORD_DRAFT | AI 每次生成或修改后的草稿版本 |
 | 正式记录 | DAILY_RECORD | 用户确认后的正式记录 |
 | 展示数据 | RECORD_DISPLAY | 用户端首页和最近记录真正读取的本地展示数据 |
 | 每日内容 | DAILY_CONTENT | 管理员配置的每日提示、主题、引导、卡片、提醒 |
+| 风格配置 | USER_STYLE | 用户端背景、主题、风格配置 |
+| 评论 | RECORD_COMMENT | 本地记录评论，不写入飞书 |
+| 积分 | POINT_ACCOUNT、POINT_LEDGER | 积分账户和流水 |
+| 奖品 | REWARD_ITEM、REWARD_GRANT、REWARD_REDEMPTION | 奖品、奖品权利授权和兑换 |
 | 资源元信息 | RESOURCE_FILE | 文件元信息；MVP 默认不做真实文件上传 |
 | 外部同步 | FEISHU_SYNC | 飞书写入 payload、同步状态、错误原因、重试次数 |
 | 非敏感配置 | APP_CONFIG | 飞书 Schema、Prompt、展示配置、MCP Payload 规范 |
+| 后台审计 | OPS_AUDIT_LOG | 后台人员测试、重试、重写入等高权限操作审计 |
 
 ## MVP 表优先级
 
@@ -281,10 +358,20 @@ DAILY_CONTENT
 - DAILY_CONTENT
 - RECORD_DISPLAY
 
+当前 01-优化 MVP 已补：
+
+- APP_PERSON.current_view_role
+- USER_BINDING、USER_PERMISSION 双向绑定种子
+- POINT_ACCOUNT、POINT_LEDGER 签到、记录打分、兑换流水
+- RECORD_COMMENT 评论和绑定用户打分
+- REWARD_ITEM 内置奖品、绑定管理员添加奖品
+- REWARD_REDEMPTION 兑换记录和绑定用户提示
+
 第二阶段或按需再补：
 
 - APP_CONFIG：当 Prompt、飞书 Schema、展示配置需要后台可维护时再落库；密钥仍然不能入库。
 - RESOURCE_FILE：ER 图里已有，但接口 MVP 暂不支持上传背景图、上传照片或长期保存语音音频；没有真实文件能力时不要提前实现复杂存储。
+- USER_STYLE、REWARD_GRANT、OPS_AUDIT_LOG：已在 Flyway V3 预留表边界；具体接口按后续 `docs/future` 文档逐步实现。
 
 ## 关键关系
 
@@ -296,6 +383,10 @@ DAILY_CONTENT
 - DAILY_RECORD 必须有本地展示数据 RECORD_DISPLAY，至少要能表达成功、失败或异常状态。
 - DAILY_RECORD 可以对应多条 FEISHU_SYNC，用于首次写入和后续重试。
 - DAILY_CONTENT 面向某个 target_user 和 content_date 生效。
+- USER_BINDING 和 USER_PERMISSION 决定绑定用户能否评论、改风格或管理奖品权利。
+- RECORD_COMMENT 只依赖本地 record_id，不进入 FEISHU_SYNC。
+- POINT_LEDGER 是积分变更事实来源，POINT_ACCOUNT.balance 只是当前余额。
+- OPS_AUDIT_LOG 只记录后台人员高权限操作，不代替业务表状态。
 
 ## 状态值基准
 

@@ -1,7 +1,7 @@
-package com.formygirl.admin;
+package com.formygirl.ops;
 
 import com.formygirl.common.JsonSupport;
-import com.formygirl.record.BusinessRepository;
+import com.formygirl.persistence.BusinessRepository;
 import com.formygirl.thirdclient.ThirdWorkflowClient;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
@@ -11,23 +11,23 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-public class AdminService {
+public class OpsService {
     private final BusinessRepository repository;
     private final ThirdWorkflowClient thirdClient;
     private final JsonSupport json;
 
-    public AdminService(BusinessRepository repository, ThirdWorkflowClient thirdClient, JsonSupport json) {
+    public OpsService(BusinessRepository repository, ThirdWorkflowClient thirdClient, JsonSupport json) {
         this.repository = repository;
         this.thirdClient = thirdClient;
         this.json = json;
     }
 
-    // 这个函数读取管理员首页统计。
+    // 这个函数读取后台首页统计。
     public Map<String, Object> dashboard(LocalDate date) {
         return repository.dashboard(date);
     }
 
-    // 这个函数查询管理员记录列表。
+    // 这个函数查询后台记录列表。
     public Map<String, Object> records(LocalDate date, String status, boolean onlyAbnormal, int page, int pageSize) {
         return Map.of(
                 "items", repository.adminRecords(date, status, onlyAbnormal, page, pageSize).stream().map(this::adminRecordDto).toList(),
@@ -37,7 +37,7 @@ public class AdminService {
         );
     }
 
-    // 这个函数查询管理员记录详情。
+    // 这个函数查询后台记录详情。
     public Map<String, Object> recordDetail(String recordId) {
         Map<String, Object> record = repository.record(recordId);
         Map<String, Object> draft = record.isEmpty() ? Map.of() : repository.draft(String.valueOf(record.get("final_draft_id")));
@@ -106,7 +106,7 @@ public class AdminService {
         ));
     }
 
-    // 这个函数转换管理员记录列表 DTO。
+    // 这个函数转换后台记录列表 DTO。
     private Map<String, Object> adminRecordDto(Map<String, Object> row) {
         return dto("recordId", row.get("record_id"), "recordDate", row.get("record_date"), "summary", row.get("summary"), "status", row.get("status"), "score", row.get("score"), "feishuSyncStatus", row.get("feishu_sync_status"), "retryCount", row.get("retry_count"), "updatedAt", row.get("updated_at"));
     }
