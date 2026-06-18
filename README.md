@@ -11,6 +11,7 @@
 - 总架构图：[docs/架构图/01_总架构图.md](./docs/架构图/01_总架构图.md)
 - 部署边界图：[docs/架构图/02_部署边界图.md](./docs/架构图/02_部署边界图.md)
 - 数据库：[docs/数据库/codex.md](./docs/数据库/codex.md)
+- 运行与刷新：[docs/运行与刷新.md](./docs/运行与刷新.md)
 - 接口文档：[docs/接口文档.md](./docs/接口文档.md)
 - 序列图：[docs/序列图/codex.md](./docs/序列图/codex.md)
 - 业务后端：[backend/codex.md](./backend/codex.md)
@@ -24,6 +25,8 @@
 ```powershell
 docker compose --profile third-container --profile app up -d --build
 ```
+
+代码改动后的刷新方式见 [docs/运行与刷新.md](./docs/运行与刷新.md)。重点：只重启容器不会把新代码打进 Docker 镜像；改 `backend/`、`frontend/` 或 migration 后，如果当前用 Docker 跑应用，需要重新 `--build` 对应服务。MySQL/Redis 默认使用 volume 保留数据，不要随手执行 `docker compose down -v`。
 
 常用地址：
 

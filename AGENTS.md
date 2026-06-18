@@ -8,7 +8,7 @@ This repository contains project documentation, a static UI prototype, and the `
 - `docs/` contains product, API, database, architecture, and activity-flow documents.
 - `docs/ui/` contains the static UI prototype: `index.html`, `app.js`, `styles.css`, and UI flow docs.
 - `third/` contains the Python workflow service, including `agents/`, `workflow/`, `Tool/`, `Prompt/`, `storage/`, `runtime/`, `migrations/`, and `tests/`.
-- `docker-compose.yml` starts local MySQL and Redis, plus optional `third` service containers.
+- `docker-compose.yml` starts MySQL, Redis, `third`, backend, and frontend profiles. Runtime refresh rules live in `docs/运行与刷新.md`.
 
 ## Build, Test, and Development Commands
 
@@ -18,6 +18,11 @@ Run commands from the repository root unless noted.
 docker compose up -d
 ```
 Starts local MySQL on `3307` and Redis on `6380`.
+
+```powershell
+docker compose --profile third-container --profile app up -d --build
+```
+Starts the full local container chain. When backend/frontend code or Flyway migrations change and the app is running in Docker, rebuild the affected service image; do not expect `restart` alone to load new code. Preserve MySQL/Redis volumes unless a data reset is explicitly intended; never use `docker compose down -v` casually.
 
 ```powershell
 Copy-Item third/.env.local.docker.example third/.env
