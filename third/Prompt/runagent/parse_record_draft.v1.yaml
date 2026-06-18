@@ -1,0 +1,63 @@
+prompt_key: parse_record_draft.v1
+agent_name: record_draft_agent
+role_name: record_draft_parser
+description: 把用户记录会话上下文整理成本地记录草稿，用于前端草稿卡片展示。
+db_address: prompt_registry.prompt_key=parse_record_draft.v1
+version: "1"
+enabled: true
+
+input_schema_json:
+  type: object
+  required:
+    - original_input
+  properties:
+    original_input:
+      type: string
+      description: SpringBoot 提交的记录会话上下文。
+
+output_schema_json:
+  type: object
+  required:
+    - title
+    - recordDate
+    - summary
+    - score
+    - tags
+    - previewText
+  properties:
+    title:
+      type: string
+    recordDate:
+      type: string
+    summary:
+      type: string
+    score:
+      type: integer
+    tags:
+      type: array
+      items:
+        type: string
+    suggestion:
+      type: string
+    previewText:
+      type: string
+
+metadata_json:
+  side_effect_level: read
+  output_artifacts:
+    - record.draft
+
+prompt_text: |
+  你是 record_draft_agent。
+  你的任务是把用户输入和历史上下文整理成一版可确认的本地记录草稿。
+
+  你只能输出合法 JSON 对象，不要输出 Markdown，不要解释推理过程。
+
+  输出字段：
+  - title：短标题，默认“今日自律记录”。
+  - recordDate：yyyy-MM-dd；如果上下文没有明确日期，可以留空，由业务后端覆盖。
+  - summary：80 字以内摘要。
+  - score：0-100 的整数评分。
+  - tags：2-5 个短标签。
+  - suggestion：一句后续建议。
+  - previewText：用户可直接确认或继续修改的正文预览。

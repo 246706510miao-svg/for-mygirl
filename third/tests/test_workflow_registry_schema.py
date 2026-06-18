@@ -53,6 +53,7 @@ class FakeConfig:
 
 
 AGENT_PROMPTS = [
+    {"prompt_key": "parse_record_draft.v1", "agent_name": "record_draft_agent"},
     {"prompt_key": "parse_feishu_record.v1", "agent_name": "business_agent"},
     {"prompt_key": "search_feishu_record.v1", "agent_name": "search_agent"},
     {"prompt_key": "parse_feishu_schema_change.v1", "agent_name": "schema_agent"},
@@ -95,6 +96,19 @@ class WorkflowRegistrySchemaTests(unittest.TestCase):
         self.assertEqual(schema_plan["template_key"], "change_schema")
         self.assertEqual(report_plan["template_key"], "change_schema")
         self.assertEqual(combo_plan["template_key"], "change_schema_then_create_record")
+
+    def test_record_draft_agent_outputs_draft_shape(self) -> None:
+        context = {
+            "original_input": "生成记录草稿：今天完成了晨间拉伸，也按时吃了早餐。",
+            "step": {"prompt_ref": "parse_record_draft.v1"},
+            "artifacts": {},
+        }
+
+        output = agent_runner.run_business_agent(context)
+
+        self.assertEqual(output["schema_json"]["type"], "record_draft")
+        self.assertIn("previewText", output["data_json"])
+        self.assertIn("draft", output["data_json"])
 
     def test_schema_agent_rule_outputs_report_schema_fields(self) -> None:
         context = {

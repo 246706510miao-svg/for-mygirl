@@ -36,7 +36,7 @@ def invoke_workflow(request: InvokeWorkflowRequest) -> WorkflowResponse:
         raise HTTPException(status_code=400, detail="content[0].text 不能为空。")
     repository = get_workflow_repository()
     runtime_store = get_workflow_runtime_store()
-    session = repository.create_session(original_input, status="queued")
+    session = repository.create_session(original_input, status="queued", metadata_json=request.metadata)
     runtime_store.enqueue_session(session["session_id"])
     return WorkflowResponse(
         session_id=session["session_id"],
@@ -94,6 +94,36 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+# 这个接口返回 workflow 追踪摘要，供业务后端关联记录追踪。
+@app.get("/internal/workflows/{session_id}/timeline")
+def internal_workflow_timeline(session_id: str) -> dict[str, Any]:
+    repository = get_workflow_repository()
+    session = repository.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail=f"workflow session 不存在：{session_id}")
+    plan = repository.get_plan(session_id)
+    steps = repository.list_steps(plan["plan_id"]) if plan else []
+    confirmations = repository.list_confirmations(session_id)
+    artifacts = repository.list_artifacts(session_id)
+    return {
+        "session": session,
+        "plan": plan,
+        "steps": steps,
+        "confirmations": confirmations,
+        "artifacts": [_artifact_preview(artifact) for artifact in artifacts],
+    }
+
+
+# 这个接口返回 workflow artifact 明细，供后端提取草稿或同步结果。
+@app.get("/internal/workflows/{session_id}/artifacts")
+def internal_workflow_artifacts(session_id: str) -> dict[str, Any]:
+    repository = get_workflow_repository()
+    session = repository.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail=f"workflow session 不存在：{session_id}")
+    return {"session_id": session_id, "artifacts": repository.list_artifacts(session_id)}
+
+
 # 这个函数读取 API 请求中的 content[0].text。
 def _request_text(content: list[Any]) -> str:
     if not content:
@@ -114,4 +144,19 @@ def _safe_confirmation(confirmation: dict[str, Any] | None) -> dict[str, Any] | 
         "confirmation_id": confirmation.get("confirmation_id"),
         "request_text": confirmation.get("request_text"),
         "preview_json": confirmation.get("preview_json") or {},
+    }
+
+
+# 这个函数压缩 artifact，避免追踪接口默认返回过大的上下文。
+def _artifact_preview(artifact: dict[str, Any]) -> dict[str, Any]:
+    content_text = str(artifact.get("content_text") or "")
+    return {
+        "artifact_id": artifact.get("artifact_id"),
+        "session_id": artifact.get("session_id"),
+        "source_step_id": artifact.get("source_step_id"),
+        "artifact_key": artifact.get("artifact_key"),
+        "content_preview": content_text[:800],
+        "data_json": artifact.get("data_json") or {},
+        "schema_json": artifact.get("schema_json") or {},
+        "created_at": artifact.get("created_at"),
     }

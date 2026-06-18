@@ -54,7 +54,13 @@ def now() -> datetime:
 # 这个基类定义 workflow runtime 需要的 Repository 能力。
 class WorkflowRepository:
     # 这个方法创建 workflow session。
-    def create_session(self, original_input: str, session_id: str | None = None, status: str = "queued") -> dict[str, Any]:
+    def create_session(
+        self,
+        original_input: str,
+        session_id: str | None = None,
+        status: str = "queued",
+        metadata_json: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         raise NotImplementedError
 
     # 这个方法读取 workflow session。
@@ -184,7 +190,13 @@ class SqlAlchemyWorkflowRepository(WorkflowRepository):
         self._session_factory = session_factory
 
     # 这个方法创建 workflow session。
-    def create_session(self, original_input: str, session_id: str | None = None, status: str = "queued") -> dict[str, Any]:
+    def create_session(
+        self,
+        original_input: str,
+        session_id: str | None = None,
+        status: str = "queued",
+        metadata_json: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         created_at = now()
         model = WorkflowSessionModel(
             session_id=session_id or new_id("sess"),
@@ -193,6 +205,7 @@ class SqlAlchemyWorkflowRepository(WorkflowRepository):
             current_step_id=None,
             final_answer=None,
             error_text=None,
+            metadata_json=to_jsonable(metadata_json or {}),
             created_at=created_at,
             updated_at=created_at,
         )
@@ -507,7 +520,13 @@ class InMemoryWorkflowRepository(WorkflowRepository):
         self.field_cache: dict[str, list[dict[str, Any]]] = {}
 
     # 这个方法创建 workflow session。
-    def create_session(self, original_input: str, session_id: str | None = None, status: str = "queued") -> dict[str, Any]:
+    def create_session(
+        self,
+        original_input: str,
+        session_id: str | None = None,
+        status: str = "queued",
+        metadata_json: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         created_at = now()
         row = {
             "session_id": session_id or new_id("sess"),
@@ -516,6 +535,7 @@ class InMemoryWorkflowRepository(WorkflowRepository):
             "current_step_id": None,
             "final_answer": None,
             "error_text": None,
+            "metadata_json": to_jsonable(metadata_json or {}),
             "created_at": created_at,
             "updated_at": created_at,
         }
@@ -804,6 +824,7 @@ def _session_to_dict(model: WorkflowSessionModel) -> dict[str, Any]:
         "current_step_id": model.current_step_id,
         "final_answer": model.final_answer,
         "error_text": model.error_text,
+        "metadata_json": model.metadata_json or {},
         "created_at": model.created_at,
         "updated_at": model.updated_at,
     }

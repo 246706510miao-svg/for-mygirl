@@ -43,6 +43,7 @@ python -m third.scripts.seed_runagent_prompts
 ## 当前 Agent
 
 - `business_agent / parse_feishu_record.v1`：把用户原话和飞书字段 schema 转成新增、更新或删除候选 payload。新增可以输出多条 `create_request.records`；更新和删除会尽量输出 `record_id` 或粗定位 `lookup.filter`。
+- `business_agent / parse_record_draft.v1`：把记录对话页的上下文整理成业务草稿，输出 `draft_json` 和 `preview_text`，供 SpringBoot 保存 `RECORD_DRAFT`。
 - `schema_agent / parse_feishu_schema_change.v1`：把用户原话和当前飞书字段 schema 转成字段变更 actions，用于新增字段、重命名字段、调整单选/多选选项、删除字段，以及把表补齐为可记录每日内容、周报、月报的统一结构。
 - `search_agent / search_feishu_record.v1`：更新或删除前读取候选记录后，根据用户原话、候选记录和已解析 payload 匹配目标 `record_id`。它只从候选记录中选择，不直接调用更新或删除 Tool。
 

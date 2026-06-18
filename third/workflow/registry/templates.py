@@ -10,11 +10,13 @@ from .tools import CHANGE_SCHEMA_TOOL, CREATE_TOOL, DELETE_TOOL, READ_SCHEMA_TOO
 
 
 PARSE_FEISHU_RECORD_PROMPT = "parse_feishu_record.v1"
+PARSE_RECORD_DRAFT_PROMPT = "parse_record_draft.v1"
 SEARCH_FEISHU_RECORD_PROMPT = "search_feishu_record.v1"
 PARSE_FEISHU_SCHEMA_CHANGE_PROMPT = "parse_feishu_schema_change.v1"
 SUMMARIZE_WORKFLOW_MISTAKE_PROMPT = "summarize_workflow_mistake.v1"
 
 READ_RECORDS_TEMPLATE = "read_records"
+RECORD_DRAFT_TEMPLATE = "record_draft"
 CREATE_RECORD_TEMPLATE = "create_record"
 UPDATE_RECORD_TEMPLATE = "update_record"
 DELETE_RECORD_TEMPLATE = "delete_record"
@@ -29,6 +31,13 @@ TEMPLATE_CATALOG: list[dict[str, Any]] = [
         "risk_level": "read",
         "purpose": "查询或读取飞书记录。",
         "step_order": ["read_records"],
+    },
+    {
+        "template_key": RECORD_DRAFT_TEMPLATE,
+        "intent": "generate_record_draft",
+        "risk_level": "read",
+        "purpose": "根据记录对话上下文生成用户可确认的本地记录草稿。",
+        "step_order": ["parse_record_draft"],
     },
     {
         "template_key": CREATE_RECORD_TEMPLATE,
@@ -106,6 +115,8 @@ TEMPLATE_CATALOG: list[dict[str, Any]] = [
 def build_plan_from_template(template_key: str, input_text: str, risk_level: str | None = None) -> dict[str, Any]:
     if template_key == READ_RECORDS_TEMPLATE:
         return _read_plan(input_text)
+    if template_key == RECORD_DRAFT_TEMPLATE:
+        return _record_draft_plan(input_text)
     if template_key == CREATE_RECORD_TEMPLATE:
         return _write_plan(input_text, CREATE_RECORD_TEMPLATE, "create_feishu_record", "write", CREATE_TOOL, "feishu.create_payload")
     if template_key == UPDATE_RECORD_TEMPLATE:
@@ -119,6 +130,32 @@ def build_plan_from_template(template_key: str, input_text: str, risk_level: str
     if template_key == REVIEW_WORKFLOW_MISTAKE_TEMPLATE:
         return _review_workflow_mistake_plan(input_text)
     raise ValueError(f"不支持的 workflow template：{template_key}")
+
+
+# 这个函数生成记录草稿 plan，供 SpringBoot 记录对话页调用。
+def _record_draft_plan(input_text: str) -> dict[str, Any]:
+    return {
+        "type": "workflow_plan",
+        "version": "workflow.v1",
+        "template_key": RECORD_DRAFT_TEMPLATE,
+        "intent": "generate_record_draft",
+        "risk_level": "read",
+        "requires_confirmation": False,
+        "original_input": input_text,
+        "steps": [
+            {
+                "step_id": "step_parse_record_draft",
+                "kind": "agent",
+                "agent_name": "record_draft_agent",
+                "prompt_ref": PARSE_RECORD_DRAFT_PROMPT,
+                "purpose": "把记录对话上下文整理成本地记录草稿",
+                "input": {"include_original_input": True},
+                "output": {"save_as": "record.draft"},
+                "validation": {"required": True},
+            }
+        ],
+        "final": {"source": "record.draft", "format": "answer"},
+    }
 
 
 # 这个函数生成读取记录的 plan。

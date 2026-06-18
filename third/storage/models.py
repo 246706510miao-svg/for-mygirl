@@ -23,6 +23,7 @@ class WorkflowSessionModel(Base):
     current_step_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     final_answer: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 

@@ -12,3 +12,9 @@ third/.env.*
 !third/.env.local.docker.example
 !third/.env.docker.mock
 !third/.env.docker.real.example
+
+backend/target/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/tsconfig.tsbuildinfo

@@ -15,6 +15,7 @@ class ContentPart(BaseModel):
 # 这个模型定义提交 workflow 的请求体。
 class InvokeWorkflowRequest(BaseModel):
     content: list[ContentPart] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 # 这个模型定义恢复确认 workflow 的请求体。

@@ -30,6 +30,7 @@ try:
         CHANGE_SCHEMA_THEN_CREATE_RECORD_TEMPLATE,
         CREATE_RECORD_TEMPLATE,
         DELETE_RECORD_TEMPLATE,
+        RECORD_DRAFT_TEMPLATE,
         READ_RECORDS_TEMPLATE,
         UPDATE_RECORD_TEMPLATE,
     )
@@ -56,6 +57,7 @@ except ImportError:
         CHANGE_SCHEMA_THEN_CREATE_RECORD_TEMPLATE,
         CREATE_RECORD_TEMPLATE,
         DELETE_RECORD_TEMPLATE,
+        RECORD_DRAFT_TEMPLATE,
         READ_RECORDS_TEMPLATE,
         UPDATE_RECORD_TEMPLATE,
     )
@@ -68,6 +70,7 @@ PARSE_FEISHU_SCHEMA_CHANGE_PROMPT = "parse_feishu_schema_change.v1"
 
 # 这一段定义规则兜底意图关键词。
 READ_KEYWORDS = ("查询", "读取", "搜索", "查找", "查", "列出", "获取", "看看", "看一下", "显示", "总结")
+DRAFT_KEYWORDS = ("生成记录草稿", "记录草稿", "草稿预览", "整理成草稿", "本地记录草稿")
 CREATE_KEYWORDS = ("新增", "添加", "创建", "写入", "写到", "写进", "保存", "存到", "同步到", "记录一下", "记一下", "记录到", "记到", "填到")
 UPDATE_KEYWORDS = ("修改", "更新", "改成", "改为", "调整")
 DELETE_KEYWORDS = ("删除", "移除", "清理")
@@ -167,6 +170,8 @@ def _rule_based_plan(input_text: str) -> dict[str, Any]:
 
 # 这个函数根据关键词识别用户目标对应的模板。
 def _detect_template(input_text: str) -> str:
+    if any(keyword in input_text for keyword in DRAFT_KEYWORDS):
+        return RECORD_DRAFT_TEMPLATE
     if _looks_like_schema_change(input_text):
         if _looks_like_record_write_after_schema(input_text):
             return CHANGE_SCHEMA_THEN_CREATE_RECORD_TEMPLATE

@@ -26,6 +26,7 @@ except ImportError:
 
 
 PARSE_FEISHU_RECORD_PROMPT = "parse_feishu_record.v1"
+PARSE_RECORD_DRAFT_PROMPT = "parse_record_draft.v1"
 SEARCH_FEISHU_RECORD_PROMPT = "search_feishu_record.v1"
 PARSE_FEISHU_SCHEMA_CHANGE_PROMPT = "parse_feishu_schema_change.v1"
 
@@ -43,6 +44,8 @@ REPORT_SCHEMA_FIELDS = [
 # 这个函数运行当前步骤指定的业务 Agent；第一版只实现飞书写入 payload 解析。
 def run_business_agent(context: dict[str, Any]) -> dict[str, Any]:
     prompt_ref = str(context.get("step", {}).get("prompt_ref") or "")
+    if prompt_ref == PARSE_RECORD_DRAFT_PROMPT:
+        return _parse_record_draft(context)
     if prompt_ref == PARSE_FEISHU_RECORD_PROMPT:
         return _parse_feishu_record(context)
     if prompt_ref == SEARCH_FEISHU_RECORD_PROMPT:
@@ -50,6 +53,39 @@ def run_business_agent(context: dict[str, Any]) -> dict[str, Any]:
     if prompt_ref == PARSE_FEISHU_SCHEMA_CHANGE_PROMPT:
         return _parse_feishu_schema_change(context)
     raise ValueError(f"当前业务 Agent 暂不支持该 prompt_ref：{prompt_ref}")
+
+
+# 这个函数把记录对话上下文整理成前端可展示的草稿结构。
+def _parse_record_draft(context: dict[str, Any]) -> dict[str, Any]:
+    original_input = str(context.get("original_input") or "").strip()
+    cleaned = _clean_record_draft_input(original_input)
+    score = _rule_score(cleaned)
+    tags = _rule_tags(cleaned)
+    title = "今日自律记录"
+    summary = _summary_from_text(cleaned)
+    data_json = {
+        "title": title,
+        "recordDate": _extract_record_date(cleaned),
+        "summary": summary,
+        "score": score,
+        "tags": tags,
+        "suggestion": "明天可以继续关注执行节奏和精力变化。",
+        "previewText": cleaned or "我整理了一版草稿，你可以继续补充今天的记录。",
+        "draft": {
+            "title": title,
+            "recordDate": _extract_record_date(cleaned),
+            "summary": summary,
+            "score": score,
+            "tags": tags,
+            "suggestion": "明天可以继续关注执行节奏和精力变化。",
+        },
+        "source": "rule",
+    }
+    return {
+        "content_text": dumps_json(data_json),
+        "data_json": data_json,
+        "schema_json": {"type": "record_draft", "source": "rule"},
+    }
 
 
 # 这个函数把用户输入转换成飞书写入类 Tool 可使用的结构化 payload。
@@ -648,3 +684,52 @@ def _operation_mapping(intent: str) -> tuple[str, str, str]:
     if intent == "update_feishu_record":
         return "update_record", UPDATE_TOOL, "update_request"
     return "create_record", CREATE_TOOL, "create_request"
+
+
+# 这个函数清理 SpringBoot 注入的草稿生成前缀，只保留用户记录上下文。
+def _clean_record_draft_input(text: str) -> str:
+    cleaned = re.sub(r"^生成记录草稿[:：]\s*", "", text.strip())
+    cleaned = re.sub(r"当前记录会话上下文[:：]\s*", "", cleaned)
+    return cleaned.strip()
+
+
+# 这个函数根据记录内容生成稳定的 MVP 评分。
+def _rule_score(text: str) -> int:
+    score = 80
+    positive_keywords = ("完成", "坚持", "按时", "阅读", "拉伸", "复盘", "整理", "计划")
+    difficult_keywords = ("累", "疲惫", "困难", "阻力", "失败")
+    score += min(15, sum(3 for keyword in positive_keywords if keyword in text))
+    score -= min(10, sum(2 for keyword in difficult_keywords if keyword in text))
+    return max(60, min(score, 98))
+
+
+# 这个函数从记录内容提取展示标签。
+def _rule_tags(text: str) -> list[str]:
+    candidates = [
+        ("阅读", "阅读"),
+        ("拉伸", "运动"),
+        ("早餐", "作息"),
+        ("按时", "作息"),
+        ("坚持", "坚持"),
+        ("复盘", "复盘"),
+        ("计划", "计划"),
+    ]
+    tags: list[str] = []
+    for keyword, tag in candidates:
+        if keyword in text and tag not in tags:
+            tags.append(tag)
+    return tags or ["记录"]
+
+
+# 这个函数生成最近记录和草稿卡片的摘要。
+def _summary_from_text(text: str) -> str:
+    if not text:
+        return "记录内容待补充。"
+    normalized = re.sub(r"\s+", " ", text).strip()
+    return normalized[:80] + ("..." if len(normalized) > 80 else "")
+
+
+# 这个函数从文本里提取 yyyy-MM-dd 日期，未提供时由业务后端覆盖。
+def _extract_record_date(text: str) -> str:
+    match = re.search(r"\d{4}-\d{2}-\d{2}", text)
+    return match.group(0) if match else ""

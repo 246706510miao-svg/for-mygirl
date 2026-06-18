@@ -5,12 +5,16 @@ x-third-common: &third-common
     context: .
     dockerfile: third/Dockerfile
   env_file:
-    - ${THIRD_ENV_FILE:-./third/.env.docker.mock}
+    - ${THIRD_ENV_FILE:-./third/.env}
   environment:
     PYTHONPATH: /app
+    THIRD_MYSQL_DSN: mysql+pymysql://third_user:third_password@mysql:3306/third_service
+    THIRD_REDIS_URL: redis://redis:6379/0
   depends_on:
     mysql:
       condition: service_healthy
+    mysql-init:
+      condition: service_completed_successfully
     redis:
       condition: service_healthy
 
@@ -32,6 +36,21 @@ services:
       timeout: 3s
       retries: 20
       start_period: 20s
+
+  mysql-init:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: third_root_password
+    depends_on:
+      mysql:
+        condition: service_healthy
+    command:
+      [
+        "sh",
+        "-c",
+        "mysql -h mysql -uroot -p$${MYSQL_ROOT_PASSWORD} -e \"CREATE DATABASE IF NOT EXISTS third_service CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; CREATE DATABASE IF NOT EXISTS for_mygirl_app CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL PRIVILEGES ON third_service.* TO 'third_user'@'%'; GRANT ALL PRIVILEGES ON for_mygirl_app.* TO 'third_user'@'%'; FLUSH PRIVILEGES;\"",
+      ]
+    restart: "no"
 
   redis:
     image: redis:7.2-alpine
@@ -62,6 +81,8 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+      mysql-init:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       third-migration:
@@ -84,10 +105,49 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+      mysql-init:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       third-migration:
         condition: service_completed_successfully
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    profiles: ["app"]
+    environment:
+      BACKEND_MYSQL_URL: jdbc:mysql://mysql:3306/for_mygirl_app?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
+      BACKEND_MYSQL_USERNAME: third_user
+      BACKEND_MYSQL_PASSWORD: third_password
+      THIRD_BASE_URL: http://third-api:8000
+      BACKEND_CORS_ORIGIN: http://localhost:5173
+      BACKEND_USER_TOKEN: dev-user-token
+      BACKEND_ADMIN_TOKEN: dev-admin-token
+    ports:
+      - "${BACKEND_HOST_PORT:-8080}:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      mysql-init:
+        condition: service_completed_successfully
+      third-api:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_BASE_URL: http://localhost:${BACKEND_HOST_PORT:-8080}
+    profiles: ["app"]
+    environment:
+      VITE_API_BASE_URL: http://localhost:${BACKEND_HOST_PORT:-8080}
+    ports:
+      - "${FRONTEND_HOST_PORT:-5173}:5173"
+    depends_on:
+      - backend
 
 volumes:
   third_mysql_data:
