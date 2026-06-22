@@ -22,5 +22,5 @@ app:
   partner-token: ${BACKEND_PARTNER_TOKEN:dev-partner-token}
   admin-token: ${BACKEND_ADMIN_TOKEN:dev-admin-token}
   third-base-url: ${THIRD_BASE_URL:http://127.0.0.1:8001}
-  third-poll-times: ${THIRD_POLL_TIMES:12}
+  third-poll-times: ${THIRD_POLL_TIMES:60}
   third-poll-interval-ms: ${THIRD_POLL_INTERVAL_MS:500}

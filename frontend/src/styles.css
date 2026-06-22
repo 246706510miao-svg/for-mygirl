@@ -723,6 +723,41 @@ textarea:focus {
   background: rgba(177, 138, 206, 0.16);
 }
 
+.third-confirm-panel {
+  display: grid;
+  gap: 12px;
+  border-radius: var(--radius-large);
+  padding: 14px;
+  border: 1px solid rgba(79, 192, 217, 0.24);
+  background: rgba(79, 192, 217, 0.12);
+}
+
+.third-confirm-panel h2 {
+  margin: 4px 0 0;
+  font-size: 1rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.third-confirm-panel pre {
+  max-height: 180px;
+  overflow: auto;
+  margin: 0;
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.22);
+  color: var(--color-text-secondary);
+  font: 0.78rem/1.45 "SFMono-Regular", Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.third-confirm-panel__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
 .draft-panel__score {
   width: fit-content;
   border-radius: 999px;

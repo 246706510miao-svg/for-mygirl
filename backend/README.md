@@ -2,6 +2,8 @@
 
 `backend` 是 SpringBoot 业务后端，面向前端提供 `/api` 接口，并通过 HTTP 调用 `third` workflow 服务。
 
+third agent-led 接入和前端字段契约见 `docs/third接入文档.md`；third 原始调用契约见 `../third/docs/外部调用契约.md`。
+
 ## 本地运行
 
 先启动 MySQL、Redis、third API 和 worker：

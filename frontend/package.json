@@ -15,7 +15,7 @@
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@use-gesture/react": "^10.3.1",
-    "@vitejs/plugin-react": "^4.3.4",
+    "@vitejs/plugin-react": "^6.0.2",
     "canvas-confetti": "^1.9.4",
     "lucide-react": "^1.21.0",
     "motion": "^12.40.0",
@@ -23,7 +23,7 @@
     "react-dom": "^18.3.1",
     "typescript": "^5.6.3",
     "vaul": "^1.1.2",
-    "vite": "^5.4.11"
+    "vite": "^8.0.16"
   },
   "devDependencies": {
     "@types/canvas-confetti": "^1.9.0",

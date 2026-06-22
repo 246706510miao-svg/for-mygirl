@@ -91,7 +91,7 @@ def build_workflow_plan(
         available_agents = agent_prompts if agent_prompts is not None else _load_agent_prompts(repository)
         if not available_agents:
             raise RuntimeError("THIRD_WORKFLOWAGENT_USE_LLM=1 但 prompt_registry 中没有启用的 runagent 提示词。")
-        return _try_llm_plan(input_text, resolved_config, available_agents)
+        return _guard_llm_plan(input_text, _try_llm_plan(input_text, resolved_config, available_agents))
     return _rule_based_plan(input_text)
 
 
@@ -184,6 +184,21 @@ def _detect_template(input_text: str) -> str:
     if intent == "create_feishu_record":
         return CREATE_RECORD_TEMPLATE
     return READ_RECORDS_TEMPLATE
+
+
+# 这个函数修正 LLM 对高置信关键词的明显误路由，仍由 workflowagent 层负责最终计划。
+def _guard_llm_plan(input_text: str, plan: dict[str, Any]) -> dict[str, Any]:
+    expected_template = _detect_template(input_text)
+    if expected_template not in {CREATE_RECORD_TEMPLATE, UPDATE_RECORD_TEMPLATE, DELETE_RECORD_TEMPLATE}:
+        return plan
+    if _looks_like_schema_change(input_text):
+        return plan
+    current_template = str(plan.get("template_key") or "")
+    current_intent = str(plan.get("intent") or "")
+    expected_intent = build_plan_from_template(expected_template, input_text)["intent"]
+    if current_template != expected_template or current_intent != expected_intent:
+        return build_plan_from_template(expected_template, input_text)
+    return plan
 
 
 def _looks_like_schema_change(input_text: str) -> bool:

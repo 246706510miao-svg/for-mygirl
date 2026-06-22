@@ -188,6 +188,13 @@ public class BusinessRepository {
         jdbcTemplate.update("UPDATE RECORD_SESSION SET status = 'confirming', current_draft_id = ?, updated_at = ? WHERE id = ?", draftId, Timestamp.valueOf(LocalDateTime.now()), sessionId);
     }
 
+    // 这个函数把等待确认的草稿恢复为可继续编辑状态。
+    public Map<String, Object> reopenDraft(String sessionId, String draftId) {
+        jdbcTemplate.update("UPDATE RECORD_DRAFT SET status = CASE WHEN id = ? THEN 'active' ELSE 'replaced' END WHERE session_id = ?", draftId, sessionId);
+        jdbcTemplate.update("UPDATE RECORD_SESSION SET status = 'previewing', current_draft_id = ?, updated_at = ? WHERE id = ?", draftId, Timestamp.valueOf(LocalDateTime.now()), sessionId);
+        return draft(draftId);
+    }
+
     // 这个函数创建正式记录。
     public Map<String, Object> insertDailyRecord(Map<String, Object> session, Map<String, Object> draft, String clientConfirmId, String thirdSessionId, String requestId, String status) {
         String id = Ids.newId("record");

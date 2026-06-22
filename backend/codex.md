@@ -7,7 +7,8 @@
 1. 新增功能先读对应 `docs/future/*.md`。
 2. 对接口不确定时读 `../docs/接口文档.md`。
 3. 对表和状态不确定时读 `../docs/数据库/codex.md` 和 Flyway migration。
-4. 对记录链路排查时读本文件的“链路定位”。
+4. 对 third 接入、确认门、前端字段不确定时读 `docs/third接入文档.md` 和 `../third/docs/外部调用契约.md`。
+5. 对记录链路排查时读本文件的“链路定位”。
 
 ## 模块划分
 
@@ -70,6 +71,7 @@
 ## 实现口径
 
 - 前端只调用 SpringBoot `/api`，不直接调用 `third`。
+- third 正式链路由 `third` 决定 workflow；后端读取 `GET /internal/workflows/{thirdSessionId}/snapshot`，再裁剪字段给前端。
 - 用户端展示以 `RECORD_DISPLAY` 和后续本地展示表为准，不直接读取飞书。
 - 评论、风格、积分和奖品是本地用户产品能力，默认不写飞书。
 - 后台人员能力放 `ops`，不要再把伴侣/绑定用户能力放进后台模块。
@@ -83,6 +85,7 @@
 
 - 后续功能模板：`../docs/future/codex.md`
 - 接口契约：`../docs/接口文档.md`
+- third 接入前端字段：`docs/third接入文档.md`
 - 数据库说明：`../docs/数据库/codex.md`
 - 前端入口：`../frontend/codex.md`
 - third 服务：`../third/codex.md`

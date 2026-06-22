@@ -147,6 +147,26 @@ class RunAgentRegistryTests(unittest.TestCase):
         self.assertIsNotNone(artifact)
         self.assertIn("tool_name", artifact["data_json"]["error_text"])
 
+    def test_executor_forces_record_draft_template_from_metadata(self) -> None:
+        repository = InMemoryWorkflowRepository()
+        session = repository.create_session(
+            "生成记录草稿：user:今天学习了线性代数，写到飞书里面去",
+            status="running",
+            metadata_json={"operation": "draft_generate"},
+        )
+
+        with patch.object(workflow_executor, "build_workflow_plan", side_effect=AssertionError("should not infer intent")), patch.object(
+            workflow_executor,
+            "load_config",
+            return_value=SimpleNamespace(workflowagent_use_llm=False, workflow_debug_log=False),
+        ):
+            result = WorkflowExecutor(repository=repository, runtime_store=InMemoryWorkflowRuntimeStore()).run_session(session["session_id"])
+
+        plan = repository.get_plan(session["session_id"])
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(plan["plan_json"]["template_key"], "record_draft")
+        self.assertEqual(plan["plan_json"]["intent"], "generate_record_draft")
+
     def test_workflowagent_prompt_includes_agent_catalog(self) -> None:
         prompt = workflowagent._append_agent_catalog(
             "base",
@@ -181,6 +201,20 @@ class RunAgentRegistryTests(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "prompt_registry"):
             workflowagent.build_workflow_plan("新增记录", config=config, agent_prompts=[])
+
+    def test_workflowagent_llm_guard_keeps_write_to_feishu_from_schema_misroute(self) -> None:
+        config = SimpleNamespace(workflowagent_use_llm=True, openai_api_key="sk-test", workflowagent_model="gpt-test")
+        schema_plan = workflowagent.build_plan_from_template(workflowagent.CHANGE_SCHEMA_TEMPLATE, "今天学习了韩语，写到飞书里面去")
+
+        with patch.object(workflowagent, "_try_llm_plan", return_value=schema_plan):
+            plan = workflowagent.build_workflow_plan(
+                "今天学习了韩语，写到飞书里面去",
+                config=config,
+                agent_prompts=[{"prompt_key": "parse_feishu_record.v1", "agent_name": "business_agent"}],
+            )
+
+        self.assertEqual(plan["template_key"], "create_record")
+        self.assertEqual(plan["intent"], "create_feishu_record")
 
     def test_rule_intent_detects_write_to_feishu(self) -> None:
         config = SimpleNamespace(workflowagent_use_llm=False)

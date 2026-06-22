@@ -3,21 +3,22 @@
 ## 阅读顺序
 
 1. `README.md`：先看模块目标、运行方式、API 和环境变量。
-2. `docs/总架构图.md`：查看 SpringBoot、third、Redis、MySQL、OpenAI、飞书之间的边界。
-3. `docs/workflow-db-er.md`：查看 MySQL 表、Redis key、字段缓存 TTL 和幂等规则。
-4. `docs/workflowagent-graph.md`：查看固定执行图、动态模板步骤和每个节点职责。
-5. `docs/能力更改方式.md`：执行 Prompt、Workflow Template、Tool 能力变更前先读。
-6. `agents/graph.py`、`workflow/executor.py`：理解 LangGraph 固定入口和 runtime 执行方式。
-7. `workflow/registry/`：查看 Tool、Agent、Workflow Template 能力目录和模板 builder。
-8. `agents/workflowagent/agent.py`、`Prompt/workflowagent.yaml`：查看 template 选择逻辑和提示词。
-9. `Prompt/runagent/`、`scripts/seed_runagent_prompts.py`：查看业务 Agent 提示词文件来源和同步到数据库的脚本。
-10. `workflow/agent_runner.py`：查看 business_agent、schema_agent、search_agent 按 `prompt_ref` 从数据库读取提示词并执行的逻辑。
-11. `Tool/`：查看飞书字段读取、字段变更、查询、新增、更新、删除 Tool。
-12. `storage/`、`runtime/`：查看 MySQL Repository 和 Redis Stream 运行态。
-13. `debug/`：查看本地调试台、运行模式体检、时间线和动态图生成。
-14. `api.py`、`worker.py`：查看 SpringBoot 后续要调用的 API 和 worker 消费入口。
-15. `../docker-compose.yml`、`.env.local.docker.example`：查看本地 MySQL/Redis Docker 验证入口。
-16. `Dockerfile`、`.env.docker.mock`：查看后续完整 third 容器部署入口。
+2. `docs/外部调用契约.md`：查看 SpringBoot、前端代理层或其他外部系统调用 third 时的请求、响应、metadata、确认门和 artifact 约定。
+3. `docs/总架构图.md`：查看 SpringBoot、third、Redis、MySQL、OpenAI、飞书之间的边界。
+4. `docs/workflow-db-er.md`：查看 MySQL 表、Redis key、字段缓存 TTL 和幂等规则。
+5. `docs/workflowagent-graph.md`：查看固定执行图、动态模板步骤和每个节点职责。
+6. `docs/能力更改方式.md`：执行 Prompt、Workflow Template、Tool 能力变更前先读。
+7. `agents/graph.py`、`workflow/executor.py`：理解 LangGraph 固定入口和 runtime 执行方式。
+8. `workflow/registry/`：查看 Tool、Agent、Workflow Template 能力目录和模板 builder。
+9. `agents/workflowagent/agent.py`、`Prompt/workflowagent.yaml`：查看 template 选择逻辑和提示词。
+10. `Prompt/runagent/`、`scripts/seed_runagent_prompts.py`：查看业务 Agent 提示词文件来源和同步到数据库的脚本。
+11. `workflow/agent_runner.py`：查看 business_agent、schema_agent、search_agent 按 `prompt_ref` 从数据库读取提示词并执行的逻辑。
+12. `Tool/`：查看飞书字段读取、字段变更、查询、新增、更新、删除 Tool。
+13. `storage/`、`runtime/`：查看 MySQL Repository 和 Redis Stream 运行态。
+14. `debug/`：查看本地调试台、运行模式体检、时间线和动态图生成。
+15. `api.py`、`worker.py`：查看 SpringBoot 后续要调用的 API 和 worker 消费入口。
+16. `../docker-compose.yml`、`.env.local.docker.example`：查看本地 MySQL/Redis Docker 验证入口。
+17. `Dockerfile`、`.env.docker.mock`：查看后续完整 third 容器部署入口。
 
 ## 目录结构
 
@@ -98,6 +99,7 @@ third/
 |   `-- versions/
 |       `-- 0001_workflow_tables.py   # workflow 首版建表 migration
 `-- docs/
+    |-- 外部调用契约.md
     |-- 总架构图.md
     |-- workflow-db-er.md
     |-- workflowagent-graph.md

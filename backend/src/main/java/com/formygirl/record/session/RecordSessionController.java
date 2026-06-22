@@ -56,6 +56,13 @@ public class RecordSessionController {
         return ApiResponse.ok(recordService.confirm(person, sessionId, body.draftId(), body.clientConfirmId(), requestId(request)), requestId(request));
     }
 
+    // 这个接口继续或取消 third 等待中的写入确认。
+    @PostMapping("/api/record-sessions/{sessionId}/confirm/resume")
+    public ApiResponse<Map<String, Object>> resumeConfirm(@RequestHeader("Authorization") String authorization, @PathVariable String sessionId, @Valid @RequestBody ResumeConfirmRequest body, HttpServletRequest request) {
+        CurrentPerson person = identityService.requirePerson(authorization);
+        return ApiResponse.ok(recordService.resumeConfirm(person, sessionId, body.draftId(), body.clientConfirmId(), body.thirdSessionId(), body.confirmationId(), body.approved(), requestId(request)), requestId(request));
+    }
+
     // 这个接口取消记录会话。
     @PostMapping("/api/record-sessions/{sessionId}/cancel")
     public ApiResponse<Map<String, Object>> cancel(@RequestHeader("Authorization") String authorization, @PathVariable String sessionId, HttpServletRequest request) {
@@ -74,5 +81,8 @@ public class RecordSessionController {
     }
 
     public record ConfirmRequest(@NotBlank String clientConfirmId, @NotBlank String draftId) {
+    }
+
+    public record ResumeConfirmRequest(String clientConfirmId, String draftId, @NotBlank String thirdSessionId, @NotBlank String confirmationId, boolean approved) {
     }
 }

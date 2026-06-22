@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { saveRecordComment } from "../features/comment/api";
 import { addReward, checkIn, fetchPointSummary, fetchRedemptions, fetchRewards, redeemReward } from "../features/points/api";
-import { confirmRecordDraft, createRecordSession, fetchBoundUserRecentRecords, fetchRecordHome, sendRecordMessage } from "../features/record/api";
+import { confirmRecordDraft, createRecordSession, fetchBoundUserRecentRecords, fetchRecordHome, resumeRecordConfirm, sendRecordMessage } from "../features/record/api";
 import { fetchIdentityContext, switchViewRole } from "../features/relationship/api";
 import { GlassScreen } from "../components/layout/GlassScreen";
 import { MobileAppShell } from "../components/layout/MobileAppShell";
@@ -15,7 +15,7 @@ import { RecordsScreen } from "../pages/RecordsScreen";
 import { AdminRewardsScreen } from "../pages/AdminRewardsScreen";
 import { AdminRecordsScreen } from "../pages/AdminRecordsScreen";
 import type { ClientRole } from "../shared/api/client";
-import type { IdentityContext, PointSummary, RecordDisplay, RecordDraft, RecordSession, RewardItem, RewardRedemption, UserHome, ViewRole } from "../shared/types/api";
+import type { ConfirmRecordResult, IdentityContext, PendingThirdConfirmation, PointSummary, RecordDisplay, RecordDraft, RecordSession, RewardItem, RewardRedemption, UserHome, ViewRole } from "../shared/types/api";
 import type { FieldKey } from "../components/records/recordFields";
 
 type Screen = "home" | "profile" | "chat" | "userRecent" | "adminRewards" | "adminRecent";
@@ -39,6 +39,12 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "操作失败";
 }
 
+// 这个函数从后端 message DTO 中取可展示文本。
+function messageContent(message: Record<string, unknown> | undefined, fallback: string) {
+  const content = message?.content;
+  return typeof content === "string" && content.trim() ? content : fallback;
+}
+
 // 这个组件编排手机端用户视角和绑定管理员视角。
 export function MobileWorkspace({ role }: MobileWorkspaceProps) {
   const toast = useToast();
@@ -53,6 +59,7 @@ export function MobileWorkspace({ role }: MobileWorkspaceProps) {
   const [selectedFields, setSelectedFields] = useState<FieldKey[]>(["recordDate", "summary", "score"]);
   const [session, setSession] = useState<RecordSession | null>(null);
   const [draft, setDraft] = useState<RecordDraft | null>(null);
+  const [pendingConfirmation, setPendingConfirmation] = useState<PendingThirdConfirmation | null>(null);
   const [chatMessages, setChatMessages] = useState<string[]>([]);
   const [chatInput, setChatInput] = useState("今天完成了晨间拉伸，也按时吃了早餐。");
   const [loading, setLoading] = useState(true);
@@ -172,7 +179,7 @@ export function MobileWorkspace({ role }: MobileWorkspaceProps) {
     });
   }
 
-  // 这个函数发送对话输入并展示草稿。
+  // 这个函数发送对话输入，并按 third 决策展示草稿、确认卡或普通回复。
   function sendChat(event: FormEvent) {
     event.preventDefault();
     const content = chatInput.trim();
@@ -187,26 +194,72 @@ export function MobileWorkspace({ role }: MobileWorkspaceProps) {
       }
       const result = await sendRecordMessage(role, current.id, content);
       setSession(result.session);
-      setDraft(result.draft);
-      setChatMessages((items) => [...items, `我：${content}`, "AI：我整理了一版草稿，你可以确认或继续修改。"]);
+      setDraft(result.draft ?? null);
+      setPendingConfirmation(result.pendingConfirmation ?? null);
+      const reply = result.pendingConfirmation
+        ? "系统：third 已生成需要确认的操作，请核对后决定是否执行。"
+        : `AI：${messageContent(result.aiMessage, result.draft ? "我整理了一版草稿，你可以确认或继续修改。" : "third workflow 已完成。")}`;
+      setChatMessages((items) => [...items, `我：${content}`, reply]);
       setChatInput("");
-      toast.success("草稿已生成");
+      if (result.pendingConfirmation) {
+        toast.info("请确认 third 操作");
+      } else if (result.draft) {
+        toast.success("草稿已生成");
+      } else {
+        toast.success("third workflow 已完成");
+      }
     });
   }
 
-  // 这个函数确认当前草稿并刷新最近记录。
+  // 这个函数处理确认成功后的本地状态刷新。
+  async function finishConfirm(result: ConfirmRecordResult) {
+    setDraft(null);
+    setSession(null);
+    setPendingConfirmation(null);
+    setChatMessages((items) => [...items, `系统：${messageContent(result.replyMessage, result.record ? "记录已保存。" : "third workflow 已完成。")}`]);
+    await loadMobileData(role);
+    if (result.record) {
+      celebrate();
+      toast.success("记录已保存");
+    } else {
+      toast.success("third workflow 已完成");
+    }
+  }
+
+  // 这个函数确认当前草稿并请求 third 生成最终写入确认。
   function confirmDraft() {
     void runAction("确认中", async () => {
       if (!session || !draft) {
         return;
       }
-      await confirmRecordDraft(role, session.id, draft.id);
-      setDraft(null);
-      setSession(null);
-      setChatMessages((items) => [...items, "系统：记录已保存。"]);
-      await loadMobileData(role);
-      celebrate();
-      toast.success("记录已保存");
+      const result = await confirmRecordDraft(role, session.id, draft.id);
+      setSession(result.session);
+      if (result.pendingConfirmation) {
+        setPendingConfirmation(result.pendingConfirmation);
+        setChatMessages((items) => [...items, "系统：请确认即将写入飞书的内容。"]);
+        toast.info("请确认写入内容");
+        return;
+      }
+      await finishConfirm(result);
+    });
+  }
+
+  // 这个函数继续或取消 third 等待中的写入确认。
+  function resolvePendingConfirmation(approved: boolean) {
+    void runAction(approved ? "写入中" : "取消中", async () => {
+      if (!session || !pendingConfirmation) {
+        return;
+      }
+      const result = await resumeRecordConfirm(role, session.id, pendingConfirmation, approved);
+      setSession(result.session);
+      if (!approved) {
+        setPendingConfirmation(null);
+        setDraft(result.draft || draft);
+        setChatMessages((items) => [...items, "系统：已取消写入，可以继续修改。"]);
+        toast.info("已取消写入");
+        return;
+      }
+      await finishConfirm(result);
     });
   }
 
@@ -244,6 +297,7 @@ export function MobileWorkspace({ role }: MobileWorkspaceProps) {
     if (!draft) {
       return;
     }
+    setPendingConfirmation(null);
     setChatInput(draft.draft.summary || draft.previewText);
     toast.info("可以继续发送补充说明");
   }
@@ -305,11 +359,14 @@ export function MobileWorkspace({ role }: MobileWorkspaceProps) {
           messages={chatMessages}
           input={chatInput}
           draft={draft}
+          pendingConfirmation={pendingConfirmation}
           busy={busy}
           onBack={() => setScreen("home")}
           onInputChange={setChatInput}
           onSend={sendChat}
           onConfirmDraft={confirmDraft}
+          onApproveConfirmation={() => resolvePendingConfirmation(true)}
+          onRejectConfirmation={() => resolvePendingConfirmation(false)}
           onEditDraft={editDraft}
           onVoice={() => toast.info("语音入口暂未接入")}
         />

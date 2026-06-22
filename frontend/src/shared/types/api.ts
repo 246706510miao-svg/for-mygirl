@@ -58,6 +58,28 @@ export interface RecordDraft {
   };
 }
 
+export interface PendingThirdConfirmation {
+  status: string;
+  thirdSessionId: string;
+  confirmationId: string;
+  requestText?: string;
+  preview: Record<string, unknown>;
+  clientConfirmId?: string;
+  draftId?: string | null;
+}
+
+export interface ConfirmRecordResult {
+  session: RecordSession;
+  pendingConfirmation?: PendingThirdConfirmation;
+  record?: Record<string, unknown>;
+  feishuSync?: Record<string, unknown>;
+  display?: Partial<RecordDisplay>;
+  replyMessage?: Record<string, unknown>;
+  status?: string;
+  thirdStatus?: string;
+  draft?: RecordDraft;
+}
+
 export interface RecordDisplay {
   recordId: string;
   recordDate?: string;
@@ -106,7 +128,9 @@ export interface SendMessageResult {
   session: RecordSession;
   userMessage: Record<string, unknown>;
   aiMessage: Record<string, unknown>;
-  draft: RecordDraft;
+  draft?: RecordDraft;
+  pendingConfirmation?: PendingThirdConfirmation;
+  thirdStatus?: string;
 }
 
 export interface PointAccount {

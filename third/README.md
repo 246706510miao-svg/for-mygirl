@@ -21,7 +21,7 @@
 - `Prompt/runagent/`：业务 Agent 提示词文件来源，执行 seed 后写入 MySQL `prompt_registry`。
 - `scripts/seed_runagent_prompts.py`：把 `Prompt/runagent/*.yaml` 覆盖同步到 `prompt_registry`。
 - `migrations/`：Alembic migration。
-- `docs/`：架构图、ER 图和流程说明。
+- `docs/`：外部调用契约、架构图、ER 图和流程说明。
 
 ## 环境变量
 
@@ -244,6 +244,8 @@ python -m third.demo --resume sess_xxx --confirmation-id confirm_xxx --approve "
 
 ## API 输入输出
 
+正式对接前先阅读 `docs/外部调用契约.md`。默认正式调用是 agent-led：外部系统把用户原始内容放入 `content[0].text`，由 workflowagent 决定查询、草稿、写入、更新、删除或改字段；SpringBoot 保存 third session 映射、转发 confirmation/resume，并优先消费 snapshot。`metadata.operation` 只用于特殊 override，普通前端消息接口不要传。
+
 提交 workflow：
 
 ```http
@@ -256,7 +258,11 @@ POST /workflows/invoke
     {
       "text": "我今早干了什么，写到飞书里"
     }
-  ]
+  ],
+  "metadata": {
+    "businessSessionId": "session_xxx",
+    "idempotencyKey": "cmid_xxx"
+  }
 }
 ```
 
@@ -281,6 +287,14 @@ POST /workflows/invoke
 ```http
 GET /workflows/{session_id}
 ```
+
+读取统一快照：
+
+```http
+GET /internal/workflows/{session_id}/snapshot
+```
+
+snapshot 返回 `session`、`decision`、`confirmation`、`outputs`、`artifactsByKey`。后端读取 `outputs.draft`、`outputs.writePayload`、`outputs.writeResult`、`outputs.finalAnswer` 等稳定字段，并把完整 JSON 保存到 trace/sync payload；前端不直接消费 third artifact key。
 
 resume 确认：
 

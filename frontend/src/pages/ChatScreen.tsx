@@ -5,18 +5,22 @@ import { ScreenHeader } from "../components/layout/ScreenHeader";
 import { ChatBubble } from "../components/chat/ChatBubble";
 import { Composer } from "../components/chat/Composer";
 import { DraftPanel } from "../components/chat/DraftPanel";
+import { ThirdConfirmationPanel } from "../components/chat/ThirdConfirmationPanel";
 import { EmptyState } from "../components/ui/EmptyState";
-import type { RecordDraft } from "../shared/types/api";
+import type { PendingThirdConfirmation, RecordDraft } from "../shared/types/api";
 
 interface ChatScreenProps {
   messages: string[];
   input: string;
   draft: RecordDraft | null;
+  pendingConfirmation: PendingThirdConfirmation | null;
   busy: boolean;
   onBack: () => void;
   onInputChange: (value: string) => void;
   onSend: (event: FormEvent) => void;
   onConfirmDraft: () => void;
+  onApproveConfirmation: () => void;
+  onRejectConfirmation: () => void;
   onEditDraft: () => void;
   onVoice: () => void;
 }
@@ -32,7 +36,23 @@ function messageType(item: string) {
 }
 
 // 这个页面承载记录对话、草稿和确认写入。
-export function ChatScreen({ messages, input, draft, busy, onBack, onInputChange, onSend, onConfirmDraft, onEditDraft, onVoice }: ChatScreenProps) {
+export function ChatScreen({
+  messages,
+  input,
+  draft,
+  pendingConfirmation,
+  busy,
+  onBack,
+  onInputChange,
+  onSend,
+  onConfirmDraft,
+  onApproveConfirmation,
+  onRejectConfirmation,
+  onEditDraft,
+  onVoice
+}: ChatScreenProps) {
+  const composerBusy = busy || Boolean(pendingConfirmation);
+
   return (
     <MobileAppShell>
       <GlassScreen className="chat-screen">
@@ -45,8 +65,9 @@ export function ChatScreen({ messages, input, draft, busy, onBack, onInputChange
             </ChatBubble>
           ))}
         </section>
-        {draft && <DraftPanel draft={draft} busy={busy} onConfirm={onConfirmDraft} onEdit={onEditDraft} />}
-        <Composer value={input} busy={busy} onChange={onInputChange} onSubmit={onSend} onVoice={onVoice} />
+        {pendingConfirmation && <ThirdConfirmationPanel confirmation={pendingConfirmation} busy={busy} onApprove={onApproveConfirmation} onReject={onRejectConfirmation} />}
+        {draft && !pendingConfirmation && <DraftPanel draft={draft} busy={busy} onConfirm={onConfirmDraft} onEdit={onEditDraft} />}
+        <Composer value={input} busy={composerBusy} onChange={onInputChange} onSubmit={onSend} onVoice={onVoice} />
       </GlassScreen>
     </MobileAppShell>
   );

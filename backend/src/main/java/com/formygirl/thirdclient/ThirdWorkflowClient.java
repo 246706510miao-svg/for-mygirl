@@ -27,9 +27,14 @@ public class ThirdWorkflowClient {
 
     // 这个函数确认 waiting_user workflow 并继续轮询。
     public Map<String, Object> resumeAndWait(String thirdSessionId, String confirmationId, String text) {
+        return resumeAndWait(thirdSessionId, confirmationId, text, true);
+    }
+
+    // 这个函数按用户选择确认或拒绝 waiting_user workflow 并继续轮询。
+    public Map<String, Object> resumeAndWait(String thirdSessionId, String confirmationId, String text, boolean approved) {
         restClient.post()
                 .uri(properties.getThirdBaseUrl() + "/workflows/{sessionId}/resume", thirdSessionId)
-                .body(Map.of("confirmation_id", confirmationId, "approved", true, "content", List.of(Map.of("text", text))))
+                .body(Map.of("confirmation_id", confirmationId, "approved", approved, "content", List.of(Map.of("text", text))))
                 .retrieve()
                 .body(Map.class);
         return waitFor(thirdSessionId);
@@ -39,6 +44,14 @@ public class ThirdWorkflowClient {
     public Map<String, Object> artifacts(String thirdSessionId) {
         return restClient.get()
                 .uri(properties.getThirdBaseUrl() + "/internal/workflows/{sessionId}/artifacts", thirdSessionId)
+                .retrieve()
+                .body(Map.class);
+    }
+
+    // 这个函数查询 workflow 统一快照，供后端按契约消费全量 JSON。
+    public Map<String, Object> snapshot(String thirdSessionId) {
+        return restClient.get()
+                .uri(properties.getThirdBaseUrl() + "/internal/workflows/{sessionId}/snapshot", thirdSessionId)
                 .retrieve()
                 .body(Map.class);
     }

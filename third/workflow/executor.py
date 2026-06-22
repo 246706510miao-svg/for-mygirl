@@ -19,7 +19,8 @@ try:
     from .plan_validator import PlanValidationError, validate_workflow_plan
     from .tool_dispatcher import dispatch_tool
     from .validation import run_validation_node
-    from .registry import WRITE_TOOLS
+    from .registry import WRITE_TOOLS, build_plan_from_template
+    from .registry.templates import RECORD_DRAFT_TEMPLATE
 except ImportError:
     from agents.shared.config import load_config
     from agents.workflowagent.agent import build_workflow_plan
@@ -31,7 +32,8 @@ except ImportError:
     from workflow.plan_validator import PlanValidationError, validate_workflow_plan
     from workflow.tool_dispatcher import dispatch_tool
     from workflow.validation import run_validation_node
-    from workflow.registry import WRITE_TOOLS
+    from workflow.registry import WRITE_TOOLS, build_plan_from_template
+    from workflow.registry.templates import RECORD_DRAFT_TEMPLATE
 
 
 # 这一段定义 workflow 执行日志，worker 和 API 都会通过标准 logging 输出。
@@ -66,7 +68,7 @@ class WorkflowExecutor:
             raise KeyError(f"workflow session 不存在：{session_id}")
         self.repository.update_session(session_id, status="running")
         try:
-            plan = self._ensure_plan(session_id, session["original_input"])
+            plan = self._ensure_plan(session_id, session)
             for _ in range(max_steps):
                 next_step = self._next_pending_step(plan["plan_id"])
                 if not next_step:
@@ -80,13 +82,15 @@ class WorkflowExecutor:
             return self.repository.get_session(session_id) or {"status": "failed", "error_text": str(exc)}
 
     # 这个方法确保 session 已经有可执行计划。
-    def _ensure_plan(self, session_id: str, original_input: str) -> dict[str, Any]:
+    def _ensure_plan(self, session_id: str, session: dict[str, Any]) -> dict[str, Any]:
         existing_plan = self.repository.get_plan(session_id)
         if existing_plan:
             return existing_plan
+        original_input = str(session.get("original_input") or "")
+        metadata = session.get("metadata_json") or {}
         config = load_config()
         agent_prompts = self.repository.list_agent_prompts(enabled_only=True) if config.workflowagent_use_llm else None
-        raw_plan = build_workflow_plan(original_input, config=config, repository=self.repository, agent_prompts=agent_prompts)
+        raw_plan = _metadata_forced_plan(original_input, metadata) or build_workflow_plan(original_input, config=config, repository=self.repository, agent_prompts=agent_prompts)
         try:
             plan = validate_workflow_plan(raw_plan, agent_prompts=agent_prompts)
         except PlanValidationError as exc:
@@ -321,6 +325,15 @@ def _validation_artifact(context: dict[str, Any]) -> dict[str, Any] | None:
             data_json = artifact.get("data_json") or {}
             if isinstance(data_json, dict) and isinstance(data_json.get("tool_input_payload"), dict):
                 return artifact
+    return None
+
+
+# 这个函数让业务后端传入的操作类型优先于 LLM 意图猜测。
+def _metadata_forced_plan(original_input: str, metadata: Any) -> dict[str, Any] | None:
+    if not isinstance(metadata, dict):
+        return None
+    if metadata.get("operation") == "draft_generate":
+        return build_plan_from_template(RECORD_DRAFT_TEMPLATE, original_input)
     return None
 
 

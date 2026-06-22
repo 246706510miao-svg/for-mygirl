@@ -1,5 +1,5 @@
 import { apiRequest, login, newClientId, type ClientRole } from "../../shared/api/client";
-import type { PageResult, RecordDisplay, RecordSession, SendMessageResult, UserHome } from "../../shared/types/api";
+import type { ConfirmRecordResult, PageResult, PendingThirdConfirmation, RecordDisplay, RecordSession, SendMessageResult, UserHome } from "../../shared/types/api";
 
 // 这个函数初始化记录模块需要的用户 token。
 export function loginRecordUser() {
@@ -45,9 +45,24 @@ export function sendRecordMessage(role: ClientRole, sessionId: string, content: 
 
 // 这个函数确认当前草稿写入。
 export function confirmRecordDraft(role: ClientRole, sessionId: string, draftId: string) {
-  return apiRequest<Record<string, unknown>>(`/api/record-sessions/${sessionId}/confirm`, {
+  return apiRequest<ConfirmRecordResult>(`/api/record-sessions/${sessionId}/confirm`, {
     method: "POST",
     role,
     body: JSON.stringify({ clientConfirmId: newClientId("cfid"), draftId })
+  });
+}
+
+// 这个函数继续或取消 third 等待中的写入确认。
+export function resumeRecordConfirm(role: ClientRole, sessionId: string, confirmation: PendingThirdConfirmation, approved: boolean) {
+  return apiRequest<ConfirmRecordResult>(`/api/record-sessions/${sessionId}/confirm/resume`, {
+    method: "POST",
+    role,
+    body: JSON.stringify({
+      clientConfirmId: confirmation.clientConfirmId,
+      draftId: confirmation.draftId,
+      thirdSessionId: confirmation.thirdSessionId,
+      confirmationId: confirmation.confirmationId,
+      approved
+    })
   });
 }

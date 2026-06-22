@@ -14,10 +14,10 @@ interface ComposerProps {
 export function Composer({ value, busy, onChange, onSubmit, onVoice }: ComposerProps) {
   return (
     <form className="composer" onSubmit={onSubmit}>
-      <Pressable className="icon-button composer__voice" onClick={onVoice} aria-label="语音输入">
+      <Pressable className="icon-button composer__voice" disabled={busy} onClick={onVoice} aria-label="语音输入">
         <Mic size={19} />
       </Pressable>
-      <input value={value} onChange={(event) => onChange(event.target.value)} placeholder="写下今天的记录" />
+      <input value={value} disabled={busy} onChange={(event) => onChange(event.target.value)} placeholder="写下今天的记录" />
       <Pressable className="composer__send" type="submit" disabled={busy || !value.trim()} aria-label="发送">
         <Send size={18} />
       </Pressable>
