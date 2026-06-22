@@ -4,7 +4,7 @@ export type ViewRole = "USER" | "BOUND_ADMIN" | "OPS_ADMIN";
 export interface ApiResponse<T> {
   code: string;
   message: string;
-  data: T;
+  data: T | null;
   requestId: string;
 }
 

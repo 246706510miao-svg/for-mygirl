@@ -1,6 +1,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
+import { AppToastProvider } from "./components/ui/Toast";
 
 const root = document.getElementById("root");
 
@@ -11,7 +12,9 @@ function mount() {
   }
   createRoot(root).render(
     <React.StrictMode>
-      <App />
+      <AppToastProvider>
+        <App />
+      </AppToastProvider>
     </React.StrictMode>
   );
 }

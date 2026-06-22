@@ -17,7 +17,7 @@ spring:
     open-in-view: false
 
 app:
-  cors-origin: ${BACKEND_CORS_ORIGIN:http://localhost:5173}
+  cors-origin: ${BACKEND_CORS_ORIGIN:http://localhost:*,http://127.0.0.1:*}
   user-token: ${BACKEND_USER_TOKEN:dev-user-token}
   partner-token: ${BACKEND_PARTNER_TOKEN:dev-partner-token}
   admin-token: ${BACKEND_ADMIN_TOKEN:dev-admin-token}

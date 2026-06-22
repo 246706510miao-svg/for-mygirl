@@ -1,5 +1,6 @@
 package com.formygirl.common;
 
+import java.util.Arrays;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -23,11 +24,22 @@ public class WebConfig {
             @Override
             public void addCorsMappings(CorsRegistry registry) {
                 registry.addMapping("/api/**")
-                        .allowedOrigins(properties.getCorsOrigin())
+                        .allowedOriginPatterns(corsOrigins(properties))
                         .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                         .allowedHeaders("*")
                         .exposedHeaders(RequestIds.HEADER);
             }
         };
+    }
+
+    // 这个函数把逗号分隔的 CORS 配置转换为 Spring 可用的 origin pattern 列表。
+    private String[] corsOrigins(AppProperties properties) {
+        if (properties.getCorsOrigin() == null || properties.getCorsOrigin().isBlank()) {
+            return new String[0];
+        }
+        return Arrays.stream(properties.getCorsOrigin().split(","))
+                .map(String::trim)
+                .filter(value -> !value.isEmpty())
+                .toArray(String[]::new);
     }
 }

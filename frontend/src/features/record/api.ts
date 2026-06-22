@@ -1,4 +1,4 @@
-import { apiRequest, login, type ClientRole } from "../../shared/api/client";
+import { apiRequest, login, newClientId, type ClientRole } from "../../shared/api/client";
 import type { PageResult, RecordDisplay, RecordSession, SendMessageResult, UserHome } from "../../shared/types/api";
 
 // 这个函数初始化记录模块需要的用户 token。
@@ -39,7 +39,7 @@ export function sendRecordMessage(role: ClientRole, sessionId: string, content: 
   return apiRequest<SendMessageResult>(`/api/record-sessions/${sessionId}/messages`, {
     method: "POST",
     role,
-    body: JSON.stringify({ clientMessageId: `cmid_${Date.now()}`, content })
+    body: JSON.stringify({ clientMessageId: newClientId("cmid"), content })
   });
 }
 
@@ -48,6 +48,6 @@ export function confirmRecordDraft(role: ClientRole, sessionId: string, draftId:
   return apiRequest<Record<string, unknown>>(`/api/record-sessions/${sessionId}/confirm`, {
     method: "POST",
     role,
-    body: JSON.stringify({ clientConfirmId: `cfid_${Date.now()}`, draftId })
+    body: JSON.stringify({ clientConfirmId: newClientId("cfid"), draftId })
   });
 }

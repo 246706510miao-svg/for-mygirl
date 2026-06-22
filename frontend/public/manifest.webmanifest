@@ -1,0 +1,10 @@
+{
+  "name": "For My Girl",
+  "short_name": "ForMyGirl",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0c1424",
+  "theme_color": "#0c1424",
+  "orientation": "portrait-primary",
+  "icons": []
+}

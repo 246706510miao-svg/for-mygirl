@@ -13,7 +13,7 @@
 
 | 模块                  | 位置                          | 作用                                                               |
 | --------------------- | ----------------------------- | ------------------------------------------------------------------ |
-| app                   | `src/App.tsx`               | 登录驱动应用壳：普通用户进入手机端双视角，`OPS_ADMIN` 进入独立后台。 |
+| app                   | `src/App.tsx`、`src/app`    | 登录分流和跨 feature 的手机端页面编排；普通用户进入手机端双视角，`OPS_ADMIN` 进入独立后台。 |
 | shared/api            | `src/shared/api`            | 统一 API client、token、`X-Request-Id` 和错误处理。              |
 | shared/types          | `src/shared/types`          | 根据接口文档维护 DTO 类型。                                        |
 | features/record       | `src/features/record`       | 记录写入主链路和最近记录 API：首页、输入、草稿、确认、本人/绑定用户最近记录。 |
@@ -29,9 +29,9 @@
 | 问题                       | 先看                         | 再看                                                             |
 | -------------------------- | ---------------------------- | ---------------------------------------------------------------- |
 | 请求失败、token、requestId | `src/shared/api/client.ts` | 浏览器 Network、后端 `common`                                  |
-| 登录后页面分流错误         | `src/App.tsx`             | `features/relationship/api.ts`、后端 `identity`              |
+| 登录后页面分流错误         | `src/App.tsx`             | `src/app/LoginScreen.tsx`、后端 `identity`                  |
 | 用户/管理员视角错误        | `features/relationship/api.ts` | 后端 `relationship`、`APP_PERSON.current_view_role`       |
-| 记录输入或确认异常         | `features/record/api.ts`   | `features/record/RecordWorkspace.tsx`、后端 `record/session` |
+| 记录输入或确认异常         | `features/record/api.ts`   | `src/app/MobileWorkspace.tsx`、后端 `record/session`       |
 | 背景风格异常               | `features/style`           | 后端 `style`、`relationship`                                 |
 | 用户绑定或授权异常         | `features/relationship`    | 后端 `relationship`                                            |
 | 评论或打分异常             | `features/comment/api.ts`  | 后端 `comment`、`points`                                      |
@@ -50,10 +50,11 @@
 
 - 当前手机端按 `docs/ui` 页面实现：登录、首页、用户/角色、对话、本人最近记录、绑定管理员积分奖品、绑定管理员最近记录。
 - 普通用户登录后默认进入手机端首页，可切换 `USER` / `BOUND_ADMIN`；`admin` 登录进入 `features/ops`。
+- `src/App.tsx` 只做登录分流；跨 `record`、`relationship`、`comment`、`points` 的手机端状态编排放 `src/app/MobileWorkspace.tsx`。
 - 后台人员页面统一叫 `ops`，即使当前接口路径仍是 `/api/admin/*`。
 - 用户端优先适配 iPhone 宽度，按钮最小高度保持 44px。
 - API 调用必须经过 `shared/api/client.ts` 和 feature `api.ts`。
-- 语音按钮和验证码当前是 UI 入口，不接真实 ASR 或验证码服务。
+- 语音按钮当前是 UI 入口，不接真实 ASR；验证码只做本地开发校验，不调用后端服务。
 - 新增 hook、API helper 和页面级函数前保留简短中文注释。
 
 ## 相关文档
@@ -62,3 +63,4 @@
 - 接口文档：`../docs/接口文档.md`
 - 后端入口：`../backend/codex.md`
 - 当前 UI 原型：`../docs/ui/codex.md`
+- 界面组件与优化说明：`界面组件与优化说明.md`

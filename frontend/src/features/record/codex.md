@@ -11,11 +11,11 @@
   - `POST /api/record-sessions`
   - `POST /api/record-sessions/{sessionId}/messages`
   - `POST /api/record-sessions/{sessionId}/confirm`
-- `RecordWorkspace.tsx` 是保留的开发薄组件；正式手机端页面状态由 `src/App.tsx` 编排。
+- `RecordWorkspace.tsx` 只保留兼容导出，正式手机端页面状态由 `src/app/MobileWorkspace.tsx` 编排。
 
 ## 排查顺序
 
-1. 页面状态：`src/App.tsx`
+1. 页面状态：`src/app/MobileWorkspace.tsx`
 2. 接口调用：`api.ts`
 3. 通用请求：`../../shared/api/client.ts`
 4. 后端入口：`backend/src/main/java/com/formygirl/record/session`
