@@ -52,7 +52,7 @@
 | 用户首页或最近记录 | `user` | `record`、`persistence` |
 | 写记录、生成草稿、确认 | `record/session` | `record`、`thirdclient`、`persistence` |
 | 飞书失败、重试、重写入 | `sync` | `ops`、`thirdclient`、`trace` |
-| 记录链路排查 | `trace` | `record`、`sync`、third workflow 表 |
+| 记录链路排查 | `trace` | `record`、`sync`、third HTTP workflow 状态 |
 | 绑定用户和权限 | `relationship` | `identity` |
 | 背景或风格异常 | `style` | `relationship` |
 | 对方评论或打分异常 | `comment` | `relationship`、`record/display` |

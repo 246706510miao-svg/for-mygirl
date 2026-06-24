@@ -33,18 +33,20 @@ docker compose --profile third-container --profile app up -d --build
 - 前端：`http://localhost:5173`
 - 后端：`http://localhost:8080`
 - third 调试台：`http://localhost:8001/debug`
-- MySQL：`127.0.0.1:3307`，包含 `third_service` 和 `for_mygirl_app` 两个逻辑库
+- MySQL：`127.0.0.1:3307`，包含 `for_mygirl_app`、`third_service` 和 `third_test` 三个逻辑库
 
 数据库边界：
 
-- `third_service` 给 Python `third` 服务和 Alembic 使用。
-- `for_mygirl_app` 给 SpringBoot 后端和 Flyway 使用。
+- `for_mygirl_app` 给 SpringBoot 后端和 Flyway 使用，账号为 `backend_user`。
+- `third_service` 是 Python `third` 的私有运行库，保存 workflow/prompt 状态，账号为 `third_user`，SpringBoot 不能直连。
+- `third_test` 只给 `third` 的真实 MySQL 集成测试使用。
 
 后续功能按模块增加：先写 `docs/future/<功能名>.md`，再分别更新 `backend/`、`frontend/`、数据库 migration 和对应 `codex.md`。
 
 Compose 会在 `third` 容器内覆盖数据库和 Redis 地址：
 
 - `THIRD_MYSQL_DSN=mysql+pymysql://third_user:third_password@mysql:3306/third_service`
+- `THIRD_TEST_MYSQL_DSN=mysql+pymysql://third_user:third_password@mysql:3306/third_test`
 - `THIRD_REDIS_URL=redis://redis:6379/0`
 
 因此 `third/.env` 可以继续保存真实 OpenAI/飞书配置；容器内部连接 MySQL/Redis 时使用 Compose 服务名，不使用宿主机 `127.0.0.1`。

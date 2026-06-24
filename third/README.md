@@ -54,6 +54,7 @@ THIRD_FINAGENT_USE_LLM=0
 
 ```env
 THIRD_MYSQL_DSN=mysql+pymysql://third_user:third_password@127.0.0.1:3307/third_service
+THIRD_TEST_MYSQL_DSN=mysql+pymysql://third_user:third_password@127.0.0.1:3307/third_test
 THIRD_REDIS_URL=redis://127.0.0.1:6380/0
 THIRD_WORKFLOW_QUEUE_NAME=third:workflow:queue
 THIRD_WORKFLOW_CONSUMER_GROUP=third-workflow-workers
@@ -186,7 +187,7 @@ docker compose down
 docker compose down -v
 ```
 
-只删除并重建 MySQL 业务库，不删除 Redis 和 Docker volume：
+只删除并重建 third 私有运行库，不删除 Redis 和 Docker volume。业务库 `for_mygirl_app` 只能由 SpringBoot 管理，不在这里操作：
 
 ```bash
 docker compose exec mysql mysql -uroot -pthird_root_password -e "DROP DATABASE IF EXISTS third_service; CREATE DATABASE third_service CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci; GRANT ALL PRIVILEGES ON third_service.* TO 'third_user'@'%'; FLUSH PRIVILEGES;"

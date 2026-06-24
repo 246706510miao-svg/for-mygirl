@@ -7,11 +7,16 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from sqlalchemy.engine import make_url
+
 
 # 这一段定义 mock 表格的默认定位信息，用于还没有接入真实飞书时继续验证 LangGraph。
 DEFAULT_APP_TOKEN = "app_mock_for_mygirl"
 DEFAULT_TABLE_ID = "tbl_mock_records"
 DEFAULT_TABLE_NAME = "项目记录"
+THIRD_ALLOWED_MYSQL_DATABASES = {"third_service", "third_test"}
+THIRD_FORBIDDEN_MYSQL_DATABASES = {"for_mygirl_app"}
+THIRD_FORBIDDEN_MYSQL_USERS = {"backend_user"}
 
 
 # 这个数据类集中管理飞书读取和 finagent LLM 所需配置，避免配置散落在各个文件里。
@@ -117,6 +122,27 @@ def load_config() -> ThirdServiceConfig:
         workflow_debug_log=_read_bool("THIRD_WORKFLOW_DEBUG_LOG", default=debug_enabled),
         feishu_field_name_map=_read_json_map("THIRD_FEISHU_FIELD_NAME_MAP"),
     )
+
+
+# 这个函数防止 third runtime、migration 和 seed 误连 SpringBoot 业务库。
+def validate_third_mysql_dsn(mysql_dsn: str) -> str:
+    if not mysql_dsn:
+        return mysql_dsn
+    try:
+        url = make_url(mysql_dsn)
+    except Exception as exc:
+        raise RuntimeError("THIRD_MYSQL_DSN 不是合法的 SQLAlchemy 数据库地址。") from exc
+
+    database_name = (url.database or "").strip()
+    username = (url.username or "").strip()
+    if username in THIRD_FORBIDDEN_MYSQL_USERS:
+        raise RuntimeError("THIRD_MYSQL_DSN 不能使用 SpringBoot 业务库账号 backend_user。")
+    if database_name in THIRD_FORBIDDEN_MYSQL_DATABASES:
+        raise RuntimeError("THIRD_MYSQL_DSN 不能连接 SpringBoot 业务库 for_mygirl_app；third 只能连接 third_service 或 third_test。")
+    if url.drivername.startswith("mysql") and database_name not in THIRD_ALLOWED_MYSQL_DATABASES:
+        allowed = "、".join(sorted(THIRD_ALLOWED_MYSQL_DATABASES))
+        raise RuntimeError(f"THIRD_MYSQL_DSN 必须连接 third 私有库：{allowed}。")
+    return mysql_dsn
 
 
 # 这个函数读取字段名映射配置，用于把项目语义字段转换成真实飞书列名。

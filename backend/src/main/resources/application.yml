@@ -6,8 +6,8 @@ spring:
     name: for-mygirl-backend
   datasource:
     url: ${BACKEND_MYSQL_URL:jdbc:mysql://127.0.0.1:3307/for_mygirl_app?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC}
-    username: ${BACKEND_MYSQL_USERNAME:third_user}
-    password: ${BACKEND_MYSQL_PASSWORD:third_password}
+    username: ${BACKEND_MYSQL_USERNAME:backend_user}
+    password: ${BACKEND_MYSQL_PASSWORD:backend_password}
   flyway:
     enabled: true
     locations: classpath:db/migration

@@ -425,7 +425,8 @@ DAILY_CONTENT
 - confirm 必须根据 `clientConfirmId` 做幂等；实现时需要在 DAILY_RECORD、RECORD_SESSION 或专门幂等记录中持久化该客户端确认 ID，并建立唯一约束。
 - 重复 confirm 不能创建多条 DAILY_RECORD，不能重复写入飞书。
 - 飞书失败不能丢本地记录，必须保存 DAILY_RECORD、FEISHU_SYNC.payload_json、错误原因和展示状态。
-- AI 生成的 MCP Payload 必须经过后端校验后才能写入 FEISHU_SYNC 并调用飞书 MCP。
+- SpringBoot 只校验业务库状态、幂等、草稿归属和落库不变量；飞书字段、schema、payload 和外部写入安全由 `third` 判断。
+- `FEISHU_SYNC` 只保存 SpringBoot 从 `third` HTTP API 取得的同步结果和快照，不直接读取 `third_service` 私有库。
 - 敏感密钥不进入 APP_CONFIG，放外部配置文件或环境变量。
 
 ## API 到表的对应关系

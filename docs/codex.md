@@ -22,7 +22,7 @@
 | 用户首页和记录展示 | `user`、`record/display` | `features/record` | `DAILY_RECORD`、`RECORD_DISPLAY` |
 | 记录写入主链路 | `record/session`、`record` | `features/record` | `RECORD_SESSION`、`RECORD_MESSAGE`、`RECORD_DRAFT` |
 | 飞书同步 | `sync`、`thirdclient` | `features/ops` 触发后台动作 | `FEISHU_SYNC` |
-| 链路排查 | `trace` | `features/ops` | 业务表 + third workflow 表 |
+| 链路排查 | `trace` | `features/ops` | 业务表 + third HTTP workflow 状态 |
 | 用户绑定 | `relationship` | `features/relationship` | `USER_BINDING`、`USER_PERMISSION` |
 | 背景风格 | `style` | `features/style` | `USER_STYLE` |
 | 记录评论和打分 | `comment` | `features/comment` | `RECORD_COMMENT` |

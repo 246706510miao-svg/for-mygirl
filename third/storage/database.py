@@ -9,9 +9,9 @@ from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 try:
-    from ..agents.shared.config import ThirdServiceConfig, load_config
+    from ..agents.shared.config import ThirdServiceConfig, load_config, validate_third_mysql_dsn
 except ImportError:
-    from agents.shared.config import ThirdServiceConfig, load_config
+    from agents.shared.config import ThirdServiceConfig, load_config, validate_third_mysql_dsn
 
 from .models import Base
 
@@ -21,7 +21,7 @@ def create_workflow_engine(config: ThirdServiceConfig | None = None) -> Engine:
     resolved_config = config or load_config()
     if not resolved_config.mysql_dsn:
         raise RuntimeError("未配置 THIRD_MYSQL_DSN，无法创建 MySQL workflow 存储。")
-    return create_engine(resolved_config.mysql_dsn, pool_pre_ping=True, future=True)
+    return create_engine(validate_third_mysql_dsn(resolved_config.mysql_dsn), pool_pre_ping=True, future=True)
 
 
 # 这个函数创建 SQLAlchemy Session 工厂，Repository 会通过它获得数据库会话。

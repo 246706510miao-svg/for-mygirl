@@ -7,7 +7,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from agents.shared.config import load_config
+from agents.shared.config import load_config, validate_third_mysql_dsn
 from storage.models import Base
 
 
@@ -26,7 +26,7 @@ def _database_url() -> str:
     service_config = load_config()
     if not service_config.mysql_dsn:
         raise RuntimeError("运行 Alembic migration 前必须配置 THIRD_MYSQL_DSN。")
-    return service_config.mysql_dsn
+    return validate_third_mysql_dsn(service_config.mysql_dsn)
 
 
 # 这个函数运行离线 migration。

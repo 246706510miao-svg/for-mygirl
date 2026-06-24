@@ -9,6 +9,7 @@ x-third-common: &third-common
   environment:
     PYTHONPATH: /app
     THIRD_MYSQL_DSN: mysql+pymysql://third_user:third_password@mysql:3306/third_service
+    THIRD_TEST_MYSQL_DSN: mysql+pymysql://third_user:third_password@mysql:3306/third_test
     THIRD_REDIS_URL: redis://redis:6379/0
   depends_on:
     mysql:
@@ -48,7 +49,7 @@ services:
       [
         "sh",
         "-c",
-        "mysql -h mysql -uroot -p$${MYSQL_ROOT_PASSWORD} -e \"CREATE DATABASE IF NOT EXISTS third_service CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; CREATE DATABASE IF NOT EXISTS for_mygirl_app CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL PRIVILEGES ON third_service.* TO 'third_user'@'%'; GRANT ALL PRIVILEGES ON for_mygirl_app.* TO 'third_user'@'%'; FLUSH PRIVILEGES;\"",
+        "mysql -h mysql -uroot -p$${MYSQL_ROOT_PASSWORD} -e \"CREATE DATABASE IF NOT EXISTS third_service CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; CREATE DATABASE IF NOT EXISTS third_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; CREATE DATABASE IF NOT EXISTS for_mygirl_app CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; CREATE USER IF NOT EXISTS 'third_user'@'%' IDENTIFIED BY 'third_password'; CREATE USER IF NOT EXISTS 'backend_user'@'%' IDENTIFIED BY 'backend_password'; REVOKE ALL PRIVILEGES, GRANT OPTION FROM 'third_user'@'%'; REVOKE ALL PRIVILEGES, GRANT OPTION FROM 'backend_user'@'%'; GRANT ALL PRIVILEGES ON third_service.* TO 'third_user'@'%'; GRANT ALL PRIVILEGES ON third_test.* TO 'third_user'@'%'; GRANT ALL PRIVILEGES ON for_mygirl_app.* TO 'backend_user'@'%'; FLUSH PRIVILEGES;\"",
       ]
     restart: "no"
 
@@ -119,8 +120,8 @@ services:
     profiles: ["app"]
     environment:
       BACKEND_MYSQL_URL: jdbc:mysql://mysql:3306/for_mygirl_app?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
-      BACKEND_MYSQL_USERNAME: third_user
-      BACKEND_MYSQL_PASSWORD: third_password
+      BACKEND_MYSQL_USERNAME: backend_user
+      BACKEND_MYSQL_PASSWORD: backend_password
       THIRD_BASE_URL: http://third-api:8000
       BACKEND_CORS_ORIGIN: http://localhost:*,http://127.0.0.1:*,http://10.*:*,http://172.*:*,http://192.168.*:*
       BACKEND_USER_TOKEN: dev-user-token

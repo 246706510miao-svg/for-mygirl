@@ -1,4 +1,6 @@
 test
+!backend/src/test/
+!backend/src/test/**
 .claude
 .idea
 .vscode
