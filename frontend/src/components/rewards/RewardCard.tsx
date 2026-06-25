@@ -28,7 +28,16 @@ export function RewardCard({ reward, canRedeem, adminMode = false, busy = false,
 
   return (
     <>
-      <Pressable className={`reward-card${redeemed ? " is-redeemed" : ""}`} onClick={() => setOpen(true)} aria-label={`查看奖品 ${reward.title}`}>
+      <Pressable
+        className={`reward-card${redeemed ? " is-redeemed" : ""}`}
+        onClick={(event) => {
+          event.currentTarget.blur();
+          setOpen(true);
+        }}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-label={`查看奖品 ${reward.title}`}
+      >
         <div className="reward-card__icon"><Gift size={20} /></div>
         <div>
           <h2>{reward.title}</h2>

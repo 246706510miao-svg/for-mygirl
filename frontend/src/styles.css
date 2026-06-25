@@ -518,15 +518,20 @@ textarea:focus {
 }
 
 .reward-card {
+  width: 100%;
   min-height: 94px;
   display: grid;
-  grid-template-columns: 42px 1fr auto;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   border-radius: var(--radius-large);
   padding: 14px;
   color: var(--color-text-primary);
   text-align: left;
+}
+
+.reward-card > div:nth-child(2) {
+  min-width: 0;
 }
 
 .reward-card__icon {
@@ -552,6 +557,7 @@ textarea:focus {
 
 .reward-card h2 {
   font-size: 17px;
+  overflow-wrap: anywhere;
 }
 
 .reward-card p,
@@ -898,17 +904,20 @@ textarea:focus {
 .bottom-sheet {
   position: fixed;
   z-index: 31;
-  left: 50%;
-  right: auto;
+  left: 0;
+  right: 0;
   bottom: 0;
   width: min(100%, 500px);
-  max-height: 100dvh;
+  max-height: calc(100dvh - env(safe-area-inset-top) - 12px);
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 14px;
   border-radius: 28px 28px 0 0;
+  margin: 0 auto;
   padding: 10px 18px calc(env(safe-area-inset-bottom) + 18px);
-  transform: translateX(-50%);
+  overflow: hidden;
   color: var(--color-text-primary);
+  outline: none;
 }
 
 .bottom-sheet__handle {
@@ -942,6 +951,13 @@ textarea:focus {
 .inline-comment-form {
   display: grid;
   gap: 12px;
+}
+
+.bottom-sheet__body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .bottom-sheet__actions {

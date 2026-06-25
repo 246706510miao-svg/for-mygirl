@@ -36,7 +36,15 @@ export function RecordCard(props: RecordCardProps) {
   const { record, onOpen } = props;
   if (onOpen) {
     return (
-      <Pressable className="record-card record-card--pressable" onClick={onOpen} aria-label={`查看记录 ${record.title || record.recordId}`}>
+      <Pressable
+        className="record-card record-card--pressable"
+        onClick={(event) => {
+          event.currentTarget.blur();
+          onOpen();
+        }}
+        aria-haspopup="dialog"
+        aria-label={`查看记录 ${record.title || record.recordId}`}
+      >
         <RecordContent {...props} />
       </Pressable>
     );

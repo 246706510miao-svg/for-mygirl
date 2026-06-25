@@ -16,14 +16,12 @@ export function BottomSheet({ open, title, description, children, actions, onOpe
     <Drawer.Root
       open={open}
       onOpenChange={onOpenChange}
-      snapPoints={[0.7, 1]}
-      fadeFromIndex={1}
-      shouldScaleBackground
+      autoFocus
       repositionInputs
     >
       <Drawer.Portal>
         <Drawer.Overlay className="sheet-overlay" />
-        <Drawer.Content className="bottom-sheet">
+        <Drawer.Content className="bottom-sheet" tabIndex={-1}>
           <Drawer.Handle className="bottom-sheet__handle" />
           <div className="bottom-sheet__header">
             <Drawer.Title>{title}</Drawer.Title>
