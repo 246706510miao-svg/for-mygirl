@@ -129,6 +129,8 @@ services:
       BACKEND_LEGACY_USER_INITIAL_PASSWORD: legacy-user-dev-password
       BACKEND_LEGACY_PARTNER_LOGIN_NAME: legacy_partner
       BACKEND_LEGACY_PARTNER_INITIAL_PASSWORD: legacy-partner-dev-password
+      BACKEND_AUTH_COOKIE_NAME: FOR_MYGIRL_SESSION
+      BACKEND_AUTH_COOKIE_SECURE: "false"
     ports:
       - "${BACKEND_HOST_PORT:-8080}:8080"
     depends_on:

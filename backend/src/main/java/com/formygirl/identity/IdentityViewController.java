@@ -9,7 +9,6 @@ import jakarta.validation.constraints.NotBlank;
 import java.util.Map;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -24,8 +23,8 @@ public class IdentityViewController {
 
     // 这个接口在用户视角和绑定管理员视角之间切换。
     @PostMapping("/api/identity/view-role")
-    public ApiResponse<Map<String, Object>> switchView(@RequestHeader("Authorization") String authorization, @Valid @RequestBody ViewRoleRequest body, HttpServletRequest request) {
-        CurrentPerson person = identityService.requirePerson(authorization);
+    public ApiResponse<Map<String, Object>> switchView(@Valid @RequestBody ViewRoleRequest body, HttpServletRequest request) {
+        CurrentPerson person = identityService.requirePerson(request);
         return ApiResponse.ok(relationshipService.switchViewRole(person, body.viewRole()), String.valueOf(request.getAttribute(RequestIds.ATTRIBUTE)));
     }
 

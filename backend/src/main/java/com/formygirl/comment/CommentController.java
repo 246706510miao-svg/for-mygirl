@@ -13,7 +13,6 @@ import java.util.Map;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -28,8 +27,8 @@ public class CommentController {
 
     // 这个接口保存绑定管理员对记录的评论和打分。
     @PostMapping("/api/records/{recordId}/comment")
-    public ApiResponse<Map<String, Object>> save(@RequestHeader("Authorization") String authorization, @PathVariable String recordId, @Valid @RequestBody CommentRequest body, HttpServletRequest request) {
-        CurrentPerson person = identityService.requirePerson(authorization);
+    public ApiResponse<Map<String, Object>> save(@PathVariable String recordId, @Valid @RequestBody CommentRequest body, HttpServletRequest request) {
+        CurrentPerson person = identityService.requirePerson(request);
         return ApiResponse.ok(commentService.save(person, recordId, body.content(), body.score()), String.valueOf(request.getAttribute(RequestIds.ATTRIBUTE)));
     }
 

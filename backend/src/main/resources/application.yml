@@ -25,6 +25,8 @@ app:
   legacy-partner-login-name: ${BACKEND_LEGACY_PARTNER_LOGIN_NAME:legacy_partner}
   legacy-partner-initial-password: ${BACKEND_LEGACY_PARTNER_INITIAL_PASSWORD:legacy-partner-dev-password}
   session-ttl-hours: ${BACKEND_SESSION_TTL_HOURS:720}
+  auth-cookie-name: ${BACKEND_AUTH_COOKIE_NAME:FOR_MYGIRL_SESSION}
+  auth-cookie-secure: ${BACKEND_AUTH_COOKIE_SECURE:false}
   third-base-url: ${THIRD_BASE_URL:http://127.0.0.1:8001}
   third-poll-times: ${THIRD_POLL_TIMES:60}
   third-poll-interval-ms: ${THIRD_POLL_INTERVAL_MS:500}

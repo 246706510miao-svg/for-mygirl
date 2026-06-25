@@ -26,7 +26,6 @@ export interface BindingInvitation {
 }
 
 export interface AuthResult {
-  accessToken: string;
   expiresIn: number;
   person: Person;
 }

@@ -1,5 +1,6 @@
 package com.formygirl.identity;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -12,10 +13,12 @@ import static org.mockito.Mockito.when;
 
 import com.formygirl.common.ApiException;
 import com.formygirl.common.AppProperties;
+import jakarta.servlet.http.Cookie;
 import java.time.LocalDateTime;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
@@ -30,14 +33,15 @@ class IdentityServiceTest {
         when(repository.insertPerson("新人")).thenReturn(Map.of("id", "person_new"));
         when(repository.insertAccount(eq("person_new"), eq("new_user"), any())).thenReturn(account("account_new", "person_new", "new_user", "新人", passwordEncoder.encode("secret123")));
 
-        Map<String, Object> result = service.register("New_User", "新人", "secret123");
+        IdentityService.AuthSession result = service.register("New_User", "新人", "secret123");
 
         ArgumentCaptor<String> hashCaptor = ArgumentCaptor.forClass(String.class);
         verify(repository).insertAccount(eq("person_new"), eq("new_user"), hashCaptor.capture());
         verify(repository).insertSession(eq("account_new"), eq("person_new"), any(), any(LocalDateTime.class));
         assertFalse("secret123".equals(hashCaptor.getValue()));
         assertTrue(passwordEncoder.matches("secret123", hashCaptor.getValue()));
-        assertFalse(String.valueOf(result.get("accessToken")).isBlank());
+        assertFalse(result.token().isBlank());
+        assertEquals(3600, result.expiresIn());
     }
 
     @Test
@@ -56,6 +60,24 @@ class IdentityServiceTest {
         verify(repository).revokeSession(service.tokenHash("token-value"));
     }
 
+    @Test
+    void requirePersonReadsCookieSession() {
+        when(repository.sessionByTokenHash(service.tokenHash("cookie-token"))).thenReturn(Map.of(
+                "person_id", "person_new",
+                "role", "USER",
+                "display_name", "新人",
+                "account_enabled", true,
+                "person_enabled", true
+        ));
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setCookies(new Cookie("FOR_MYGIRL_SESSION", "cookie-token"));
+
+        CurrentPerson person = service.requirePerson(request);
+
+        assertEquals("person_new", person.id());
+        assertEquals("USER", person.role());
+    }
+
     private Map<String, Object> account(String accountId, String personId, String loginName, String displayName, String passwordHash) {
         return Map.of(
                 "id", accountId,
@@ -72,6 +94,7 @@ class IdentityServiceTest {
     private AppProperties properties() {
         AppProperties properties = new AppProperties();
         properties.setSessionTtlHours(1);
+        properties.setAuthCookieName("FOR_MYGIRL_SESSION");
         return properties;
     }
 }

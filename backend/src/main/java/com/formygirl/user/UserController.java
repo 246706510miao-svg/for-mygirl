@@ -10,7 +10,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDate;
 import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -28,22 +27,21 @@ public class UserController {
 
     // 这个接口返回登录用户首页所需数据。
     @GetMapping("/api/user/home")
-    public ApiResponse<Map<String, Object>> home(@RequestHeader("Authorization") String authorization, @RequestParam(required = false) LocalDate date, HttpServletRequest request) {
-        CurrentPerson person = identityService.requirePerson(authorization);
+    public ApiResponse<Map<String, Object>> home(@RequestParam(required = false) LocalDate date, HttpServletRequest request) {
+        CurrentPerson person = identityService.requirePerson(request);
         return ApiResponse.ok(recordService.home(person, date == null ? LocalDate.now() : date), requestId(request));
     }
 
     // 这个接口返回登录用户最近记录列表。
     @GetMapping("/api/user/records")
     public ApiResponse<Map<String, Object>> records(
-            @RequestHeader("Authorization") String authorization,
             @RequestParam(required = false) LocalDate fromDate,
             @RequestParam(required = false) LocalDate toDate,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int pageSize,
             HttpServletRequest request
     ) {
-        CurrentPerson person = identityService.requirePerson(authorization);
+        CurrentPerson person = identityService.requirePerson(request);
         LocalDate end = toDate == null ? LocalDate.now() : toDate;
         LocalDate start = fromDate == null ? end.minusDays(30) : fromDate;
         return ApiResponse.ok(recordService.userRecords(person, start, end, page, pageSize), requestId(request));
@@ -52,14 +50,13 @@ public class UserController {
     // 这个接口返回当前用户自己的最近记录。
     @GetMapping("/api/records/recent")
     public ApiResponse<Map<String, Object>> recentRecords(
-            @RequestHeader("Authorization") String authorization,
             @RequestParam(required = false) LocalDate fromDate,
             @RequestParam(required = false) LocalDate toDate,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int pageSize,
             HttpServletRequest request
     ) {
-        CurrentPerson person = identityService.requirePerson(authorization);
+        CurrentPerson person = identityService.requirePerson(request);
         LocalDate end = toDate == null ? LocalDate.now() : toDate;
         LocalDate start = fromDate == null ? end.minusDays(30) : fromDate;
         return ApiResponse.ok(recordService.recordsForOwner(person.id(), start, end, page, pageSize), requestId(request));
@@ -68,14 +65,13 @@ public class UserController {
     // 这个接口返回绑定用户的最近记录。
     @GetMapping("/api/bound-user/records/recent")
     public ApiResponse<Map<String, Object>> boundUserRecentRecords(
-            @RequestHeader("Authorization") String authorization,
             @RequestParam(required = false) LocalDate fromDate,
             @RequestParam(required = false) LocalDate toDate,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int pageSize,
             HttpServletRequest request
     ) {
-        CurrentPerson person = identityService.requirePerson(authorization);
+        CurrentPerson person = identityService.requirePerson(request);
         String ownerUserId = relationshipService.requireBoundAdminTarget(person);
         LocalDate end = toDate == null ? LocalDate.now() : toDate;
         LocalDate start = fromDate == null ? end.minusDays(30) : fromDate;

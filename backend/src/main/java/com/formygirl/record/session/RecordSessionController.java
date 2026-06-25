@@ -14,7 +14,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -29,44 +28,44 @@ public class RecordSessionController {
 
     // 这个接口创建记录会话。
     @PostMapping("/api/record-sessions")
-    public ApiResponse<Map<String, Object>> createSession(@RequestHeader("Authorization") String authorization, @RequestBody CreateSessionRequest body, HttpServletRequest request) {
-        CurrentPerson person = identityService.requirePerson(authorization);
+    public ApiResponse<Map<String, Object>> createSession(@RequestBody CreateSessionRequest body, HttpServletRequest request) {
+        CurrentPerson person = identityService.requirePerson(request);
         LocalDate recordDate = body.recordDate() == null ? LocalDate.now() : body.recordDate();
         return ApiResponse.created(recordService.createSession(person, recordDate, requestId(request), body.feishuTableConfigId()), requestId(request));
     }
 
     // 这个接口发送文本消息或修改指令。
     @PostMapping("/api/record-sessions/{sessionId}/messages")
-    public ApiResponse<Map<String, Object>> sendMessage(@RequestHeader("Authorization") String authorization, @PathVariable String sessionId, @Valid @RequestBody SendMessageRequest body, HttpServletRequest request) {
-        CurrentPerson person = identityService.requirePerson(authorization);
+    public ApiResponse<Map<String, Object>> sendMessage(@PathVariable String sessionId, @Valid @RequestBody SendMessageRequest body, HttpServletRequest request) {
+        CurrentPerson person = identityService.requirePerson(request);
         return ApiResponse.ok(recordService.sendMessage(person, sessionId, body.clientMessageId(), body.content(), requestId(request)), requestId(request));
     }
 
     // 这个接口查询记录会话详情。
     @GetMapping("/api/record-sessions/{sessionId}")
-    public ApiResponse<Map<String, Object>> session(@RequestHeader("Authorization") String authorization, @PathVariable String sessionId, HttpServletRequest request) {
-        identityService.requirePerson(authorization);
+    public ApiResponse<Map<String, Object>> session(@PathVariable String sessionId, HttpServletRequest request) {
+        identityService.requirePerson(request);
         return ApiResponse.ok(recordService.sessionDetail(sessionId), requestId(request));
     }
 
     // 这个接口确认写入记录。
     @PostMapping("/api/record-sessions/{sessionId}/confirm")
-    public ApiResponse<Map<String, Object>> confirm(@RequestHeader("Authorization") String authorization, @PathVariable String sessionId, @Valid @RequestBody ConfirmRequest body, HttpServletRequest request) {
-        CurrentPerson person = identityService.requirePerson(authorization);
+    public ApiResponse<Map<String, Object>> confirm(@PathVariable String sessionId, @Valid @RequestBody ConfirmRequest body, HttpServletRequest request) {
+        CurrentPerson person = identityService.requirePerson(request);
         return ApiResponse.ok(recordService.confirm(person, sessionId, body.draftId(), body.clientConfirmId(), requestId(request)), requestId(request));
     }
 
     // 这个接口继续或取消 third 等待中的写入确认。
     @PostMapping("/api/record-sessions/{sessionId}/confirm/resume")
-    public ApiResponse<Map<String, Object>> resumeConfirm(@RequestHeader("Authorization") String authorization, @PathVariable String sessionId, @Valid @RequestBody ResumeConfirmRequest body, HttpServletRequest request) {
-        CurrentPerson person = identityService.requirePerson(authorization);
+    public ApiResponse<Map<String, Object>> resumeConfirm(@PathVariable String sessionId, @Valid @RequestBody ResumeConfirmRequest body, HttpServletRequest request) {
+        CurrentPerson person = identityService.requirePerson(request);
         return ApiResponse.ok(recordService.resumeConfirm(person, sessionId, body.draftId(), body.clientConfirmId(), body.thirdSessionId(), body.confirmationId(), body.approved(), requestId(request)), requestId(request));
     }
 
     // 这个接口取消记录会话。
     @PostMapping("/api/record-sessions/{sessionId}/cancel")
-    public ApiResponse<Map<String, Object>> cancel(@RequestHeader("Authorization") String authorization, @PathVariable String sessionId, HttpServletRequest request) {
-        CurrentPerson person = identityService.requirePerson(authorization);
+    public ApiResponse<Map<String, Object>> cancel(@PathVariable String sessionId, HttpServletRequest request) {
+        CurrentPerson person = identityService.requirePerson(request);
         return ApiResponse.ok(recordService.cancel(person, sessionId), requestId(request));
     }
 

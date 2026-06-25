@@ -12,6 +12,8 @@ public class AppProperties {
     private String legacyPartnerLoginName;
     private String legacyPartnerInitialPassword;
     private int sessionTtlHours;
+    private String authCookieName;
+    private boolean authCookieSecure;
     private String thirdBaseUrl;
     private int thirdPollTimes;
     private long thirdPollIntervalMs;
@@ -78,6 +80,22 @@ public class AppProperties {
 
     public void setSessionTtlHours(int sessionTtlHours) {
         this.sessionTtlHours = sessionTtlHours;
+    }
+
+    public String getAuthCookieName() {
+        return authCookieName;
+    }
+
+    public void setAuthCookieName(String authCookieName) {
+        this.authCookieName = authCookieName;
+    }
+
+    public boolean isAuthCookieSecure() {
+        return authCookieSecure;
+    }
+
+    public void setAuthCookieSecure(boolean authCookieSecure) {
+        this.authCookieSecure = authCookieSecure;
     }
 
     public String getThirdBaseUrl() {

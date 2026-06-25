@@ -3,9 +3,9 @@ import type { ApiResponse, AuthResult, IdentityContext, Role } from "../types/ap
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || defaultApiBaseUrl()).replace(/\/$/, "");
 const SUCCESS_CODES = new Set(["OK", "CREATED"]);
 export type ClientRole = "user" | "partner" | "ops";
-const AUTH_TOKEN_KEY = "for-mygirl.authToken";
+const LEGACY_AUTH_TOKEN_KEY = "for-mygirl.authToken";
 
-let authToken = storedToken();
+clearLegacyStoredToken();
 
 // 这个函数生成未显式配置时的 API 地址：开发走 Vite 代理，静态包按当前主机推导后端端口。
 function defaultApiBaseUrl() {
@@ -31,6 +31,17 @@ export class ApiRequestError extends Error {
   }
 }
 
+// 这个函数清掉旧版本保存在 localStorage 里的明文 token。
+function clearLegacyStoredToken() {
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.removeItem(LEGACY_AUTH_TOKEN_KEY);
+    }
+  } catch {
+    // 某些隐私模式可能禁止 localStorage，忽略即可。
+  }
+}
+
 // 这个函数生成前端幂等 ID。
 export function newClientId(prefix: string) {
   const random = typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -42,33 +53,6 @@ export function newClientId(prefix: string) {
 // 这个函数生成前端请求追踪 ID。
 export function newRequestId() {
   return newClientId("req");
-}
-
-// 这个函数保存当前真实登录会话 token。
-export function setToken(role: ClientRole, token: string) {
-  void role;
-  setAuthToken(token);
-}
-
-// 这个函数读取当前真实登录会话 token。
-export function getToken(role?: ClientRole) {
-  void role;
-  return authToken;
-}
-
-export function setAuthToken(token: string) {
-  authToken = token;
-  if (typeof localStorage !== "undefined") {
-    if (token) {
-      localStorage.setItem(AUTH_TOKEN_KEY, token);
-    } else {
-      localStorage.removeItem(AUTH_TOKEN_KEY);
-    }
-  }
-}
-
-export function clearAuthToken() {
-  setAuthToken("");
 }
 
 // 这个函数拼接 API 地址，未配置 base URL 时使用当前前端源的相对路径。
@@ -110,7 +94,7 @@ function roleFromResult(auth: AuthResult): ClientRole {
   return "user";
 }
 
-// 这个函数封装后端统一响应和错误处理。
+// 这个函数封装后端统一响应和错误处理，浏览器登录态由 HttpOnly Cookie 自动携带。
 export async function apiRequest<T>(path: string, options: RequestInit & { role?: ClientRole; skipAuth?: boolean } = {}): Promise<T> {
   const headers = new Headers(options.headers);
   headers.set("Accept", "application/json");
@@ -118,10 +102,7 @@ export async function apiRequest<T>(path: string, options: RequestInit & { role?
     headers.set("Content-Type", "application/json");
   }
   headers.set("X-Request-Id", newRequestId());
-  if (!options.skipAuth && authToken) {
-    headers.set("Authorization", `Bearer ${authToken}`);
-  }
-  const response = await fetch(apiUrl(path), { ...options, headers });
+  const response = await fetch(apiUrl(path), { ...options, credentials: "include", headers });
   const payload = await parsePayload<T>(response);
   if (!payload) {
     throw new ApiRequestError(response.statusText || "后端响应为空", `HTTP_${response.status}`, "", response.status, null);
@@ -132,7 +113,7 @@ export async function apiRequest<T>(path: string, options: RequestInit & { role?
   return payload.data as T;
 }
 
-// 这个函数按登录表单账号登录并缓存 token。
+// 这个函数按登录表单账号登录，后端会写入 HttpOnly Cookie。
 export async function loginWithCredentials(loginName: string, password: string) {
   const normalized = loginName.trim().toLowerCase();
   const result = await apiRequest<AuthResult>("/api/auth/login", {
@@ -141,11 +122,10 @@ export async function loginWithCredentials(loginName: string, password: string) 
     body: JSON.stringify({ loginName: normalized, password })
   });
   const role = roleFromResult(result);
-  setAuthToken(result.accessToken);
   return { role, auth: result };
 }
 
-// 这个函数注册普通用户并缓存登录 token。
+// 这个函数注册普通用户并由后端写入 HttpOnly Cookie。
 export async function registerWithCredentials(loginName: string, displayName: string, password: string) {
   const result = await apiRequest<AuthResult>("/api/auth/register", {
     method: "POST",
@@ -153,20 +133,15 @@ export async function registerWithCredentials(loginName: string, displayName: st
     body: JSON.stringify({ loginName: loginName.trim().toLowerCase(), displayName: displayName.trim(), password })
   });
   const role = roleFromResult(result);
-  setAuthToken(result.accessToken);
   return { role, auth: result };
 }
 
-// 这个函数用本地 token 恢复登录状态。
+// 这个函数用浏览器 Cookie 恢复登录状态。
 export async function restoreSession() {
-  if (!authToken) {
-    return null;
-  }
   try {
     const context = await apiRequest<IdentityContext>("/api/auth/me");
     return { role: roleFromAuth(context.person.role), context };
   } catch {
-    clearAuthToken();
     return null;
   }
 }
@@ -174,17 +149,8 @@ export async function restoreSession() {
 // 这个函数退出当前登录会话。
 export async function logoutCurrentSession() {
   try {
-    if (authToken) {
-      await apiRequest<Record<string, unknown>>("/api/auth/logout", { method: "POST" });
-    }
-  } finally {
-    clearAuthToken();
+    await apiRequest<Record<string, unknown>>("/api/auth/logout", { method: "POST" });
+  } catch {
+    // 退出时即使 Cookie 已过期，前端也应回到登录页。
   }
-}
-
-function storedToken() {
-  if (typeof localStorage === "undefined") {
-    return "";
-  }
-  return localStorage.getItem(AUTH_TOKEN_KEY) || "";
 }

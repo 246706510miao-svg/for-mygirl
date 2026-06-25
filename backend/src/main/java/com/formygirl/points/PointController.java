@@ -14,7 +14,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -29,43 +28,43 @@ public class PointController {
 
     // 这个接口执行当前用户每日签到。
     @PostMapping("/api/points/checkins")
-    public ApiResponse<Map<String, Object>> checkin(@RequestHeader("Authorization") String authorization, HttpServletRequest request) {
-        CurrentPerson person = identityService.requirePerson(authorization);
+    public ApiResponse<Map<String, Object>> checkin(HttpServletRequest request) {
+        CurrentPerson person = identityService.requirePerson(request);
         return ApiResponse.ok(pointService.checkin(person, LocalDate.now()), requestId(request));
     }
 
     // 这个接口返回当前用户和当前视角拥有者的积分摘要。
     @GetMapping("/api/points/summary")
-    public ApiResponse<Map<String, Object>> summary(@RequestHeader("Authorization") String authorization, HttpServletRequest request) {
-        CurrentPerson person = identityService.requirePerson(authorization);
+    public ApiResponse<Map<String, Object>> summary(HttpServletRequest request) {
+        CurrentPerson person = identityService.requirePerson(request);
         return ApiResponse.ok(pointService.summary(person), requestId(request));
     }
 
     // 这个接口返回当前视角可见奖品。
     @GetMapping("/api/rewards")
-    public ApiResponse<Map<String, Object>> rewards(@RequestHeader("Authorization") String authorization, HttpServletRequest request) {
-        CurrentPerson person = identityService.requirePerson(authorization);
+    public ApiResponse<Map<String, Object>> rewards(HttpServletRequest request) {
+        CurrentPerson person = identityService.requirePerson(request);
         return ApiResponse.ok(pointService.rewards(person), requestId(request));
     }
 
     // 这个接口给绑定用户添加奖品。
     @PostMapping("/api/rewards")
-    public ApiResponse<Map<String, Object>> addReward(@RequestHeader("Authorization") String authorization, @Valid @RequestBody RewardRequest body, HttpServletRequest request) {
-        CurrentPerson person = identityService.requirePerson(authorization);
+    public ApiResponse<Map<String, Object>> addReward(@Valid @RequestBody RewardRequest body, HttpServletRequest request) {
+        CurrentPerson person = identityService.requirePerson(request);
         return ApiResponse.created(pointService.addReward(person, body.title(), body.description(), body.costPoints()), requestId(request));
     }
 
     // 这个接口兑换当前用户自己的奖品。
     @PostMapping("/api/rewards/{rewardId}/redeem")
-    public ApiResponse<Map<String, Object>> redeem(@RequestHeader("Authorization") String authorization, @PathVariable String rewardId, HttpServletRequest request) {
-        CurrentPerson person = identityService.requirePerson(authorization);
+    public ApiResponse<Map<String, Object>> redeem(@PathVariable String rewardId, HttpServletRequest request) {
+        CurrentPerson person = identityService.requirePerson(request);
         return ApiResponse.ok(pointService.redeem(person, rewardId), requestId(request));
     }
 
     // 这个接口返回当前视角下的兑换记录。
     @GetMapping("/api/reward-redemptions")
-    public ApiResponse<Map<String, Object>> redemptions(@RequestHeader("Authorization") String authorization, HttpServletRequest request) {
-        CurrentPerson person = identityService.requirePerson(authorization);
+    public ApiResponse<Map<String, Object>> redemptions(HttpServletRequest request) {
+        CurrentPerson person = identityService.requirePerson(request);
         return ApiResponse.ok(pointService.redemptions(person), requestId(request));
     }
 

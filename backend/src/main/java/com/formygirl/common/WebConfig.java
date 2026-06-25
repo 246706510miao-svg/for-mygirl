@@ -27,7 +27,8 @@ public class WebConfig {
                         .allowedOriginPatterns(corsOrigins(properties))
                         .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                         .allowedHeaders("*")
-                        .exposedHeaders(RequestIds.HEADER);
+                        .exposedHeaders(RequestIds.HEADER)
+                        .allowCredentials(true);
             }
         };
     }
