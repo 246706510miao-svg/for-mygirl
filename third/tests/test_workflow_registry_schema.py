@@ -29,7 +29,6 @@ TABLE_FIELDS = {
 class FakeConfig:
     feishu_use_real = False
     feishu_field_name_map: dict[str, str] = {}
-    finagent_use_llm = False
     workflowagent_use_llm = False
     workflow_idempotency_ttl_seconds = 604800
 

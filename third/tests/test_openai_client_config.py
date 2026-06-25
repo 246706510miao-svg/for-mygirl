@@ -1,0 +1,81 @@
+from __future__ import annotations
+
+import os
+import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
+
+from third.agents.shared import config as config_module
+from third.agents.shared.openai_client import create_chat_openai
+from third.workflow import executor
+
+
+class OpenAIClientConfigTests(unittest.TestCase):
+    def test_load_config_reads_openai_outlet_settings(self) -> None:
+        env = {
+            "OPENAI_API_KEY": "sk-test",
+            "THIRD_OPENAI_PROXY_URL": "http://user:pass@jp.example.com:3128",
+            "THIRD_OPENAI_TIMEOUT_SECONDS": "45",
+            "THIRD_OPENAI_MAX_RETRIES": "4",
+        }
+
+        with patch.dict(os.environ, env, clear=True), patch.object(config_module, "_load_env_files", return_value=None):
+            config = config_module.load_config()
+
+        self.assertEqual(config.openai_api_key, "sk-test")
+        self.assertEqual(config.openai_proxy_url, "http://user:pass@jp.example.com:3128")
+        self.assertEqual(config.openai_timeout_seconds, 45)
+        self.assertEqual(config.openai_max_retries, 4)
+
+    def test_create_chat_openai_omits_empty_proxy(self) -> None:
+        config = SimpleNamespace(
+            openai_api_key="sk-test",
+            openai_proxy_url="",
+            openai_timeout_seconds=60,
+            openai_max_retries=2,
+        )
+
+        with patch("langchain_openai.ChatOpenAI") as chat_openai:
+            create_chat_openai(config, "gpt-test", temperature=0.3)
+
+        kwargs = chat_openai.call_args.kwargs
+        self.assertEqual(kwargs["model"], "gpt-test")
+        self.assertEqual(kwargs["temperature"], 0.3)
+        self.assertEqual(kwargs["api_key"], "sk-test")
+        self.assertEqual(kwargs["request_timeout"], 60)
+        self.assertEqual(kwargs["max_retries"], 2)
+        self.assertNotIn("openai_proxy", kwargs)
+
+    def test_create_chat_openai_passes_configured_proxy(self) -> None:
+        config = SimpleNamespace(
+            openai_api_key="sk-test",
+            openai_proxy_url="http://user:pass@jp.example.com:3128",
+            openai_timeout_seconds=60,
+            openai_max_retries=2,
+        )
+
+        with patch("langchain_openai.ChatOpenAI") as chat_openai:
+            create_chat_openai(config, "gpt-test")
+
+        self.assertEqual(chat_openai.call_args.kwargs["openai_proxy"], "http://user:pass@jp.example.com:3128")
+
+    def test_openai_proxy_is_redacted_in_logs(self) -> None:
+        redacted = executor._redact_text("THIRD_OPENAI_PROXY_URL=http://user:pass@jp.example.com:3128")
+
+        self.assertNotIn("user:pass", redacted)
+        self.assertEqual(redacted, "THIRD_OPENAI_PROXY_URL=***")
+
+    def test_openai_proxy_url_credentials_are_redacted_without_key_name(self) -> None:
+        redacted = executor._redact_text("proxy failed: http://user:pass@jp.example.com:3128")
+
+        self.assertNotIn("user:pass", redacted)
+        self.assertIn("http://***:***@jp.example.com:3128", redacted)
+
+    def test_openai_proxy_key_is_redacted_in_structured_log_payload(self) -> None:
+        redacted = executor._redact_for_log({"THIRD_OPENAI_PROXY_URL": "http://user:pass@jp.example.com:3128"})
+
+        self.assertEqual(redacted["THIRD_OPENAI_PROXY_URL"], "***")
+
+
+if __name__ == "__main__":
+    unittest.main()

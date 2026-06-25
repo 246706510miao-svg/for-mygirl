@@ -10,7 +10,8 @@
 4. 涉及接口契约时读 [接口文档.md](接口文档.md)。
 5. 涉及表、状态、幂等和追踪 ID 时读 [数据库/codex.md](数据库/codex.md)。
 6. 本地启动、Docker 重建、volume 保留和接口没刷新时读 [运行与刷新.md](运行与刷新.md)。
-7. 排查旧记录闭环时再读 [序列图/codex.md](序列图/codex.md)、[架构图/01_总架构图.md](架构图/01_总架构图.md) 和活动图。
+7. 部署时 third 需要通过日本服务器访问 OpenAI，读 [部署/OpenAI出口.md](部署/OpenAI出口.md)。
+8. 排查旧记录闭环时再读 [序列图/codex.md](序列图/codex.md)、[架构图/01_总架构图.md](架构图/01_总架构图.md) 和活动图。
 
 ## 当前架构口径
 
@@ -54,6 +55,7 @@
 | 文档 | 用途 |
 |---|---|
 | [运行与刷新.md](运行与刷新.md) | 本地 Docker 启动、前后端重建、migration 执行、MySQL/Redis volume 保留和常见刷新问题。 |
+| [部署/OpenAI出口.md](部署/OpenAI出口.md) | third 通过日本服务器代理端口访问 OpenAI 的部署配置和验证方式。 |
 | [../backend/codex.md](../backend/codex.md) | SpringBoot 后端模块入口，说明 identity、record、relationship、style、comment、points、sync、trace、ops 等边界。 |
 | [../frontend/codex.md](../frontend/codex.md) | React 前端 feature 入口，说明 record、style、relationship、comment、points、ops 等边界。 |
 

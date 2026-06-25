@@ -9,6 +9,7 @@ from typing import Any
 
 try:
     from ..shared.config import ThirdServiceConfig, load_config
+    from ..shared.openai_client import create_chat_openai
     from ...storage.factory import get_workflow_repository
     from ...workflow.content import load_json_object
     from ...workflow.registry import (
@@ -36,6 +37,7 @@ try:
     )
 except ImportError:
     from agents.shared.config import ThirdServiceConfig, load_config
+    from agents.shared.openai_client import create_chat_openai
     from storage.factory import get_workflow_repository
     from workflow.content import load_json_object
     from workflow.registry import (
@@ -97,14 +99,11 @@ def build_workflow_plan(
 
 # 这个函数尝试调用 OpenAI 生成 workflow_plan。
 def _try_llm_plan(input_text: str, config: ThirdServiceConfig, agent_prompts: list[dict[str, Any]]) -> dict[str, Any]:
-    try:
-        from langchain_openai import ChatOpenAI
-    except ImportError as exc:
-        raise RuntimeError("缺少 langchain_openai 依赖，无法调用 workflowagent LLM。") from exc
-
     prompt = f"{_load_prompt(agent_prompts)}\n\n用户 content[0].text：\n{input_text}"
     try:
-        response = ChatOpenAI(model=config.workflowagent_model, temperature=0, api_key=config.openai_api_key).invoke(prompt)
+        response = create_chat_openai(config, config.workflowagent_model, temperature=0).invoke(prompt)
+    except ImportError as exc:
+        raise RuntimeError("缺少 langchain_openai 依赖，无法调用 workflowagent LLM。") from exc
     except Exception as exc:
         raise RuntimeError(f"workflowagent LLM 调用失败：{exc}") from exc
     payload = load_json_object(str(getattr(response, "content", "")))

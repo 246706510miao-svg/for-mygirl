@@ -409,16 +409,18 @@ def _escape_mermaid_label(text: str) -> str:
 def _safe_error(exc: Exception, config: ThirdServiceConfig) -> str:
     text = str(exc)
     sensitive_values = [
-        config.openai_api_key,
-        config.feishu_app_secret,
-        config.feishu_tenant_access_token,
-        config.feishu_app_token,
-        config.mysql_dsn,
-        config.redis_url,
+        getattr(config, "openai_api_key", ""),
+        getattr(config, "feishu_app_secret", ""),
+        getattr(config, "feishu_tenant_access_token", ""),
+        getattr(config, "feishu_app_token", ""),
+        getattr(config, "openai_proxy_url", ""),
+        getattr(config, "mysql_dsn", ""),
+        getattr(config, "redis_url", ""),
     ]
     for value in sensitive_values:
         if value:
             text = text.replace(value, "***")
     text = re.sub(r"(mysql\+pymysql://[^:]+:)[^@]+(@)", r"\1***\2", text)
     text = re.sub(r"(redis://[^:]*:)[^@]+(@)", r"\1***\2", text)
+    text = re.sub(r"(https?://)[^/\s:@]+:[^@\s/]+@([^/\s]+)", r"\1***:***@\2", text)
     return _shorten(text, 500)

@@ -14,7 +14,6 @@ from third.workflow.plan_validator import validate_workflow_plan
 class FakeConfig:
     feishu_use_real = False
     feishu_field_name_map: dict[str, str] = {}
-    finagent_use_llm = False
     workflow_idempotency_ttl_seconds = 604800
 
     @property

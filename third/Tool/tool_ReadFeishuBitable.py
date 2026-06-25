@@ -20,7 +20,7 @@ from .field_context import load_table_fields_context
 from .mock_repository import read_mock_records
 
 
-# 这一段定义工具名称，必须和 finagent 输出的 tool_name 保持一致。
+# 这一段定义工具名称，必须和 workflow registry / dispatcher 保持一致。
 TOOL_NAME = "tool_ReadFeishuBitable"
 
 
@@ -28,13 +28,6 @@ TOOL_NAME = "tool_ReadFeishuBitable"
 def run_tool_ReadFeishuBitable(payload: dict[str, Any]) -> dict[str, list[dict[str, str]]]:
     config = load_config()
     tool_input_text = _extract_tool_input_text(payload)
-    if config.finagent_use_llm and not _has_structured_read_request(tool_input_text):
-        result = _build_strict_tool_error(
-            tool_input_text,
-            "THIRD_FINAGENT_USE_LLM=1 时 tool_ReadFeishuBitable 只接受包含 read_request 的 JSON 输入。",
-        )
-        return _content(json.dumps(result, ensure_ascii=False))
-
     original_input, explicit_request = _parse_tool_input(tool_input_text)
     table_fields = load_table_fields_context()
     request = _normalize_read_request(
@@ -57,7 +50,7 @@ def _content(text: str) -> dict[str, list[dict[str, str]]]:
     return {"content": [{"text": text}]}
 
 
-# 这个函数从 finagent 传来的 content 中提取真正给工具使用的文本。
+# 这个函数提取真正给工具使用的文本，兼容旧 tool_call 包装结构。
 def _extract_tool_input_text(payload: dict[str, Any]) -> str:
     text = _extract_content_text(payload)
     tool_call = _load_json_object(text)
@@ -76,7 +69,7 @@ def _extract_content_text(payload: dict[str, Any]) -> str:
     return str(payload.get("text") or "").strip()
 
 
-# 这个函数解析工具输入，支持自然语言和 finagent 整理后的读取请求 JSON。
+# 这个函数解析工具输入，支持自然语言和业务 Agent 整理后的读取请求 JSON。
 def _parse_tool_input(tool_input_text: str) -> tuple[str, dict[str, Any] | None]:
     payload = _load_json_object(tool_input_text)
     if not isinstance(payload, dict):
@@ -93,31 +86,6 @@ def _parse_tool_input(tool_input_text: str) -> tuple[str, dict[str, Any] | None]
     if isinstance(read_request, dict):
         return original_input, read_request
     return original_input, None
-
-
-# 这个函数校验 strict 模式下工具输入是否已经由 LLM 整理成结构化读取请求。
-def _has_structured_read_request(tool_input_text: str) -> bool:
-    payload = _load_json_object(tool_input_text)
-    return isinstance(payload, dict) and isinstance(payload.get("read_request"), dict)
-
-
-# 这个函数生成 strict 模式下的工具错误结果，交回 finagent 做最终 answer。
-def _build_strict_tool_error(tool_input_text: str, error: str) -> dict[str, Any]:
-    return {
-        "type": "tool_result",
-        "tool_name": TOOL_NAME,
-        "service": "feishu_bitable",
-        "operation": "strict_input_validation",
-        "backend": "strict_error",
-        "mock": False,
-        "original_input": tool_input_text,
-        "records": [],
-        "record_count": 0,
-        "read_at": now_iso(),
-        "summary": f"读取失败：{error}",
-        "warnings": [],
-        "error": error,
-    }
 
 
 # 这个函数构造工具读取请求，字段贴近飞书查询记录接口。
@@ -156,7 +124,7 @@ def _build_read_request(
     }
 
 
-# 这个函数补齐读取请求字段，防止 finagent 或外部调用漏传字段。
+# 这个函数补齐读取请求字段，防止业务 Agent 或外部调用漏传字段。
 def _normalize_read_request(
     read_request: dict[str, Any] | None,
     config: ThirdServiceConfig,
@@ -164,7 +132,7 @@ def _normalize_read_request(
 ) -> dict[str, Any]:
     request = dict(read_request or {})
     table_context = config.table_context
-    default_fields = [] if config.finagent_use_llm or _field_names_from_context(table_fields) else DEFAULT_READ_FIELDS.copy()
+    default_fields = [] if _field_names_from_context(table_fields) else DEFAULT_READ_FIELDS.copy()
     request.setdefault("operation", "search_records")
     request.setdefault("service", "feishu_bitable")
     request.setdefault("app_token", table_context["app_token"])
@@ -397,7 +365,7 @@ def _read_records(request: dict[str, Any], config: ThirdServiceConfig) -> tuple[
     return read_mock_records(request), "mock"
 
 
-# 这个函数把读取结果整理成传回 finagent 的 tool_result。
+# 这个函数把读取结果整理成 workflow artifact 可保存的 tool_result。
 def _build_tool_result(
     original_input: str,
     request: dict[str, Any],
@@ -427,7 +395,7 @@ def _build_tool_result(
     return result
 
 
-# 这个函数去掉传给 finagent 时不需要暴露的冗余字段。
+# 这个函数去掉 trace 中不需要暴露的冗余字段。
 def _safe_request_for_trace(request: dict[str, Any]) -> dict[str, Any]:
     safe_request = dict(request)
     safe_request.pop("app_token", None)
@@ -446,7 +414,7 @@ def _safe_table_fields(table_fields: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-# 这个函数生成一段给 finagent 使用的读取摘要。
+# 这个函数生成一段读取摘要。
 def _summary(
     original_input: str,
     request: dict[str, Any],

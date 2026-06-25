@@ -11,6 +11,7 @@ try:
     from ..Tool.write_support import build_write_request
     from ..agents.shared.config import load_config
     from ..agents.shared.json_utils import dumps_json
+    from ..agents.shared.openai_client import create_chat_openai
     from ..agents.shared.time_utils import now_iso
     from ..storage.factory import get_workflow_repository
     from .content import load_json_object
@@ -19,6 +20,7 @@ except ImportError:
     from Tool.write_support import build_write_request
     from agents.shared.config import load_config
     from agents.shared.json_utils import dumps_json
+    from agents.shared.openai_client import create_chat_openai
     from agents.shared.time_utils import now_iso
     from storage.factory import get_workflow_repository
     from workflow.content import load_json_object
@@ -658,11 +660,9 @@ def _build_llm_prompt(
 # 这个函数统一调用 business_agent 使用的 OpenAI 模型，便于测试替换。
 def _invoke_business_agent_model(prompt: str, config: Any) -> str:
     try:
-        from langchain_openai import ChatOpenAI
+        response = create_chat_openai(config, config.workflowagent_model, temperature=0).invoke(prompt)
     except ImportError as exc:
         raise RuntimeError("缺少 langchain_openai 依赖，无法运行 business_agent LLM。") from exc
-    try:
-        response = ChatOpenAI(model=config.workflowagent_model, temperature=0, api_key=config.openai_api_key).invoke(prompt)
     except Exception as exc:
         raise RuntimeError(f"business_agent LLM 调用失败：{exc}") from exc
     return str(getattr(response, "content", ""))

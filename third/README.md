@@ -45,7 +45,6 @@ OpenAI 配置：
 OPENAI_API_KEY=sk-xxx
 THIRD_WORKFLOWAGENT_USE_LLM=1
 THIRD_WORKFLOWAGENT_MODEL=gpt-4o-mini
-THIRD_FINAGENT_USE_LLM=0
 ```
 
 说明：`THIRD_WORKFLOWAGENT_USE_LLM=1` 会同时启用 workflowagent 的模板选择、business_agent 的写入 payload 解析、schema_agent 的字段变更解析，以及 search_agent 的更新/删除候选记录匹配。LLM 模式下，workflowagent 会拿到三类目录：代码内置 Tool 能力目录、代码内置 Workflow Template 目录，以及 MySQL `prompt_registry` 中启用的 Agent 目录。workflowagent 优先输出 `template_key`，由代码模板 builder 生成完整 `workflow_plan.steps`；Agent Runner 执行时再从数据库读取对应 `prompt_text`。数据库没有启用 Agent、缺少对应 prompt、OpenAI 不可用或输出 JSON 非法都会让当前步骤失败，不读取文件兜底。
@@ -221,7 +220,6 @@ THIRD_FEISHU_APP_TOKEN=app_xxx
 THIRD_FEISHU_TABLE_ID=tbl_xxx
 OPENAI_API_KEY=sk_xxx
 THIRD_WORKFLOWAGENT_USE_LLM=1
-THIRD_FINAGENT_USE_LLM=0
 THIRD_ALLOW_IN_MEMORY_FALLBACK=0
 ```
 

@@ -41,12 +41,14 @@ LOGGER = logging.getLogger(__name__)
 
 
 # 这一段定义日志脱敏规则，避免调试 plan 时泄露飞书、OpenAI、数据库或 Redis 凭证。
-SENSITIVE_KEY_PATTERN = re.compile(r"(secret|token|api[_-]?key|password|authorization|dsn|redis[_-]?url)", re.IGNORECASE)
+SENSITIVE_KEY_PATTERN = re.compile(r"(secret|token|api[_-]?key|password|authorization|dsn|proxy|redis[_-]?url)", re.IGNORECASE)
 SENSITIVE_TEXT_PATTERNS = (
     (re.compile(r"(app_token[\"']?\s*[:=：]\s*[\"']?)([A-Za-z0-9_\-]+)([\"']?)", re.IGNORECASE), r"\1***\3"),
     (re.compile(r"(tenant_access_token[\"']?\s*[:=：]\s*[\"']?)([A-Za-z0-9._\-]+)([\"']?)", re.IGNORECASE), r"\1***\3"),
     (re.compile(r"(app_secret[\"']?\s*[:=：]\s*[\"']?)([A-Za-z0-9._\-]+)([\"']?)", re.IGNORECASE), r"\1***\3"),
     (re.compile(r"(OPENAI_API_KEY[\"']?\s*[:=：]\s*[\"']?)([A-Za-z0-9._\-]+)([\"']?)", re.IGNORECASE), r"\1***\3"),
+    (re.compile(r"(THIRD_OPENAI_PROXY_URL[\"']?\s*[:=：]\s*[\"']?)([^\s\"',}]+)([\"']?)", re.IGNORECASE), r"\1***\3"),
+    (re.compile(r"(https?://)[^/\s:@]+:[^@\s/]+@([^/\s]+)", re.IGNORECASE), r"\1***:***@\2"),
     (re.compile(r"\bsk-[A-Za-z0-9_\-]{10,}\b"), "sk-***"),
     (re.compile(r"(mysql\+pymysql://[^:]+:)[^@]+(@)", re.IGNORECASE), r"\1***\2"),
     (re.compile(r"(redis://[^:]*:)[^@]+(@)", re.IGNORECASE), r"\1***\2"),

@@ -58,7 +58,7 @@ FEISHU_OPERATOR_ALIASES = {
 VALUELESS_OPERATORS = {"isEmpty", "isNotEmpty"}
 
 
-# 这个异常表示飞书接口调用或响应解析失败，Tool 会捕获并交给 finagent 总结。
+# 这个异常表示飞书接口调用或响应解析失败，Tool 会捕获并写入 workflow 结果。
 class FeishuClientError(RuntimeError):
     pass
 

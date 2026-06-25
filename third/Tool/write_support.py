@@ -17,7 +17,7 @@ except ImportError:
     from agents.shared.time_utils import now_iso
 
 
-# 这一段定义飞书写入类请求名，Tool 会用它校验 strict LLM 模式下的输入。
+# 这一段定义飞书写入类请求名，Tool 会用它识别业务 Agent 生成的结构化输入。
 WRITE_REQUEST_KEYS = {
     "create_record": "create_request",
     "update_record": "update_request",
@@ -51,7 +51,7 @@ def content(text: str) -> dict[str, list[dict[str, str]]]:
     return {"content": [{"text": text}]}
 
 
-# 这个函数从 finagent 的 tool_call 里提取真正给 Tool 使用的 content[0].text。
+# 这个函数提取真正给 Tool 使用的 content[0].text，兼容旧 tool_call 包装结构。
 def extract_tool_input_text(payload: dict[str, Any]) -> str:
     text = extract_content_text(payload)
     tool_call = load_json_object(text)
@@ -70,7 +70,7 @@ def extract_content_text(payload: dict[str, Any]) -> str:
     return str(payload.get("text") or "").strip()
 
 
-# 这个函数解析 finagent 传来的结构化写入请求。
+# 这个函数解析业务 Agent 传来的结构化写入请求。
 def parse_tool_request(tool_input_text: str, request_key: str) -> tuple[str, dict[str, Any] | None]:
     payload = load_json_object(tool_input_text)
     if not isinstance(payload, dict):
@@ -89,13 +89,7 @@ def parse_tool_request(tool_input_text: str, request_key: str) -> tuple[str, dic
     return original_input, None
 
 
-# 这个函数校验 strict LLM 模式下 Tool 是否收到了对应的结构化请求。
-def has_structured_request(tool_input_text: str, request_key: str) -> bool:
-    payload = load_json_object(tool_input_text)
-    return isinstance(payload, dict) and isinstance(payload.get(request_key), dict)
-
-
-# 这个函数生成 strict 或校验失败时的标准 tool_result，错误仍交给 finagent 总结。
+# 这个函数生成校验失败时的标准 tool_result。
 def build_tool_error(
     tool_name: str,
     operation: str,
@@ -290,7 +284,7 @@ def real_write_configuration_error(
     return None
 
 
-# 这个函数把请求中不适合暴露给 finagent 的敏感字段移除。
+# 这个函数把请求中不适合暴露到 trace 的敏感字段移除。
 def safe_request_for_trace(request: dict[str, Any]) -> dict[str, Any]:
     safe_request = dict(request)
     safe_request.pop("app_token", None)

@@ -24,7 +24,7 @@ THIRD_FORBIDDEN_MYSQL_USERS = {"backend_user"}
 _PRIVATE_METADATA: ContextVar[dict[str, Any] | None] = ContextVar("third_private_metadata", default=None)
 
 
-# 这个数据类集中管理飞书读取和 finagent LLM 所需配置，避免配置散落在各个文件里。
+# 这个数据类集中管理飞书、OpenAI、MySQL、Redis 和 workflow 所需配置，避免配置散落在各个文件里。
 @dataclass(frozen=True)
 class ThirdServiceConfig:
     feishu_app_id: str
@@ -37,8 +37,9 @@ class ThirdServiceConfig:
     feishu_user_id_type: str
     feishu_use_real: bool
     openai_api_key: str
-    finagent_use_llm: bool
-    finagent_model: str
+    openai_proxy_url: str
+    openai_timeout_seconds: int
+    openai_max_retries: int
     workflowagent_use_llm: bool
     workflowagent_model: str
     mysql_dsn: str
@@ -109,10 +110,11 @@ def load_config(private_metadata: dict[str, Any] | None = None) -> ThirdServiceC
         feishu_user_id_type=os.getenv("THIRD_FEISHU_USER_ID_TYPE", "open_id"),
         feishu_use_real=_read_bool("THIRD_FEISHU_USE_REAL", default=False),
         openai_api_key=os.getenv("OPENAI_API_KEY", ""),
-        finagent_use_llm=_read_bool("THIRD_FINAGENT_USE_LLM", default=False),
-        finagent_model=os.getenv("THIRD_FINAGENT_MODEL") or os.getenv("THIRD_ROUTER_MODEL", "gpt-4o-mini"),
+        openai_proxy_url=os.getenv("THIRD_OPENAI_PROXY_URL", ""),
+        openai_timeout_seconds=_read_int("THIRD_OPENAI_TIMEOUT_SECONDS", 60),
+        openai_max_retries=_read_int("THIRD_OPENAI_MAX_RETRIES", 2),
         workflowagent_use_llm=_read_bool("THIRD_WORKFLOWAGENT_USE_LLM", default=False),
-        workflowagent_model=os.getenv("THIRD_WORKFLOWAGENT_MODEL") or os.getenv("THIRD_FINAGENT_MODEL") or "gpt-4o-mini",
+        workflowagent_model=os.getenv("THIRD_WORKFLOWAGENT_MODEL") or "gpt-4o-mini",
         mysql_dsn=os.getenv("THIRD_MYSQL_DSN", ""),
         redis_url=os.getenv("THIRD_REDIS_URL", "redis://localhost:6379/0"),
         workflow_queue_name=os.getenv("THIRD_WORKFLOW_QUEUE_NAME", "third:workflow:queue"),

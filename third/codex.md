@@ -48,16 +48,15 @@ third/
 |   |-- workflowagent/
 |   |   |-- agent.py                  # workflowagent，生成动态 workflow_plan
 |   |   `-- __init__.py
-|   |-- finagent/                     # 旧 finagent 兼容代码，当前主流程不优先看这里
 |   `-- shared/
 |       |-- config.py                 # 飞书、OpenAI、MySQL、Redis、workflow 环境配置
+|       |-- openai_client.py          # OpenAI client 创建入口，统一代理、超时和重试配置
 |       |-- feishu_schema.py          # 飞书字段结构辅助
 |       |-- mock_feishu.py            # mock 飞书数据
 |       `-- time_utils.py             # 时间工具
 |-- Prompt/
 |   |-- workflowagent.yaml            # workflowagent 系统提示词
 |   |-- runagent/                     # 业务 Agent 提示词文件来源，seed 后写入 prompt_registry
-|   |-- finagent.yaml                 # 旧 finagent 提示词兼容文件
 |   `-- __init__.py
 |-- scripts/
 |   `-- seed_runagent_prompts.py      # runagent 提示词同步脚本
