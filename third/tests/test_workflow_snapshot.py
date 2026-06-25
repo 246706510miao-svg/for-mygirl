@@ -65,6 +65,30 @@ class WorkflowSnapshotTests(unittest.TestCase):
         self.assertEqual(snapshot["outputs"]["writeResult"]["record_id"], "rec_xxx")
         self.assertEqual(snapshot["outputs"]["finalAnswer"]["answer"], "写入成功。")
 
+    def test_snapshot_does_not_expose_private_metadata(self) -> None:
+        repository = InMemoryWorkflowRepository()
+        private_metadata = {
+            "feishu": {
+                "account": {"app_secret": "secret-value", "tenant_access_token": "tenant-token"},
+                "table": {"app_token": "app-token", "table_id": "tbl_xxx"},
+            }
+        }
+        session = repository.create_session(
+            "新增一条记录",
+            status="queued",
+            metadata_json={"feishu": {"configId": "feishu_tbl_1"}},
+            private_metadata_json=private_metadata,
+        )
+
+        snapshot = build_workflow_snapshot(repository, session["session_id"])
+        snapshot_text = str(snapshot)
+
+        self.assertEqual(repository.get_private_metadata(session["session_id"]), private_metadata)
+        self.assertNotIn("private_metadata_json", snapshot_text)
+        self.assertNotIn("secret-value", snapshot_text)
+        self.assertNotIn("tenant-token", snapshot_text)
+        self.assertNotIn("app-token", snapshot_text)
+
 
 if __name__ == "__main__":
     unittest.main()

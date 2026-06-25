@@ -675,7 +675,98 @@ textarea:focus {
 .chat-screen {
   min-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 32px);
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+}
+
+.feishu-table-panel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 18px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.feishu-table-panel.is-setup {
+  border-color: rgba(79, 192, 217, 0.3);
+}
+
+.feishu-table-panel__summary,
+.feishu-table-panel__chooser,
+.feishu-table-panel__quick-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.feishu-table-panel__summary {
+  justify-content: space-between;
+}
+
+.feishu-table-panel__title {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.feishu-table-panel__title div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.feishu-table-panel__title b,
+.feishu-table-panel__title span {
+  overflow-wrap: anywhere;
+}
+
+.feishu-table-panel__title span,
+.feishu-table-panel__lock {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.feishu-table-panel__toggle {
+  min-width: 70px;
+  min-height: 38px;
+}
+
+.feishu-table-panel__chooser {
+  align-items: stretch;
+}
+
+.feishu-table-panel__quick-actions .icon-button {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+}
+
+.feishu-table-panel__forms,
+.feishu-form {
+  display: grid;
+  gap: 10px;
+}
+
+.feishu-form {
+  border-radius: 16px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.13);
+}
+
+.feishu-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.feishu-form textarea {
+  min-height: 76px;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
 }
 
 .chat-history {

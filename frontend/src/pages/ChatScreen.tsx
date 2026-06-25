@@ -5,15 +5,21 @@ import { ScreenHeader } from "../components/layout/ScreenHeader";
 import { ChatBubble } from "../components/chat/ChatBubble";
 import { Composer } from "../components/chat/Composer";
 import { DraftPanel } from "../components/chat/DraftPanel";
+import { FeishuTablePanel } from "../components/chat/FeishuTablePanel";
 import { ThirdConfirmationPanel } from "../components/chat/ThirdConfirmationPanel";
 import { EmptyState } from "../components/ui/EmptyState";
-import type { PendingThirdConfirmation, RecordDraft } from "../shared/types/api";
+import type { FeishuAccount, FeishuTableConfig, PendingThirdConfirmation, RecordDraft } from "../shared/types/api";
+import type { SaveFeishuAccountPayload, SaveFeishuTablePayload } from "../features/feishu/api";
 
 interface ChatScreenProps {
   messages: string[];
   input: string;
   draft: RecordDraft | null;
   pendingConfirmation: PendingThirdConfirmation | null;
+  feishuAccount: FeishuAccount | null;
+  feishuTables: FeishuTableConfig[];
+  selectedFeishuTableId: string | null;
+  feishuLocked: boolean;
   busy: boolean;
   onBack: () => void;
   onInputChange: (value: string) => void;
@@ -23,6 +29,12 @@ interface ChatScreenProps {
   onRejectConfirmation: () => void;
   onEditDraft: () => void;
   onVoice: () => void;
+  onSelectFeishuTable: (tableId: string) => void;
+  onSaveFeishuAccount: (payload: SaveFeishuAccountPayload) => Promise<boolean | void>;
+  onCreateFeishuTable: (payload: SaveFeishuTablePayload) => Promise<boolean | void>;
+  onUpdateFeishuTable: (tableId: string, payload: SaveFeishuTablePayload) => Promise<boolean | void>;
+  onSetDefaultFeishuTable: (tableId: string) => Promise<boolean | void>;
+  onTestFeishuTable: (tableId: string) => Promise<boolean | void>;
 }
 
 function messageType(item: string) {
@@ -41,6 +53,10 @@ export function ChatScreen({
   input,
   draft,
   pendingConfirmation,
+  feishuAccount,
+  feishuTables,
+  selectedFeishuTableId,
+  feishuLocked,
   busy,
   onBack,
   onInputChange,
@@ -49,7 +65,13 @@ export function ChatScreen({
   onApproveConfirmation,
   onRejectConfirmation,
   onEditDraft,
-  onVoice
+  onVoice,
+  onSelectFeishuTable,
+  onSaveFeishuAccount,
+  onCreateFeishuTable,
+  onUpdateFeishuTable,
+  onSetDefaultFeishuTable,
+  onTestFeishuTable
 }: ChatScreenProps) {
   const composerBusy = busy || Boolean(pendingConfirmation);
 
@@ -57,6 +79,19 @@ export function ChatScreen({
     <MobileAppShell>
       <GlassScreen className="chat-screen">
         <ScreenHeader title="Chat" onBack={onBack} />
+        <FeishuTablePanel
+          account={feishuAccount}
+          tables={feishuTables}
+          selectedTableId={selectedFeishuTableId}
+          locked={feishuLocked}
+          busy={busy}
+          onSelectTable={onSelectFeishuTable}
+          onSaveAccount={onSaveFeishuAccount}
+          onCreateTable={onCreateFeishuTable}
+          onUpdateTable={onUpdateFeishuTable}
+          onSetDefault={onSetDefaultFeishuTable}
+          onTestTable={onTestFeishuTable}
+        />
         <section className="chat-history">
           {messages.length === 0 && <EmptyState title="暂无对话" description="写下今天发生的小事。" />}
           {messages.map((item, index) => (

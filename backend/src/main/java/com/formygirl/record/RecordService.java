@@ -4,6 +4,7 @@ import com.formygirl.common.ApiException;
 import com.formygirl.common.JsonSupport;
 import com.formygirl.comment.CommentRepository;
 import com.formygirl.comment.CommentService;
+import com.formygirl.feishu.FeishuConfigService;
 import com.formygirl.identity.CurrentPerson;
 import com.formygirl.persistence.BusinessRepository;
 import com.formygirl.thirdclient.ThirdWorkflowClient;
@@ -20,13 +21,15 @@ import org.springframework.transaction.annotation.Transactional;
 public class RecordService {
     private final BusinessRepository repository;
     private final ThirdWorkflowClient thirdClient;
+    private final FeishuConfigService feishuConfigService;
     private final JsonSupport json;
     private final CommentRepository commentRepository;
     private final CommentService commentService;
 
-    public RecordService(BusinessRepository repository, ThirdWorkflowClient thirdClient, JsonSupport json, CommentRepository commentRepository, CommentService commentService) {
+    public RecordService(BusinessRepository repository, ThirdWorkflowClient thirdClient, FeishuConfigService feishuConfigService, JsonSupport json, CommentRepository commentRepository, CommentService commentService) {
         this.repository = repository;
         this.thirdClient = thirdClient;
+        this.feishuConfigService = feishuConfigService;
         this.json = json;
         this.commentRepository = commentRepository;
         this.commentService = commentService;
@@ -74,8 +77,9 @@ public class RecordService {
 
     // 这个函数创建记录会话。
     @Transactional
-    public Map<String, Object> createSession(CurrentPerson person, LocalDate recordDate, String requestId) {
-        return sessionDto(repository.createSession(person.id(), recordDate, requestId));
+    public Map<String, Object> createSession(CurrentPerson person, LocalDate recordDate, String requestId, String feishuTableConfigId) {
+        String resolvedTableConfigId = feishuConfigService.resolveTableConfigIdForNewSession(person.id(), feishuTableConfigId);
+        return sessionDto(repository.createSession(person.id(), recordDate, requestId, resolvedTableConfigId));
     }
 
     // 这个函数处理文本输入或修改指令，并让 third 自行决定 workflow。
@@ -87,10 +91,11 @@ public class RecordService {
             return sessionDetail(sessionId);
         }
         Map<String, Object> userMessage = repository.insertMessage(sessionId, "user", "text", content, null, clientMessageId, null, requestId);
-        Map<String, Object> third = thirdClient.invokeAndWait(content, Map.of(
+        FeishuConfigService.WorkflowFeishuContext feishuContext = feishuContext(person.id(), session);
+        Map<String, Object> third = thirdClient.invokeAndWait(content, workflowMetadata(feishuContext, Map.of(
                 "businessSessionId", sessionId,
                 "idempotencyKey", clientMessageId
-        ));
+        )), feishuContext.privateMetadata());
         if (isWaitingUser(third)) {
             return createPendingWorkflowResult(sessionId, clientMessageId + "_confirm", userMessage, content, session, third, requestId);
         }
@@ -141,7 +146,7 @@ public class RecordService {
         repository.confirmDraft(sessionId, draftId);
         Map<String, Object> third;
         try {
-            third = invokeConfirmWorkflow(sessionId, draft, clientConfirmId);
+            third = invokeConfirmWorkflow(session, draft, clientConfirmId);
         } catch (Exception exception) {
             third = dto("status", "failed", "session_id", null, "error_text", exception.getMessage());
         }
@@ -205,7 +210,8 @@ public class RecordService {
         if (thirdSessionId != null && !thirdSessionId.isBlank()) {
             syncPayload.put("thirdSnapshot", safeSnapshot(thirdSessionId));
         }
-        Map<String, Object> sync = repository.insertFeishuSync(String.valueOf(record.get("id")), thirdSessionId, requestId, "success".equals(recordStatus) ? "success" : "failed", errorMessage, "success".equals(recordStatus) ? 0 : 1, syncPayload);
+        String configId = stringOrNull(session.get("feishu_table_config_id"));
+        Map<String, Object> sync = repository.insertFeishuSync(String.valueOf(record.get("id")), configId, thirdSessionId, requestId, "success".equals(recordStatus) ? "success" : "failed", errorMessage, "success".equals(recordStatus) ? 0 : 1, syncPayload);
         Map<String, Object> display = repository.upsertDisplay(
                 String.valueOf(record.get("id")),
                 String.valueOf(draftJson.getOrDefault("title", "今日自律记录")),
@@ -256,15 +262,17 @@ public class RecordService {
     }
 
     // 这个函数提交确认写入 workflow，返回 success、failed 或 waiting_user。
-    private Map<String, Object> invokeConfirmWorkflow(String sessionId, Map<String, Object> draft, String clientConfirmId) {
+    private Map<String, Object> invokeConfirmWorkflow(Map<String, Object> session, Map<String, Object> draft, String clientConfirmId) {
+        String sessionId = String.valueOf(session.get("id"));
         Map<String, Object> draftJson = json.map(String.valueOf(draft.get("draft_json")));
         String title = String.valueOf(draftJson.getOrDefault("title", "今日自律记录"));
         String summary = String.valueOf(draftJson.getOrDefault("summary", draft.get("preview_text")));
-        return thirdClient.invokeAndWait("新增一条记录，事项名称为" + title + "，总结为" + summary, Map.of(
+        FeishuConfigService.WorkflowFeishuContext feishuContext = feishuContext(String.valueOf(session.get("user_id")), session);
+        return thirdClient.invokeAndWait("新增一条记录，事项名称为" + title + "，总结为" + summary, workflowMetadata(feishuContext, Map.of(
                 "businessSessionId", sessionId,
                 "operation", "confirm_sync",
                 "idempotencyKey", clientConfirmId
-        ));
+        )), feishuContext.privateMetadata());
     }
 
     // 这个函数判断 third 是否正在等待用户确认。
@@ -510,6 +518,18 @@ public class RecordService {
         return "validation.write_payload".equals(text) || text.startsWith("validation.");
     }
 
+    // 这个函数读取当前会话绑定的飞书表配置快照。
+    private FeishuConfigService.WorkflowFeishuContext feishuContext(String userId, Map<String, Object> session) {
+        return feishuConfigService.workflowContext(userId, stringOrNull(session.get("feishu_table_config_id")));
+    }
+
+    // 这个函数合并业务 metadata 和可公开的飞书表信息；密钥不会进入这里。
+    private Map<String, Object> workflowMetadata(FeishuConfigService.WorkflowFeishuContext feishuContext, Map<String, Object> base) {
+        Map<String, Object> metadata = new LinkedHashMap<>(base);
+        metadata.putAll(feishuContext.publicMetadata());
+        return metadata;
+    }
+
     // 这个函数根据已有正式记录返回确认结果。
     private Map<String, Object> confirmResult(Map<String, Object> record) {
         String recordId = String.valueOf(record.get("id"));
@@ -523,7 +543,7 @@ public class RecordService {
 
     // 这个函数转换会话 DTO。
     private Map<String, Object> sessionDto(Map<String, Object> row) {
-        return dto("id", row.get("id"), "status", row.get("status"), "currentDraftId", row.get("current_draft_id"), "createdAt", row.get("created_at"), "updatedAt", row.get("updated_at"));
+        return dto("id", row.get("id"), "status", row.get("status"), "currentDraftId", row.get("current_draft_id"), "feishuTableConfigId", row.get("feishu_table_config_id"), "createdAt", row.get("created_at"), "updatedAt", row.get("updated_at"));
     }
 
     // 这个函数转换消息 DTO。

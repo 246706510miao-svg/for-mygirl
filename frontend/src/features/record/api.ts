@@ -26,11 +26,11 @@ export async function fetchBoundUserRecentRecords(role: ClientRole) {
 }
 
 // 这个函数创建新的记录会话。
-export function createRecordSession(role: ClientRole, recordDate: string) {
+export function createRecordSession(role: ClientRole, recordDate: string, feishuTableConfigId?: string | null) {
   return apiRequest<RecordSession>("/api/record-sessions", {
     method: "POST",
     role,
-    body: JSON.stringify({ recordDate, source: "user_home" })
+    body: JSON.stringify({ recordDate, source: "user_home", feishuTableConfigId })
   });
 }
 

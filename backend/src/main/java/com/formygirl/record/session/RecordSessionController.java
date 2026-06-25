@@ -32,7 +32,7 @@ public class RecordSessionController {
     public ApiResponse<Map<String, Object>> createSession(@RequestHeader("Authorization") String authorization, @RequestBody CreateSessionRequest body, HttpServletRequest request) {
         CurrentPerson person = identityService.requirePerson(authorization);
         LocalDate recordDate = body.recordDate() == null ? LocalDate.now() : body.recordDate();
-        return ApiResponse.created(recordService.createSession(person, recordDate, requestId(request)), requestId(request));
+        return ApiResponse.created(recordService.createSession(person, recordDate, requestId(request), body.feishuTableConfigId()), requestId(request));
     }
 
     // 这个接口发送文本消息或修改指令。
@@ -74,7 +74,7 @@ public class RecordSessionController {
         return String.valueOf(request.getAttribute(RequestIds.ATTRIBUTE));
     }
 
-    public record CreateSessionRequest(LocalDate recordDate, String source) {
+    public record CreateSessionRequest(LocalDate recordDate, String source, String feishuTableConfigId) {
     }
 
     public record SendMessageRequest(@NotBlank String clientMessageId, @NotBlank String content) {

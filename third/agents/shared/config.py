@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import os
 import json
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
+from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy.engine import make_url
 
@@ -17,6 +21,7 @@ DEFAULT_TABLE_NAME = "项目记录"
 THIRD_ALLOWED_MYSQL_DATABASES = {"third_service", "third_test"}
 THIRD_FORBIDDEN_MYSQL_DATABASES = {"for_mygirl_app"}
 THIRD_FORBIDDEN_MYSQL_USERS = {"backend_user"}
+_PRIVATE_METADATA: ContextVar[dict[str, Any] | None] = ContextVar("third_private_metadata", default=None)
 
 
 # 这个数据类集中管理飞书读取和 finagent LLM 所需配置，避免配置散落在各个文件里。
@@ -90,10 +95,10 @@ class ThirdServiceConfig:
 
 
 # 这个函数从环境变量和 .env 文件创建配置对象；你后续收集到真实信息后只需要填配置。
-def load_config() -> ThirdServiceConfig:
+def load_config(private_metadata: dict[str, Any] | None = None) -> ThirdServiceConfig:
     _load_env_files()
     debug_enabled = _read_bool("THIRD_DEBUG_ENABLED", default=True)
-    return ThirdServiceConfig(
+    config = ThirdServiceConfig(
         feishu_app_id=os.getenv("THIRD_FEISHU_APP_ID", ""),
         feishu_app_secret=os.getenv("THIRD_FEISHU_APP_SECRET", ""),
         feishu_tenant_access_token=os.getenv("THIRD_FEISHU_TENANT_ACCESS_TOKEN", ""),
@@ -122,6 +127,69 @@ def load_config() -> ThirdServiceConfig:
         workflow_debug_log=_read_bool("THIRD_WORKFLOW_DEBUG_LOG", default=debug_enabled),
         feishu_field_name_map=_read_json_map("THIRD_FEISHU_FIELD_NAME_MAP"),
     )
+    return _with_private_feishu_config(config, private_metadata if private_metadata is not None else _PRIVATE_METADATA.get())
+
+
+# 这个上下文管理器让单个 workflow step 使用后端下发的私有飞书配置。
+@contextmanager
+def private_metadata_context(private_metadata: dict[str, Any] | None):
+    token = _PRIVATE_METADATA.set(private_metadata or {})
+    try:
+        yield
+    finally:
+        _PRIVATE_METADATA.reset(token)
+
+
+def _with_private_feishu_config(config: ThirdServiceConfig, private_metadata: dict[str, Any] | None) -> ThirdServiceConfig:
+    if not isinstance(private_metadata, dict):
+        return config
+    feishu = _dict_value(private_metadata.get("feishu"))
+    if not feishu:
+        return config
+    account = _dict_value(feishu.get("account"))
+    table = _dict_value(feishu.get("table"))
+    if not table:
+        return config
+
+    field_name_map = table.get("field_name_map") or table.get("fieldNameMap") or {}
+    if not isinstance(field_name_map, dict):
+        field_name_map = {}
+    account_enabled = _bool_value(account.get("enabled"), True)
+    table_enabled = _bool_value(table.get("enabled"), True)
+    has_table_location = bool(_text_value(table, "app_token", "appToken") and _text_value(table, "table_id", "tableId"))
+    return replace(
+        config,
+        feishu_app_id=_text_value(account, "app_id", "appId") or config.feishu_app_id,
+        feishu_app_secret=_text_value(account, "app_secret", "appSecret") or config.feishu_app_secret,
+        feishu_tenant_access_token=_text_value(account, "tenant_access_token", "tenantAccessToken") or config.feishu_tenant_access_token,
+        feishu_app_token=_text_value(table, "app_token", "appToken") or config.feishu_app_token,
+        feishu_table_id=_text_value(table, "table_id", "tableId") or config.feishu_table_id,
+        feishu_table_name=_text_value(table, "table_name", "tableName", "display_name", "displayName") or config.feishu_table_name,
+        feishu_view_id=_text_value(table, "view_id", "viewId") or config.feishu_view_id,
+        feishu_user_id_type=_text_value(account, "user_id_type", "userIdType") or config.feishu_user_id_type,
+        feishu_use_real=account_enabled and table_enabled and has_table_location,
+        feishu_field_name_map={str(key): str(value) for key, value in field_name_map.items() if key and value},
+    )
+
+
+def _dict_value(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _text_value(source: dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        value = source.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return ""
+
+
+def _bool_value(value: Any, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
 # 这个函数防止 third runtime、migration 和 seed 误连 SpringBoot 业务库。

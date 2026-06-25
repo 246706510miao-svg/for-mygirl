@@ -16,6 +16,7 @@ class ContentPart(BaseModel):
 class InvokeWorkflowRequest(BaseModel):
     content: list[ContentPart] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    private_metadata: dict[str, Any] = Field(default_factory=dict, alias="privateMetadata")
 
 
 # 这个模型定义恢复确认 workflow 的请求体。
@@ -23,6 +24,10 @@ class ResumeWorkflowRequest(BaseModel):
     confirmation_id: str
     approved: bool
     content: list[ContentPart] = Field(default_factory=list)
+
+
+class FeishuTableCheckRequest(BaseModel):
+    private_metadata: dict[str, Any] = Field(default_factory=dict, alias="privateMetadata")
 
 
 # 这个模型定义 workflow API 返回的统一结构。

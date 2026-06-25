@@ -11,13 +11,17 @@ try:
     from .runtime.factory import get_workflow_runtime_store
     from .storage.factory import get_workflow_repository
     from .storage.repository import now
-    from .workflow.api_schema import InvokeWorkflowRequest, ResumeWorkflowRequest, WorkflowResponse
+    from .agents.shared.config import load_config, private_metadata_context
+    from .Tool.field_context import load_table_fields_context
+    from .workflow.api_schema import FeishuTableCheckRequest, InvokeWorkflowRequest, ResumeWorkflowRequest, WorkflowResponse
 except ImportError:
     from debug.router import router as debug_router
     from runtime.factory import get_workflow_runtime_store
     from storage.factory import get_workflow_repository
     from storage.repository import now
-    from workflow.api_schema import InvokeWorkflowRequest, ResumeWorkflowRequest, WorkflowResponse
+    from agents.shared.config import load_config, private_metadata_context
+    from Tool.field_context import load_table_fields_context
+    from workflow.api_schema import FeishuTableCheckRequest, InvokeWorkflowRequest, ResumeWorkflowRequest, WorkflowResponse
 
 
 # 这一段创建 FastAPI 应用，SpringBoot 后续通过 HTTP 调用这里。
@@ -36,7 +40,7 @@ def invoke_workflow(request: InvokeWorkflowRequest) -> WorkflowResponse:
         raise HTTPException(status_code=400, detail="content[0].text 不能为空。")
     repository = get_workflow_repository()
     runtime_store = get_workflow_runtime_store()
-    session = repository.create_session(original_input, status="queued", metadata_json=request.metadata)
+    session = repository.create_session(original_input, status="queued", metadata_json=request.metadata, private_metadata_json=request.private_metadata)
     runtime_store.enqueue_session(session["session_id"])
     return WorkflowResponse(
         session_id=session["session_id"],
@@ -92,6 +96,28 @@ def resume_workflow(session_id: str, request: ResumeWorkflowRequest) -> Workflow
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+# 这个接口使用后端下发的私有飞书配置检查目标表字段。
+@app.post("/internal/feishu/table-check")
+def internal_feishu_table_check(request: FeishuTableCheckRequest) -> dict[str, Any]:
+    with private_metadata_context(request.private_metadata):
+        config = load_config()
+        table_fields = load_table_fields_context()
+    if table_fields.get("error"):
+        return {
+            "status": "error",
+            "message": table_fields.get("error"),
+            "tableName": config.feishu_table_name,
+            "fieldCount": 0,
+        }
+    return {
+        "status": "ok",
+        "message": f"已读取字段 {len(table_fields.get('field_names') or [])} 个。",
+        "tableName": table_fields.get("table_name") or config.feishu_table_name,
+        "fieldCount": len(table_fields.get("field_names") or []),
+        "fieldNames": table_fields.get("field_names") or [],
+    }
 
 
 # 这个接口返回 workflow 追踪摘要，供业务后端关联记录追踪。

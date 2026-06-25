@@ -1,6 +1,7 @@
 package com.formygirl.ops;
 
 import com.formygirl.common.JsonSupport;
+import com.formygirl.feishu.FeishuConfigService;
 import com.formygirl.persistence.BusinessRepository;
 import com.formygirl.thirdclient.ThirdWorkflowClient;
 import java.time.LocalDate;
@@ -14,11 +15,13 @@ import org.springframework.transaction.annotation.Transactional;
 public class OpsService {
     private final BusinessRepository repository;
     private final ThirdWorkflowClient thirdClient;
+    private final FeishuConfigService feishuConfigService;
     private final JsonSupport json;
 
-    public OpsService(BusinessRepository repository, ThirdWorkflowClient thirdClient, JsonSupport json) {
+    public OpsService(BusinessRepository repository, ThirdWorkflowClient thirdClient, FeishuConfigService feishuConfigService, JsonSupport json) {
         this.repository = repository;
         this.thirdClient = thirdClient;
+        this.feishuConfigService = feishuConfigService;
         this.json = json;
     }
 
@@ -74,15 +77,19 @@ public class OpsService {
     public Map<String, Object> retrySync(String recordId, String mode, String requestId) {
         Map<String, Object> record = repository.record(recordId);
         Map<String, Object> latest = repository.latestFeishuSync(recordId);
-        Map<String, Object> third = thirdClient.invokeAndWait("新增一条记录，重试同步：" + record.getOrDefault("final_text", ""), Map.of(
+        Map<String, Object> session = repository.requireSession(String.valueOf(record.get("session_id")));
+        FeishuConfigService.WorkflowFeishuContext feishuContext = feishuConfigService.workflowContext(String.valueOf(record.get("user_id")), stringOrNull(session.get("feishu_table_config_id")));
+        Map<String, Object> metadata = dto(
                 "businessRecordId", recordId,
                 "operation", "retry_sync",
                 "mode", mode
-        ));
+        );
+        metadata.putAll(feishuContext.publicMetadata());
+        Map<String, Object> third = thirdClient.invokeAndWait("新增一条记录，重试同步：" + record.getOrDefault("final_text", ""), metadata, feishuContext.privateMetadata());
         String thirdStatus = String.valueOf(third.get("status"));
         String syncStatus = "success".equals(thirdStatus) ? "success" : "failed";
         int retryCount = intValue(latest.get("retry_count"), 0) + 1;
-        Map<String, Object> sync = repository.insertFeishuSync(recordId, String.valueOf(third.get("session_id")), requestId, syncStatus, "success".equals(syncStatus) ? null : String.valueOf(third.get("error_text")), retryCount, Map.of("retryMode", mode, "thirdStatus", thirdStatus));
+        Map<String, Object> sync = repository.insertFeishuSync(recordId, feishuContext.tableConfigId(), String.valueOf(third.get("session_id")), requestId, syncStatus, "success".equals(syncStatus) ? null : String.valueOf(third.get("error_text")), retryCount, Map.of("retryMode", mode, "thirdStatus", thirdStatus));
         Map<String, Object> display = repository.display(recordId);
         if (!display.isEmpty() && "success".equals(syncStatus)) {
             repository.upsertDisplay(recordId, String.valueOf(display.get("title")), String.valueOf(display.get("summary")), intValue(display.get("score"), 80), "success", json.map(String.valueOf(display.get("admin_content_json"))), json.map(String.valueOf(display.get("display_json"))));
@@ -175,5 +182,13 @@ public class OpsService {
         Map<String, Object> result = new LinkedHashMap<>();
         source.forEach((key, value) -> result.put(String.valueOf(key), value));
         return result;
+    }
+
+    private String stringOrNull(Object value) {
+        if (value == null) {
+            return null;
+        }
+        String text = String.valueOf(value);
+        return text.isBlank() || "null".equals(text) ? null : text;
     }
 }

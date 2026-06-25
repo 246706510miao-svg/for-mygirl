@@ -8,6 +8,7 @@ public class AppProperties {
     private String userToken;
     private String partnerToken;
     private String adminToken;
+    private String secretKey;
     private String thirdBaseUrl;
     private int thirdPollTimes;
     private long thirdPollIntervalMs;
@@ -42,6 +43,14 @@ public class AppProperties {
 
     public void setAdminToken(String adminToken) {
         this.adminToken = adminToken;
+    }
+
+    public String getSecretKey() {
+        return secretKey;
+    }
+
+    public void setSecretKey(String secretKey) {
+        this.secretKey = secretKey;
     }
 
     public String getThirdBaseUrl() {

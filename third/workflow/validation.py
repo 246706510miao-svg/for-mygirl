@@ -75,16 +75,16 @@ def run_validation_node(context: dict[str, Any]) -> dict[str, Any]:
     if errors:
         raise ValueError("；".join(errors))
 
-    tool_input_payload = {
+    private_tool_input_payload = {
         "original_input": original_input,
         request_key: normalized_request,
     }
-    idempotency_key, payload_hash = _idempotency_key(operation, tool_input_payload)
+    idempotency_key, payload_hash = _idempotency_key(operation, private_tool_input_payload)
     data_json = {
         "tool_name": tool_name,
         "operation": operation,
         "request_key": request_key,
-        "tool_input_payload": tool_input_payload,
+        "tool_input_payload": _public_tool_input_payload(private_tool_input_payload),
         "idempotency_key": idempotency_key,
         "payload_hash": payload_hash,
         "warnings": validation_warnings(normalized_request),
@@ -113,17 +113,17 @@ def _run_schema_change_validation(context: dict[str, Any], config: Any) -> dict[
     if errors:
         raise ValueError("；".join(errors))
 
-    tool_input_payload = {
+    private_tool_input_payload = {
         "original_input": original_input,
         "schema_change_request": normalized_request,
     }
-    idempotency_key, payload_hash = _idempotency_key("change_fields", tool_input_payload)
+    idempotency_key, payload_hash = _idempotency_key("change_fields", private_tool_input_payload)
     preview = _schema_change_preview(normalized_request)
     data_json = {
         "tool_name": CHANGE_SCHEMA_TOOL,
         "operation": "change_fields",
         "request_key": "schema_change_request",
-        "tool_input_payload": tool_input_payload,
+        "tool_input_payload": _public_tool_input_payload(private_tool_input_payload),
         "idempotency_key": idempotency_key,
         "payload_hash": payload_hash,
         "warnings": [],
@@ -170,6 +170,23 @@ def _normalize_schema_change_request(
     request["actions"] = normalized_actions
     request["validation_errors"] = _dedupe_keep_order(errors)
     return request, request["validation_errors"]
+
+
+def _public_tool_input_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    cleaned = deepcopy(payload)
+    _strip_sensitive_request_fields(cleaned)
+    return cleaned
+
+
+def _strip_sensitive_request_fields(value: Any) -> None:
+    if isinstance(value, dict):
+        for key in ("app_token", "table_fields", "tenant_access_token", "app_secret", "authorization"):
+            value.pop(key, None)
+        for item in value.values():
+            _strip_sensitive_request_fields(item)
+    elif isinstance(value, list):
+        for item in value:
+            _strip_sensitive_request_fields(item)
 
 
 def _schema_change_configuration_error(config: Any, table_fields: dict[str, Any], force_real: bool = False) -> str | None:

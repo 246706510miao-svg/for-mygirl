@@ -24,6 +24,7 @@ class WorkflowSessionModel(Base):
     final_answer: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    private_metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 

@@ -60,11 +60,16 @@ class WorkflowRepository:
         session_id: str | None = None,
         status: str = "queued",
         metadata_json: dict[str, Any] | None = None,
+        private_metadata_json: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         raise NotImplementedError
 
     # 这个方法读取 workflow session。
     def get_session(self, session_id: str) -> dict[str, Any] | None:
+        raise NotImplementedError
+
+    # 这个方法读取不会暴露到 snapshot 的私有 metadata。
+    def get_private_metadata(self, session_id: str) -> dict[str, Any]:
         raise NotImplementedError
 
     # 这个方法按更新时间倒序列出最近的 workflow session。
@@ -196,6 +201,7 @@ class SqlAlchemyWorkflowRepository(WorkflowRepository):
         session_id: str | None = None,
         status: str = "queued",
         metadata_json: dict[str, Any] | None = None,
+        private_metadata_json: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         created_at = now()
         model = WorkflowSessionModel(
@@ -206,6 +212,7 @@ class SqlAlchemyWorkflowRepository(WorkflowRepository):
             final_answer=None,
             error_text=None,
             metadata_json=to_jsonable(metadata_json or {}),
+            private_metadata_json=to_jsonable(private_metadata_json or {}),
             created_at=created_at,
             updated_at=created_at,
         )
@@ -219,6 +226,12 @@ class SqlAlchemyWorkflowRepository(WorkflowRepository):
         with self._session_factory() as session:
             model = session.get(WorkflowSessionModel, session_id)
             return _session_to_dict(model) if model else None
+
+    # 这个方法读取私有 metadata，不进入普通 session DTO。
+    def get_private_metadata(self, session_id: str) -> dict[str, Any]:
+        with self._session_factory() as session:
+            model = session.get(WorkflowSessionModel, session_id)
+            return to_jsonable(model.private_metadata_json or {}) if model else {}
 
     # 这个方法按更新时间倒序列出最近的 workflow session。
     def list_sessions(self, limit: int = 50) -> list[dict[str, Any]]:
@@ -526,6 +539,7 @@ class InMemoryWorkflowRepository(WorkflowRepository):
         session_id: str | None = None,
         status: str = "queued",
         metadata_json: dict[str, Any] | None = None,
+        private_metadata_json: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         created_at = now()
         row = {
@@ -536,29 +550,35 @@ class InMemoryWorkflowRepository(WorkflowRepository):
             "final_answer": None,
             "error_text": None,
             "metadata_json": to_jsonable(metadata_json or {}),
+            "private_metadata_json": to_jsonable(private_metadata_json or {}),
             "created_at": created_at,
             "updated_at": created_at,
         }
         self.sessions[row["session_id"]] = row
-        return deepcopy(row)
+        return _public_session_row(row)
 
     # 这个方法读取 workflow session。
     def get_session(self, session_id: str) -> dict[str, Any] | None:
         row = self.sessions.get(session_id)
-        return deepcopy(row) if row else None
+        return _public_session_row(row) if row else None
+
+    # 这个方法读取私有 metadata。
+    def get_private_metadata(self, session_id: str) -> dict[str, Any]:
+        row = self.sessions.get(session_id) or {}
+        return deepcopy(row.get("private_metadata_json") or {})
 
     # 这个方法按更新时间倒序列出最近的 workflow session。
     def list_sessions(self, limit: int = 50) -> list[dict[str, Any]]:
         rows = list(self.sessions.values())
         rows.sort(key=lambda item: item["updated_at"], reverse=True)
-        return deepcopy(rows[: _safe_limit(limit)])
+        return [_public_session_row(row) for row in rows[: _safe_limit(limit)]]
 
     # 这个方法更新 workflow session。
     def update_session(self, session_id: str, **fields: Any) -> dict[str, Any]:
         row = self.sessions[session_id]
         row.update({key: value for key, value in fields.items() if key in row or key in {"status", "current_step_id", "final_answer", "error_text"}})
         row["updated_at"] = now()
-        return deepcopy(row)
+        return _public_session_row(row)
 
     # 这个方法保存计划和步骤。
     def save_plan(self, session_id: str, plan: dict[str, Any]) -> dict[str, Any]:
@@ -828,6 +848,12 @@ def _session_to_dict(model: WorkflowSessionModel) -> dict[str, Any]:
         "created_at": model.created_at,
         "updated_at": model.updated_at,
     }
+
+
+def _public_session_row(row: dict[str, Any]) -> dict[str, Any]:
+    cleaned = deepcopy(row)
+    cleaned.pop("private_metadata_json", None)
+    return cleaned
 
 
 # 这个函数把 plan 模型转换成字典。

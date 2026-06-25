@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 try:
-    from ..agents.shared.config import load_config
+    from ..agents.shared.config import load_config, private_metadata_context
     from ..agents.workflowagent.agent import build_workflow_plan
     from ..runtime.factory import get_workflow_runtime_store
     from ..storage.factory import get_workflow_repository
@@ -22,7 +22,7 @@ try:
     from .registry import WRITE_TOOLS, build_plan_from_template
     from .registry.templates import RECORD_DRAFT_TEMPLATE
 except ImportError:
-    from agents.shared.config import load_config
+    from agents.shared.config import load_config, private_metadata_context
     from agents.workflowagent.agent import build_workflow_plan
     from runtime.factory import get_workflow_runtime_store
     from storage.factory import get_workflow_repository
@@ -139,14 +139,15 @@ class WorkflowExecutor:
         self.repository.update_step(step["step_id"], status="running", attempt_count=int(step.get("attempt_count") or 0) + 1, started_at=now())
         context = self._build_step_context(session_id, plan, step)
         try:
-            if step["kind"] == "tool":
-                output = self._idempotent_tool_output(context) or dispatch_tool(context)
-            elif step["kind"] == "agent":
-                output = run_business_agent(context)
-            elif step["kind"] == "validation":
-                output = run_validation_node(context)
-            else:
-                raise ValueError(f"不支持的 step.kind：{step['kind']}")
+            with private_metadata_context(self.repository.get_private_metadata(session_id)):
+                if step["kind"] == "tool":
+                    output = self._idempotent_tool_output(context) or dispatch_tool(context)
+                elif step["kind"] == "agent":
+                    output = run_business_agent(context)
+                elif step["kind"] == "validation":
+                    output = run_validation_node(context)
+                else:
+                    raise ValueError(f"不支持的 step.kind：{step['kind']}")
             artifact = self._save_step_output(session_id, step, output)
             self._mark_idempotency_success_if_needed(context, artifact)
             self.repository.update_step(step["step_id"], status="success", finished_at=now(), error_text=None)

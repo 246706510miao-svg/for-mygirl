@@ -2,6 +2,7 @@ package com.formygirl.thirdclient;
 
 import com.formygirl.common.ApiException;
 import com.formygirl.common.AppProperties;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
@@ -20,7 +21,12 @@ public class ThirdWorkflowClient {
 
     // 这个函数提交 workflow 并轮询到终态或等待确认态。
     public Map<String, Object> invokeAndWait(String text, Map<String, Object> metadata) {
-        Map<String, Object> created = invoke(text, metadata);
+        return invokeAndWait(text, metadata, Map.of());
+    }
+
+    // 这个函数提交 workflow，并把敏感上下文放入 third 私有 metadata。
+    public Map<String, Object> invokeAndWait(String text, Map<String, Object> metadata, Map<String, Object> privateMetadata) {
+        Map<String, Object> created = invoke(text, metadata, privateMetadata);
         String sessionId = String.valueOf(created.get("session_id"));
         return waitFor(sessionId);
     }
@@ -64,12 +70,29 @@ public class ThirdWorkflowClient {
                 .body(Map.class);
     }
 
-    // 这个函数提交 workflow。
-    private Map<String, Object> invoke(String text, Map<String, Object> metadata) {
+    // 这个函数让 third 使用私有飞书配置测试表连接。
+    public Map<String, Object> checkFeishuTable(Map<String, Object> privateMetadata) {
         try {
             return restClient.post()
+                    .uri(properties.getThirdBaseUrl() + "/internal/feishu/table-check")
+                    .body(Map.of("privateMetadata", privateMetadata == null ? Map.of() : privateMetadata))
+                    .retrieve()
+                    .body(Map.class);
+        } catch (Exception exception) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "AI_SERVICE_ERROR", "third 飞书表测试失败：" + exception.getMessage());
+        }
+    }
+
+    // 这个函数提交 workflow。
+    private Map<String, Object> invoke(String text, Map<String, Object> metadata, Map<String, Object> privateMetadata) {
+        try {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("content", List.of(Map.of("text", text)));
+            body.put("metadata", metadata == null ? Map.of() : metadata);
+            body.put("privateMetadata", privateMetadata == null ? Map.of() : privateMetadata);
+            return restClient.post()
                     .uri(properties.getThirdBaseUrl() + "/workflows/invoke")
-                    .body(Map.of("content", List.of(Map.of("text", text)), "metadata", metadata))
+                    .body(body)
                     .retrieve()
                     .body(Map.class);
         } catch (Exception exception) {

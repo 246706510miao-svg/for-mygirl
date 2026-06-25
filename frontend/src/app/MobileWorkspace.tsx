@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { saveRecordComment } from "../features/comment/api";
+import { createFeishuTable, fetchFeishuAccount, fetchFeishuTables, saveFeishuAccount, setDefaultFeishuTable, testFeishuTable, updateFeishuTable, type SaveFeishuAccountPayload, type SaveFeishuTablePayload } from "../features/feishu/api";
 import { addReward, checkIn, fetchPointSummary, fetchRedemptions, fetchRewards, redeemReward } from "../features/points/api";
 import { confirmRecordDraft, createRecordSession, fetchBoundUserRecentRecords, fetchRecordHome, resumeRecordConfirm, sendRecordMessage } from "../features/record/api";
 import { fetchIdentityContext, switchViewRole } from "../features/relationship/api";
@@ -15,7 +16,7 @@ import { RecordsScreen } from "../pages/RecordsScreen";
 import { AdminRewardsScreen } from "../pages/AdminRewardsScreen";
 import { AdminRecordsScreen } from "../pages/AdminRecordsScreen";
 import type { ClientRole } from "../shared/api/client";
-import type { ConfirmRecordResult, IdentityContext, PendingThirdConfirmation, PointSummary, RecordDisplay, RecordDraft, RecordSession, RewardItem, RewardRedemption, UserHome, ViewRole } from "../shared/types/api";
+import type { ConfirmRecordResult, FeishuAccount, FeishuTableConfig, IdentityContext, PendingThirdConfirmation, PointSummary, RecordDisplay, RecordDraft, RecordSession, RewardItem, RewardRedemption, UserHome, ViewRole } from "../shared/types/api";
 import type { FieldKey } from "../components/records/recordFields";
 
 type Screen = "home" | "profile" | "chat" | "userRecent" | "adminRewards" | "adminRecent";
@@ -28,6 +29,8 @@ interface MobileSnapshot {
   redemptions: RewardRedemption[];
   userRecords: RecordDisplay[];
   adminRecords: RecordDisplay[];
+  feishuAccount: FeishuAccount;
+  feishuTables: FeishuTableConfig[];
 }
 
 interface MobileWorkspaceProps {
@@ -45,6 +48,14 @@ function messageContent(message: Record<string, unknown> | undefined, fallback: 
   return typeof content === "string" && content.trim() ? content : fallback;
 }
 
+// 这个函数在刷新飞书配置后保持当前选择稳定。
+function resolveSelectedFeishuTable(current: string | null | undefined, tables: FeishuTableConfig[]) {
+  if (current && tables.some((table) => table.id === current)) {
+    return current;
+  }
+  return tables.find((table) => table.isDefault)?.id ?? tables[0]?.id ?? null;
+}
+
 // 这个组件编排手机端用户视角和绑定管理员视角。
 export function MobileWorkspace({ role }: MobileWorkspaceProps) {
   const toast = useToast();
@@ -56,6 +67,9 @@ export function MobileWorkspace({ role }: MobileWorkspaceProps) {
   const [redemptions, setRedemptions] = useState<RewardRedemption[]>([]);
   const [userRecords, setUserRecords] = useState<RecordDisplay[]>([]);
   const [adminRecords, setAdminRecords] = useState<RecordDisplay[]>([]);
+  const [feishuAccount, setFeishuAccount] = useState<FeishuAccount | null>(null);
+  const [feishuTables, setFeishuTables] = useState<FeishuTableConfig[]>([]);
+  const [selectedFeishuTableId, setSelectedFeishuTableId] = useState<string | null>(null);
   const [selectedFields, setSelectedFields] = useState<FieldKey[]>(["recordDate", "summary", "score"]);
   const [session, setSession] = useState<RecordSession | null>(null);
   const [draft, setDraft] = useState<RecordDraft | null>(null);
@@ -101,12 +115,14 @@ export function MobileWorkspace({ role }: MobileWorkspaceProps) {
 
   // 这个函数读取手机端当前视角需要的完整数据快照。
   async function readMobileSnapshot(nextRole: ClientRole): Promise<MobileSnapshot> {
-    const [nextContext, recordData, nextPoints, nextRewards, nextRedemptions] = await Promise.all([
+    const [nextContext, recordData, nextPoints, nextRewards, nextRedemptions, nextFeishuAccount, nextFeishuTables] = await Promise.all([
       fetchIdentityContext(nextRole),
       fetchRecordHome(nextRole),
       fetchPointSummary(nextRole),
       fetchRewards(nextRole),
-      fetchRedemptions(nextRole)
+      fetchRedemptions(nextRole),
+      fetchFeishuAccount(nextRole),
+      fetchFeishuTables(nextRole)
     ]);
     const nextAdminRecords = nextContext.currentViewRole === "BOUND_ADMIN" ? await fetchBoundUserRecentRecords(nextRole) : [];
     return {
@@ -116,7 +132,9 @@ export function MobileWorkspace({ role }: MobileWorkspaceProps) {
       rewards: nextRewards.items,
       redemptions: nextRedemptions.items,
       userRecords: recordData.records,
-      adminRecords: nextAdminRecords
+      adminRecords: nextAdminRecords,
+      feishuAccount: nextFeishuAccount,
+      feishuTables: nextFeishuTables
     };
   }
 
@@ -129,11 +147,21 @@ export function MobileWorkspace({ role }: MobileWorkspaceProps) {
     setRedemptions(snapshot.redemptions);
     setUserRecords(snapshot.userRecords);
     setAdminRecords(snapshot.adminRecords);
+    setFeishuAccount(snapshot.feishuAccount);
+    setFeishuTables(snapshot.feishuTables);
+    setSelectedFeishuTableId((current) => resolveSelectedFeishuTable(current, snapshot.feishuTables));
   }
 
   // 这个函数刷新手机端上下文和当前视角数据。
   async function loadMobileData(nextRole = role) {
     applyMobileSnapshot(await readMobileSnapshot(nextRole));
+  }
+
+  async function loadFeishuData(nextSelectedId?: string) {
+    const [nextAccount, nextTables] = await Promise.all([fetchFeishuAccount(role), fetchFeishuTables(role)]);
+    setFeishuAccount(nextAccount);
+    setFeishuTables(nextTables);
+    setSelectedFeishuTableId(resolveSelectedFeishuTable(nextSelectedId ?? selectedFeishuTableId, nextTables));
   }
 
   // 这个函数统一包裹页面异步动作和错误提示。
@@ -189,7 +217,7 @@ export function MobileWorkspace({ role }: MobileWorkspaceProps) {
     void runAction("发送中", async () => {
       let current = session;
       if (!current) {
-        current = await createRecordSession(role, new Date().toISOString().slice(0, 10));
+        current = await createRecordSession(role, new Date().toISOString().slice(0, 10), selectedFeishuTableId);
         setSession(current);
       }
       const result = await sendRecordMessage(role, current.id, content);
@@ -302,6 +330,58 @@ export function MobileWorkspace({ role }: MobileWorkspaceProps) {
     toast.info("可以继续发送补充说明");
   }
 
+  function selectFeishuTable(tableId: string) {
+    if (session || draft || pendingConfirmation) {
+      toast.info("当前会话已绑定飞书表");
+      return;
+    }
+    setSelectedFeishuTableId(tableId);
+  }
+
+  function submitFeishuAccount(payload: SaveFeishuAccountPayload) {
+    return runAction("保存飞书凭证中", async () => {
+      await saveFeishuAccount(role, payload);
+      await loadFeishuData();
+      toast.success("飞书凭证已保存");
+    });
+  }
+
+  function submitFeishuTable(payload: SaveFeishuTablePayload) {
+    return runAction("添加飞书表中", async () => {
+      const table = await createFeishuTable(role, payload);
+      await loadFeishuData(table.id);
+      toast.success("飞书表已添加");
+    });
+  }
+
+  function saveCurrentFeishuTable(tableId: string, payload: SaveFeishuTablePayload) {
+    return runAction("保存飞书表中", async () => {
+      await updateFeishuTable(role, tableId, payload);
+      await loadFeishuData(tableId);
+      toast.success("飞书表已保存");
+    });
+  }
+
+  function markDefaultFeishuTable(tableId: string) {
+    return runAction("设置默认表中", async () => {
+      await setDefaultFeishuTable(role, tableId);
+      await loadFeishuData(tableId);
+      toast.success("默认表已更新");
+    });
+  }
+
+  function checkFeishuTable(tableId: string) {
+    return runAction("测试飞书表中", async () => {
+      const result = await testFeishuTable(role, tableId);
+      await loadFeishuData(tableId);
+      if (result.status === "ok") {
+        toast.success(`连接正常，字段 ${result.fieldCount ?? 0} 个`);
+      } else {
+        throw new Error(result.message || "飞书表测试失败");
+      }
+    });
+  }
+
   if (loading && !context) {
     return (
       <MobileAppShell>
@@ -360,6 +440,10 @@ export function MobileWorkspace({ role }: MobileWorkspaceProps) {
           input={chatInput}
           draft={draft}
           pendingConfirmation={pendingConfirmation}
+          feishuAccount={feishuAccount}
+          feishuTables={feishuTables}
+          selectedFeishuTableId={selectedFeishuTableId}
+          feishuLocked={Boolean(session || draft || pendingConfirmation)}
           busy={busy}
           onBack={() => setScreen("home")}
           onInputChange={setChatInput}
@@ -369,6 +453,12 @@ export function MobileWorkspace({ role }: MobileWorkspaceProps) {
           onRejectConfirmation={() => resolvePendingConfirmation(false)}
           onEditDraft={editDraft}
           onVoice={() => toast.info("语音入口暂未接入")}
+          onSelectFeishuTable={selectFeishuTable}
+          onSaveFeishuAccount={submitFeishuAccount}
+          onCreateFeishuTable={submitFeishuTable}
+          onUpdateFeishuTable={saveCurrentFeishuTable}
+          onSetDefaultFeishuTable={markDefaultFeishuTable}
+          onTestFeishuTable={checkFeishuTable}
         />
       )}
       {screen === "userRecent" && (

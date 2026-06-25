@@ -39,6 +39,7 @@ export interface RecordSession {
   id: string;
   status: string;
   currentDraftId: string | null;
+  feishuTableConfigId?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -131,6 +132,45 @@ export interface SendMessageResult {
   draft?: RecordDraft;
   pendingConfirmation?: PendingThirdConfirmation;
   thirdStatus?: string;
+}
+
+export interface FeishuAccount {
+  configured: boolean;
+  enabled: boolean;
+  appId?: string;
+  appSecretConfigured: boolean;
+  tenantAccessTokenConfigured: boolean;
+  userIdType: string;
+  updatedAt?: string;
+}
+
+export interface FeishuTableConfig {
+  id: string;
+  displayName: string;
+  tableUrl: string;
+  tableId: string;
+  tableName?: string;
+  viewId?: string;
+  isDefault: boolean;
+  enabled: boolean;
+  fieldNameMap: Record<string, unknown>;
+  lastTestStatus?: string;
+  lastTestMessage?: string;
+  lastTestAt?: string;
+  updatedAt?: string;
+}
+
+export interface FeishuTableList {
+  items: FeishuTableConfig[];
+}
+
+export interface FeishuTableTestResult {
+  status: string;
+  message?: string;
+  tableName?: string;
+  fieldCount?: number;
+  fieldNames?: string[];
+  table?: FeishuTableConfig;
 }
 
 export interface PointAccount {

@@ -108,10 +108,10 @@ def _parse_feishu_record(context: dict[str, Any]) -> dict[str, Any]:
     else:
         write_request = build_write_request(operation, original_input, config, table_fields)
         source = "rule"
-    tool_input_payload = {
+    tool_input_payload = _public_tool_input_payload({
         "original_input": original_input,
         request_key: write_request,
-    }
+    })
     data_json = {
         "tool_name": tool_name,
         "operation": operation,
@@ -121,7 +121,7 @@ def _parse_feishu_record(context: dict[str, Any]) -> dict[str, Any]:
         "source": source,
     }
     if operation in {"update_record", "delete_record"}:
-        data_json["candidate_read_payload"] = _candidate_read_payload(original_input, write_request)
+        data_json["candidate_read_payload"] = _public_tool_input_payload(_candidate_read_payload(original_input, write_request))
     return {
         "content_text": json.dumps(data_json, ensure_ascii=False, default=str),
         "data_json": data_json,
@@ -142,10 +142,10 @@ def _parse_feishu_schema_change(context: dict[str, Any]) -> dict[str, Any]:
         source = "rule"
     schema_change_request["operation"] = "change_fields"
     schema_change_request["service"] = "feishu_bitable"
-    tool_input_payload = {
+    tool_input_payload = _public_tool_input_payload({
         "original_input": original_input,
         "schema_change_request": schema_change_request,
-    }
+    })
     data_json = {
         "tool_name": "tool_ChangeFeishuBitableFields",
         "operation": "change_fields",
@@ -255,6 +255,23 @@ def _candidate_read_payload(original_input: str, write_request: dict[str, Any]) 
         "original_input": original_input,
         "read_request": read_request,
     }
+
+
+def _public_tool_input_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    cleaned = deepcopy(payload)
+    _strip_sensitive_request_fields(cleaned)
+    return cleaned
+
+
+def _strip_sensitive_request_fields(value: Any) -> None:
+    if isinstance(value, dict):
+        for key in ("app_token", "table_fields", "tenant_access_token", "app_secret", "authorization"):
+            value.pop(key, None)
+        for item in value.values():
+            _strip_sensitive_request_fields(item)
+    elif isinstance(value, list):
+        for item in value:
+            _strip_sensitive_request_fields(item)
 
 
 # 这个函数在更新/删除前从候选记录中匹配用户真正要操作的 record_id。

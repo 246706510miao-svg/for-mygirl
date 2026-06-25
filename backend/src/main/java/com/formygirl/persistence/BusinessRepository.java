@@ -86,15 +86,16 @@ public class BusinessRepository {
     }
 
     // 这个函数创建记录会话。
-    public Map<String, Object> createSession(String userId, LocalDate recordDate, String requestId) {
+    public Map<String, Object> createSession(String userId, LocalDate recordDate, String requestId, String feishuTableConfigId) {
         String id = Ids.newId("session");
         LocalDateTime now = LocalDateTime.now();
         jdbcTemplate.update(
-                "INSERT INTO RECORD_SESSION (id, user_id, record_date, status, current_draft_id, request_id, created_at, updated_at) VALUES (?, ?, ?, 'editing', NULL, ?, ?, ?)",
+                "INSERT INTO RECORD_SESSION (id, user_id, record_date, status, current_draft_id, request_id, feishu_table_config_id, created_at, updated_at) VALUES (?, ?, ?, 'editing', NULL, ?, ?, ?, ?)",
                 id,
                 userId,
                 Date.valueOf(recordDate),
                 requestId,
+                feishuTableConfigId,
                 Timestamp.valueOf(now),
                 Timestamp.valueOf(now)
         );
@@ -227,15 +228,16 @@ public class BusinessRepository {
     }
 
     // 这个函数创建飞书同步记录。
-    public Map<String, Object> insertFeishuSync(String recordId, String thirdSessionId, String requestId, String syncStatus, String errorMessage, int retryCount, Map<String, Object> payload) {
+    public Map<String, Object> insertFeishuSync(String recordId, String configId, String thirdSessionId, String requestId, String syncStatus, String errorMessage, int retryCount, Map<String, Object> payload) {
         String id = Ids.newId("sync");
         jdbcTemplate.update(
                 """
                 INSERT INTO FEISHU_SYNC (id, record_id, config_id, target_type, target_id, payload_json, feishu_ref_id, sync_status, error_message, retry_count, third_session_id, request_id, last_sync_at, created_at)
-                VALUES (?, ?, NULL, 'bitable', NULL, CAST(? AS JSON), ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, 'bitable', NULL, CAST(? AS JSON), ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 id,
                 recordId,
+                configId,
                 json.stringify(payload),
                 payload.get("feishuRefId"),
                 syncStatus,
