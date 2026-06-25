@@ -124,8 +124,11 @@ services:
       BACKEND_MYSQL_PASSWORD: backend_password
       THIRD_BASE_URL: http://third-api:8000
       BACKEND_CORS_ORIGIN: http://localhost:*,http://127.0.0.1:*,http://10.*:*,http://172.*:*,http://192.168.*:*
-      BACKEND_USER_TOKEN: dev-user-token
-      BACKEND_ADMIN_TOKEN: dev-admin-token
+      BACKEND_ADMIN_INITIAL_PASSWORD: admin-dev-password
+      BACKEND_LEGACY_USER_LOGIN_NAME: legacy_user
+      BACKEND_LEGACY_USER_INITIAL_PASSWORD: legacy-user-dev-password
+      BACKEND_LEGACY_PARTNER_LOGIN_NAME: legacy_partner
+      BACKEND_LEGACY_PARTNER_INITIAL_PASSWORD: legacy-partner-dev-password
     ports:
       - "${BACKEND_HOST_PORT:-8080}:8080"
     depends_on:

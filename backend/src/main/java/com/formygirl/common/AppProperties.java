@@ -5,10 +5,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "app")
 public class AppProperties {
     private String corsOrigin;
-    private String userToken;
-    private String partnerToken;
-    private String adminToken;
     private String secretKey;
+    private String adminInitialPassword;
+    private String legacyUserLoginName;
+    private String legacyUserInitialPassword;
+    private String legacyPartnerLoginName;
+    private String legacyPartnerInitialPassword;
+    private int sessionTtlHours;
     private String thirdBaseUrl;
     private int thirdPollTimes;
     private long thirdPollIntervalMs;
@@ -21,36 +24,60 @@ public class AppProperties {
         this.corsOrigin = corsOrigin;
     }
 
-    public String getUserToken() {
-        return userToken;
-    }
-
-    public void setUserToken(String userToken) {
-        this.userToken = userToken;
-    }
-
-    public String getPartnerToken() {
-        return partnerToken;
-    }
-
-    public void setPartnerToken(String partnerToken) {
-        this.partnerToken = partnerToken;
-    }
-
-    public String getAdminToken() {
-        return adminToken;
-    }
-
-    public void setAdminToken(String adminToken) {
-        this.adminToken = adminToken;
-    }
-
     public String getSecretKey() {
         return secretKey;
     }
 
     public void setSecretKey(String secretKey) {
         this.secretKey = secretKey;
+    }
+
+    public String getAdminInitialPassword() {
+        return adminInitialPassword;
+    }
+
+    public void setAdminInitialPassword(String adminInitialPassword) {
+        this.adminInitialPassword = adminInitialPassword;
+    }
+
+    public String getLegacyUserLoginName() {
+        return legacyUserLoginName;
+    }
+
+    public void setLegacyUserLoginName(String legacyUserLoginName) {
+        this.legacyUserLoginName = legacyUserLoginName;
+    }
+
+    public String getLegacyUserInitialPassword() {
+        return legacyUserInitialPassword;
+    }
+
+    public void setLegacyUserInitialPassword(String legacyUserInitialPassword) {
+        this.legacyUserInitialPassword = legacyUserInitialPassword;
+    }
+
+    public String getLegacyPartnerLoginName() {
+        return legacyPartnerLoginName;
+    }
+
+    public void setLegacyPartnerLoginName(String legacyPartnerLoginName) {
+        this.legacyPartnerLoginName = legacyPartnerLoginName;
+    }
+
+    public String getLegacyPartnerInitialPassword() {
+        return legacyPartnerInitialPassword;
+    }
+
+    public void setLegacyPartnerInitialPassword(String legacyPartnerInitialPassword) {
+        this.legacyPartnerInitialPassword = legacyPartnerInitialPassword;
+    }
+
+    public int getSessionTtlHours() {
+        return sessionTtlHours;
+    }
+
+    public void setSessionTtlHours(int sessionTtlHours) {
+        this.sessionTtlHours = sessionTtlHours;
     }
 
     public String getThirdBaseUrl() {

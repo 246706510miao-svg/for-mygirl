@@ -168,6 +168,28 @@ textarea:focus {
   padding: 24px;
 }
 
+.auth-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  border-radius: 20px;
+  padding: 6px;
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.auth-tabs button {
+  min-height: 42px;
+  border-radius: 16px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-weight: 850;
+}
+
+.auth-tabs button.is-selected {
+  background: rgba(79, 192, 217, 0.2);
+  color: var(--color-text-primary);
+}
+
 .login-brand {
   display: grid;
   gap: 6px;
@@ -449,6 +471,11 @@ textarea:focus {
   color: var(--color-text-secondary);
 }
 
+.identity-card__hint {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .segmented-control {
   width: 100%;
   display: grid;
@@ -475,6 +502,63 @@ textarea:focus {
 .role-content {
   display: grid;
   gap: 12px;
+}
+
+.binding-panel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius-large);
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.binding-panel p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.binding-panel__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.binding-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.binding-list {
+  display: grid;
+  gap: 8px;
+}
+
+.binding-list > strong {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.binding-list__item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  border-radius: 16px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.13);
+}
+
+.binding-list__item span {
+  overflow-wrap: anywhere;
+}
+
+.binding-list__item div {
+  display: inline-flex;
+  gap: 6px;
 }
 
 .metric-line {

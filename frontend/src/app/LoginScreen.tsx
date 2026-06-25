@@ -5,15 +5,17 @@ import { MobileAppShell } from "../components/layout/MobileAppShell";
 import { Pressable } from "../components/ui/Pressable";
 import { useToast } from "../components/ui/useToast";
 
-export interface LoginCredentials {
+export interface AuthFormPayload {
+  mode: "login" | "register";
   loginName: string;
+  displayName: string;
   password: string;
 }
 
 interface LoginScreenProps {
   busy: boolean;
   status: string;
-  onSubmit: (credentials: LoginCredentials) => Promise<void>;
+  onSubmit: (payload: AuthFormPayload) => Promise<void>;
 }
 
 // 这个函数生成本地开发验证码。
@@ -24,8 +26,11 @@ function createCaptchaCode() {
 // 这个组件承载登录表单和本地验证码校验。
 export function LoginScreen({ busy, status, onSubmit }: LoginScreenProps) {
   const toast = useToast();
-  const [loginName, setLoginName] = useState("user");
-  const [password, setPassword] = useState("dev");
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [loginName, setLoginName] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [captchaCode, setCaptchaCode] = useState(() => createCaptchaCode());
   const [captchaInput, setCaptchaInput] = useState("");
   const [localStatus, setLocalStatus] = useState("");
@@ -57,7 +62,13 @@ export function LoginScreen({ busy, status, onSubmit }: LoginScreenProps) {
       toast.error("验证码不正确");
       return;
     }
-    await onSubmit({ loginName, password });
+    if (mode === "register" && password !== confirmPassword) {
+      setLocalStatus("两次输入的密码不一致");
+      setShakeKey((value) => value + 1);
+      toast.error("两次输入的密码不一致");
+      return;
+    }
+    await onSubmit({ mode, loginName, displayName, password });
   }
 
   return (
@@ -73,16 +84,36 @@ export function LoginScreen({ busy, status, onSubmit }: LoginScreenProps) {
         >
         <div className="login-brand">
           <span>For My Girl</span>
-          <h1>Welcome back</h1>
+          <h1>{mode === "register" ? "Create account" : "Welcome back"}</h1>
+        </div>
+        <div className="auth-tabs">
+          <Pressable className={mode === "login" ? "is-selected" : ""} onClick={() => setMode("login")} disabled={busy}>
+            登录
+          </Pressable>
+          <Pressable className={mode === "register" ? "is-selected" : ""} onClick={() => setMode("register")} disabled={busy}>
+            注册
+          </Pressable>
         </div>
         <label>
           账号
-          <input value={loginName} onChange={(event) => setLoginName(event.target.value)} placeholder="user / partner / admin" />
+          <input value={loginName} onChange={(event) => setLoginName(event.target.value)} />
         </label>
+        {mode === "register" && (
+          <label>
+            显示名
+            <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="页面展示的名字" />
+          </label>
+        )}
         <label>
           密码
           <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
         </label>
+        {mode === "register" && (
+          <label>
+            确认密码
+            <input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} />
+          </label>
+        )}
         <label>
           验证码
           <span className="captcha-row">
@@ -95,7 +126,7 @@ export function LoginScreen({ busy, status, onSubmit }: LoginScreenProps) {
         </label>
         <Pressable className="primary-button" type="submit" disabled={busy}>
           <LogIn size={18} />
-          {busy ? "进入中" : "进入"}
+          {busy ? "处理中" : mode === "register" ? "注册并进入" : "进入"}
         </Pressable>
         {(localStatus || status) && <p className="form-status">{localStatus || status}</p>}
         </motion.form>

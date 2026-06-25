@@ -19,3 +19,36 @@ export function switchViewRole(role: ClientRole, viewRole: ViewRole) {
 export function fetchBinding(role: ClientRole) {
   return apiRequest<BindingInfo>("/api/relationship/binding", { role });
 }
+
+// 这个函数向另一个账号发起绑定邀请。
+export function inviteBindingUser(role: ClientRole, targetLoginName: string) {
+  return apiRequest<Record<string, unknown>>("/api/relationship/invitations", {
+    method: "POST",
+    role,
+    body: JSON.stringify({ targetLoginName })
+  });
+}
+
+// 这个函数接受绑定邀请。
+export function acceptBindingInvitation(role: ClientRole, bindingId: string) {
+  return apiRequest<IdentityContext>(`/api/relationship/invitations/${bindingId}/accept`, {
+    method: "POST",
+    role
+  });
+}
+
+// 这个函数拒绝绑定邀请。
+export function rejectBindingInvitation(role: ClientRole, bindingId: string) {
+  return apiRequest<IdentityContext>(`/api/relationship/invitations/${bindingId}/reject`, {
+    method: "POST",
+    role
+  });
+}
+
+// 这个函数取消已发出的绑定邀请。
+export function cancelBindingInvitation(role: ClientRole, bindingId: string) {
+  return apiRequest<IdentityContext>(`/api/relationship/invitations/${bindingId}/cancel`, {
+    method: "POST",
+    role
+  });
+}

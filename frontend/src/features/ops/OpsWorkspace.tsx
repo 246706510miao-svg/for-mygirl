@@ -2,10 +2,10 @@ import { useEffect, useState } from "react";
 import { JsonPanel } from "../../components/ops/JsonPanel";
 import { OpsTable } from "../../components/ops/OpsTable";
 import { Pressable } from "../../components/ui/Pressable";
-import { ensureOpsToken, fetchOpsDashboard, fetchOpsRecordDetail, fetchOpsRecords, fetchOpsRecordTrace, type OpsRecord } from "./api";
+import { fetchOpsDashboard, fetchOpsRecordDetail, fetchOpsRecords, fetchOpsRecordTrace, type OpsRecord } from "./api";
 
 // 这个组件承载后台运维 PC 基础页面。
-export function OpsWorkspace() {
+export function OpsWorkspace({ onLogout }: { onLogout: () => void }) {
   const [dashboard, setDashboard] = useState<Record<string, unknown>>({});
   const [records, setRecords] = useState<OpsRecord[]>([]);
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null);
@@ -17,9 +17,8 @@ export function OpsWorkspace() {
     void runOpsAction("加载中", bootstrapOps);
   }, []);
 
-  // 这个函数初始化后台人员 token 和后台列表。
+  // 这个函数初始化后台列表，登录状态由应用入口统一维护。
   async function bootstrapOps() {
-    await ensureOpsToken();
     const dashboardData = await fetchOpsDashboard();
     const recordItems = await fetchOpsRecords();
     setDashboard(dashboardData);
@@ -61,6 +60,7 @@ export function OpsWorkspace() {
       <aside>
         <b>Ops</b>
         <Pressable onClick={() => void runOpsAction("刷新中", bootstrapOps)} disabled={Boolean(busyLabel)}>刷新</Pressable>
+        <Pressable className="secondary-button" onClick={onLogout} disabled={Boolean(busyLabel)}>退出</Pressable>
         {(busyLabel || status) && <p className="ops-status">{busyLabel || status}</p>}
       </aside>
       <main>

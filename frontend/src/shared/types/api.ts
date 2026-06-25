@@ -13,6 +13,16 @@ export interface Person {
   role: Role;
   displayName: string;
   enabled: boolean;
+  loginName?: string;
+}
+
+export interface BindingInvitation {
+  id: string;
+  status: string;
+  requester: Person;
+  target: Person;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface AuthResult {
@@ -26,6 +36,8 @@ export interface BindingInfo {
   bindingId?: string;
   boundUser?: Person | null;
   permissions: string[];
+  incomingInvitations?: BindingInvitation[];
+  outgoingInvitations?: BindingInvitation[];
 }
 
 export interface IdentityContext {

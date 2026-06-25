@@ -1,10 +1,5 @@
-import { apiRequest, login, newClientId, type ClientRole } from "../../shared/api/client";
+import { apiRequest, newClientId, type ClientRole } from "../../shared/api/client";
 import type { ConfirmRecordResult, PageResult, PendingThirdConfirmation, RecordDisplay, RecordSession, SendMessageResult, UserHome } from "../../shared/types/api";
-
-// 这个函数初始化记录模块需要的用户 token。
-export function loginRecordUser() {
-  return login("user");
-}
 
 // 这个函数读取用户首页和最近记录。
 export async function fetchRecordHome(role: ClientRole) {

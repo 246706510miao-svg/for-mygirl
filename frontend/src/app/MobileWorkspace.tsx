@@ -3,7 +3,7 @@ import { saveRecordComment } from "../features/comment/api";
 import { createFeishuTable, fetchFeishuAccount, fetchFeishuTables, saveFeishuAccount, setDefaultFeishuTable, testFeishuTable, updateFeishuTable, type SaveFeishuAccountPayload, type SaveFeishuTablePayload } from "../features/feishu/api";
 import { addReward, checkIn, fetchPointSummary, fetchRedemptions, fetchRewards, redeemReward } from "../features/points/api";
 import { confirmRecordDraft, createRecordSession, fetchBoundUserRecentRecords, fetchRecordHome, resumeRecordConfirm, sendRecordMessage } from "../features/record/api";
-import { fetchIdentityContext, switchViewRole } from "../features/relationship/api";
+import { acceptBindingInvitation, cancelBindingInvitation, fetchIdentityContext, inviteBindingUser, rejectBindingInvitation, switchViewRole } from "../features/relationship/api";
 import { GlassScreen } from "../components/layout/GlassScreen";
 import { MobileAppShell } from "../components/layout/MobileAppShell";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -35,6 +35,7 @@ interface MobileSnapshot {
 
 interface MobileWorkspaceProps {
   role: ClientRole;
+  onLogout: () => void;
 }
 
 // 这个函数提取可展示的错误信息。
@@ -57,7 +58,7 @@ function resolveSelectedFeishuTable(current: string | null | undefined, tables: 
 }
 
 // 这个组件编排手机端用户视角和绑定管理员视角。
-export function MobileWorkspace({ role }: MobileWorkspaceProps) {
+export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
   const toast = useToast();
   const [screen, setScreen] = useState<Screen>("home");
   const [context, setContext] = useState<IdentityContext | null>(null);
@@ -330,6 +331,41 @@ export function MobileWorkspace({ role }: MobileWorkspaceProps) {
     toast.info("可以继续发送补充说明");
   }
 
+  function inviteBinding(loginName: string) {
+    return runAction("发送绑定邀请中", async () => {
+      if (!loginName.trim()) {
+        throw new Error("请输入对方账号");
+      }
+      await inviteBindingUser(role, loginName);
+      await loadMobileData(role);
+      toast.success("绑定邀请已发送");
+    });
+  }
+
+  function acceptBinding(bindingId: string) {
+    void runAction("接受绑定中", async () => {
+      await acceptBindingInvitation(role, bindingId);
+      await loadMobileData(role);
+      toast.success("已绑定用户");
+    });
+  }
+
+  function rejectBinding(bindingId: string) {
+    void runAction("拒绝绑定中", async () => {
+      await rejectBindingInvitation(role, bindingId);
+      await loadMobileData(role);
+      toast.info("已拒绝绑定邀请");
+    });
+  }
+
+  function cancelBinding(bindingId: string) {
+    void runAction("取消邀请中", async () => {
+      await cancelBindingInvitation(role, bindingId);
+      await loadMobileData(role);
+      toast.info("已取消绑定邀请");
+    });
+  }
+
   function selectFeishuTable(tableId: string) {
     if (session || draft || pendingConfirmation) {
       toast.info("当前会话已绑定飞书表");
@@ -432,6 +468,11 @@ export function MobileWorkspace({ role }: MobileWorkspaceProps) {
           onBack={() => setScreen("home")}
           onToggleRole={toggleViewRole}
           onRedeem={redeem}
+          onInviteBinding={inviteBinding}
+          onAcceptBindingInvitation={acceptBinding}
+          onRejectBindingInvitation={rejectBinding}
+          onCancelBindingInvitation={cancelBinding}
+          onLogout={onLogout}
         />
       )}
       {screen === "chat" && (

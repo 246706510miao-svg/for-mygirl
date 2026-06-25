@@ -24,13 +24,13 @@ public class PointRepository {
 
     // 这个函数确保用户积分账户存在。
     public Map<String, Object> ensureAccount(String ownerUserId) {
-        Map<String, Object> existing = account(ownerUserId);
-        if (!existing.isEmpty()) {
-            return existing;
-        }
         String id = Ids.newId("pointacct");
         jdbcTemplate.update(
-                "INSERT INTO POINT_ACCOUNT (id, owner_user_id, balance, updated_at) VALUES (?, ?, 0, ?)",
+                """
+                INSERT INTO POINT_ACCOUNT (id, owner_user_id, balance, updated_at)
+                VALUES (?, ?, 0, ?)
+                ON DUPLICATE KEY UPDATE owner_user_id = VALUES(owner_user_id)
+                """,
                 id,
                 ownerUserId,
                 Timestamp.valueOf(LocalDateTime.now())
