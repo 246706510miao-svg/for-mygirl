@@ -14,9 +14,12 @@ erDiagram
 
     RECORD_SESSION ||--o{ RECORD_MESSAGE : contains
     RECORD_SESSION ||--o{ RECORD_DRAFT : produces
+    RECORD_SESSION ||--o{ RECORD_WORKFLOW_TASK : tracks_third
     RECORD_SESSION ||--o| DAILY_RECORD : confirms
 
+    RECORD_MESSAGE ||--o| RECORD_WORKFLOW_TASK : submits
     RECORD_DRAFT ||--o| DAILY_RECORD : final_version
+    RECORD_DRAFT ||--o{ RECORD_WORKFLOW_TASK : confirms
 
     DAILY_RECORD ||--|| RECORD_DISPLAY : has
     DAILY_RECORD ||--o{ FEISHU_SYNC : syncs
@@ -66,6 +69,23 @@ erDiagram
         text preview_text
         string status "active replaced confirmed"
         datetime created_at
+    }
+
+    RECORD_WORKFLOW_TASK {
+        string id PK
+        string session_id FK
+        string trigger_type "message confirm resume"
+        string client_action_id
+        string source_message_id FK
+        string draft_id FK
+        string third_session_id
+        string confirmation_id
+        boolean approved
+        string status "submitted running waiting_user completed failed cancelled"
+        text error_text
+        string request_id
+        datetime created_at
+        datetime updated_at
     }
 
     DAILY_RECORD {

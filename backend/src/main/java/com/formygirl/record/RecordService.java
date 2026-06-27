@@ -92,29 +92,20 @@ public class RecordService {
         }
         Map<String, Object> userMessage = repository.insertMessage(sessionId, "user", "text", content, null, clientMessageId, null, requestId);
         FeishuConfigService.WorkflowFeishuContext feishuContext = feishuContext(person.id(), session);
-        Map<String, Object> third = thirdClient.invokeAndWait(content, workflowMetadata(feishuContext, Map.of(
+        Map<String, Object> third = thirdClient.invoke(content, workflowMetadata(feishuContext, Map.of(
                 "businessSessionId", sessionId,
                 "idempotencyKey", clientMessageId
         )), feishuContext.privateMetadata());
-        if (isWaitingUser(third)) {
-            return createPendingWorkflowResult(sessionId, clientMessageId + "_confirm", userMessage, content, session, third, requestId);
-        }
-        if ("success".equals(String.valueOf(third.get("status")))) {
-            String thirdSessionId = stringOrNull(third.get("session_id"));
-            Map<String, Object> draftData = extractDraft(thirdSessionId, session);
-            if (!draftData.isEmpty()) {
-                repository.replaceActiveDrafts(sessionId);
-                Map<String, Object> draft = repository.insertDraft(sessionId, draftData, String.valueOf(draftData.get("previewText")), thirdSessionId, requestId);
-                Map<String, Object> aiMessage = repository.insertMessage(sessionId, "ai", "text", "我整理了一版草稿，你可以直接确认，也可以继续告诉我怎么改。", null, null, thirdSessionId, requestId);
-                return dto("session", sessionDto(repository.requireSession(sessionId)), "userMessage", messageDto(userMessage), "aiMessage", messageDto(aiMessage), "draft", draftDto(draft), "thirdStatus", third.get("status"));
-            }
-            Map<String, Object> aiMessage = repository.insertMessage(sessionId, "ai", "text", thirdAnswer(third), null, null, thirdSessionId, requestId);
-            return dto("session", sessionDto(repository.requireSession(sessionId)), "userMessage", messageDto(userMessage), "aiMessage", messageDto(aiMessage), "thirdStatus", third.get("status"));
-        }
-        if (isWorkflowTerminal(third)) {
-            throw new ApiException(HttpStatus.BAD_GATEWAY, "AI_SERVICE_ERROR", "third workflow 执行失败：" + third.getOrDefault("error_text", third.get("status")));
-        }
-        throw new ApiException(HttpStatus.GATEWAY_TIMEOUT, "AI_SERVICE_TIMEOUT", "third workflow 未完成：" + third.get("status"));
+        String thirdSessionId = stringOrNull(third.get("session_id"));
+        userMessage = repository.updateMessageThirdSession(String.valueOf(userMessage.get("id")), thirdSessionId);
+        Map<String, Object> task = repository.createWorkflowTask(sessionId, "message", clientMessageId, String.valueOf(userMessage.get("id")), null, thirdSessionId, null, null, "submitted", requestId);
+        return processingResult(sessionId, userMessage, task);
+    }
+
+    // 这个函数查询记录会话详情。
+    public Map<String, Object> sessionDetail(CurrentPerson person, String sessionId) {
+        requireOwnedSession(person, sessionId);
+        return sessionDetail(sessionId);
     }
 
     // 这个函数查询记录会话详情。
@@ -124,10 +115,16 @@ public class RecordService {
             throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "记录会话不存在");
         }
         Map<String, Object> currentDraft = repository.currentDraft(sessionId);
-        return Map.of(
+        Map<String, Object> task = repository.latestWorkflowTask(sessionId);
+        Map<String, Object> record = repository.findRecordBySession(sessionId);
+        return dto(
                 "session", sessionDto(session),
                 "messages", repository.sessionMessages(sessionId).stream().map(this::messageDto).toList(),
-                "currentDraft", currentDraft.isEmpty() ? Map.of() : draftDto(currentDraft)
+                "currentDraft", currentDraft.isEmpty() ? null : draftDto(currentDraft),
+                "pendingConfirmation", pendingConfirmationFromTask(task),
+                "latestWorkflowTask", task.isEmpty() ? null : workflowTaskDto(task),
+                "record", record.isEmpty() ? null : recordDto(record),
+                "pollAfterMs", 1500
         );
     }
 
@@ -144,19 +141,10 @@ public class RecordService {
             throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "草稿不存在");
         }
         repository.confirmDraft(sessionId, draftId);
-        Map<String, Object> third;
-        try {
-            third = invokeConfirmWorkflow(session, draft, clientConfirmId);
-        } catch (Exception exception) {
-            third = dto("status", "failed", "session_id", null, "error_text", exception.getMessage());
-        }
-        if (isWaitingUser(third)) {
-            return pendingConfirmationResult(sessionId, draftId, clientConfirmId, third);
-        }
-        if (!isWorkflowTerminal(third)) {
-            throw new ApiException(HttpStatus.GATEWAY_TIMEOUT, "AI_SERVICE_TIMEOUT", "third 写入确认生成未完成：" + third.get("status"));
-        }
-        return completeConfirm(repository.requireSession(sessionId), draft, clientConfirmId, third, requestId);
+        Map<String, Object> third = invokeConfirmWorkflow(session, draft, clientConfirmId);
+        String thirdSessionId = stringOrNull(third.get("session_id"));
+        Map<String, Object> task = repository.createWorkflowTask(sessionId, "confirm", clientConfirmId, null, draftId, thirdSessionId, null, true, "submitted", requestId);
+        return processingConfirmResult(sessionId, draft, task);
     }
 
     // 这个函数处理用户对 third 写入确认预览的最终选择。
@@ -173,27 +161,22 @@ public class RecordService {
             throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "草稿不存在");
         }
         if (!approved) {
-            Map<String, Object> third = thirdClient.resumeAndWait(thirdSessionId, confirmationId, "业务前端取消写入", false);
+            thirdClient.resume(thirdSessionId, confirmationId, "业务前端取消写入", false);
+            Map<String, Object> task = repository.createWorkflowTask(sessionId, "resume", resolvedConfirmId, null, draftId, thirdSessionId, confirmationId, false, "cancelled", requestId);
             Map<String, Object> reopened = draft.isEmpty() ? Map.of() : repository.reopenDraft(sessionId, draftId);
             Map<String, Object> reply = repository.insertMessage(sessionId, "system", "text", "已取消写入，可以继续修改。", null, null, thirdSessionId, requestId);
             return dto(
                     "status", "cancelled",
-                    "thirdStatus", third.get("status"),
+                    "workflowStatus", "cancelled",
+                    "latestWorkflowTask", workflowTaskDto(task),
                     "session", sessionDto(repository.requireSession(sessionId)),
                     "draft", reopened.isEmpty() ? null : draftDto(reopened),
                     "replyMessage", messageDto(reply)
             );
         }
-        Map<String, Object> third = thirdClient.resumeAndWait(thirdSessionId, confirmationId, "业务前端已确认写入", true);
-        if (!isWorkflowTerminal(third)) {
-            throw new ApiException(HttpStatus.GATEWAY_TIMEOUT, "AI_SERVICE_TIMEOUT", "third 写入未完成：" + third.get("status"));
-        }
-        if (draft.isEmpty()) {
-            Map<String, Object> reply = repository.insertMessage(sessionId, "system", "text", thirdAnswer(third), null, null, thirdSessionId, requestId);
-            return dto("session", sessionDto(repository.requireSession(sessionId)), "replyMessage", messageDto(reply), "thirdStatus", third.get("status"));
-        }
-        repository.confirmDraft(sessionId, draftId);
-        return completeConfirm(repository.requireSession(sessionId), draft, resolvedConfirmId, third, requestId);
+        thirdClient.resume(thirdSessionId, confirmationId, "业务前端已确认写入", true);
+        Map<String, Object> task = repository.createWorkflowTask(sessionId, "resume", resolvedConfirmId, null, draftId, thirdSessionId, confirmationId, true, "submitted", requestId);
+        return processingConfirmResult(sessionId, draft, task);
     }
 
     // 这个函数把 third 终态落成本地正式记录、同步记录和展示记录。
@@ -237,6 +220,52 @@ public class RecordService {
         return sessionDto(repository.cancelSession(sessionId));
     }
 
+    // 这个函数由后台调度器批量推进 third workflow 跟踪任务。
+    public void processPendingWorkflowTasks() {
+        for (Map<String, Object> task : repository.pendingWorkflowTasks(10)) {
+            processWorkflowTask(task);
+        }
+    }
+
+    // 这个函数查询 third 状态，并在终态或确认态时把结果落到业务表。
+    public void processWorkflowTask(Map<String, Object> task) {
+        String taskId = String.valueOf(task.get("id"));
+        String sessionId = String.valueOf(task.get("session_id"));
+        Map<String, Object> session = repository.requireSession(sessionId);
+        if (session.isEmpty()) {
+            repository.updateWorkflowTaskStatus(taskId, "failed", "记录会话不存在");
+            return;
+        }
+        if ("cancelled".equals(String.valueOf(session.get("status")))) {
+            repository.updateWorkflowTaskStatus(taskId, "cancelled", "记录会话已取消");
+            return;
+        }
+        String thirdSessionId = stringOrNull(task.get("third_session_id"));
+        if (thirdSessionId == null) {
+            repository.updateWorkflowTaskStatus(taskId, "failed", "third_session_id 为空");
+            return;
+        }
+        try {
+            Map<String, Object> third = thirdClient.get(thirdSessionId);
+            String status = String.valueOf(third.get("status"));
+            if ("queued".equals(status) || "running".equals(status)) {
+                repository.updateWorkflowTaskStatus(taskId, "running", null);
+                return;
+            }
+            if (isWaitingUser(third)) {
+                applyWaitingUserTask(task, third);
+                return;
+            }
+            if (isWorkflowTerminal(third)) {
+                applyTerminalTask(task, third);
+                return;
+            }
+            repository.updateWorkflowTaskStatus(taskId, "running", null);
+        } catch (Exception exception) {
+            repository.updateWorkflowTaskStatus(taskId, "failed", exception.getMessage());
+        }
+    }
+
     // 这个函数校验会话归属。
     private Map<String, Object> requireOwnedSession(CurrentPerson person, String sessionId) {
         Map<String, Object> session = repository.requireSession(sessionId);
@@ -247,6 +276,68 @@ public class RecordService {
             throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN", "当前角色无权限");
         }
         return session;
+    }
+
+    // 这个函数返回已提交 third、等待前端轮询的消息结果。
+    private Map<String, Object> processingResult(String sessionId, Map<String, Object> userMessage, Map<String, Object> task) {
+        return dto(
+                "session", sessionDto(repository.requireSession(sessionId)),
+                "userMessage", messageDto(userMessage),
+                "workflowStatus", "processing",
+                "latestWorkflowTask", workflowTaskDto(task),
+                "pollAfterMs", 1500
+        );
+    }
+
+    // 这个函数返回已提交 third、等待后台完成确认链路的结果。
+    private Map<String, Object> processingConfirmResult(String sessionId, Map<String, Object> draft, Map<String, Object> task) {
+        return dto(
+                "session", sessionDto(repository.requireSession(sessionId)),
+                "draft", draft.isEmpty() ? null : draftDto(draft),
+                "workflowStatus", "processing",
+                "latestWorkflowTask", workflowTaskDto(task),
+                "pollAfterMs", 1500
+        );
+    }
+
+    // 这个函数根据最近的 workflow task 构造前端待确认卡片。
+    private Map<String, Object> pendingConfirmationFromTask(Map<String, Object> task) {
+        if (task == null || task.isEmpty() || !"waiting_user".equals(String.valueOf(task.get("status")))) {
+            return null;
+        }
+        String thirdSessionId = stringOrNull(task.get("third_session_id"));
+        Map<String, Object> snapshot = safeSnapshot(thirdSessionId);
+        Map<String, Object> confirmation = mapValue(snapshot.get("confirmation"));
+        Object preview = selectedConfirmationPreview(snapshot, confirmation.get("previewJson"));
+        return dto(
+                "status", "waiting_user",
+                "thirdSessionId", thirdSessionId,
+                "confirmationId", firstMappedValue(confirmation, task.get("confirmation_id"), "confirmationId", "confirmation_id"),
+                "requestText", firstMappedValue(confirmation, null, "requestText", "request_text"),
+                "preview", preview instanceof Map<?, ?> map ? castMap(map) : Map.of(),
+                "clientConfirmId", task.get("client_action_id"),
+                "draftId", stringOrNull(task.get("draft_id"))
+        );
+    }
+
+    // 这个函数把 workflow task 转成前端可轮询的状态对象。
+    private Map<String, Object> workflowTaskDto(Map<String, Object> row) {
+        if (row == null || row.isEmpty()) {
+            return Map.of();
+        }
+        return dto(
+                "id", row.get("id"),
+                "sessionId", row.get("session_id"),
+                "triggerType", row.get("trigger_type"),
+                "clientActionId", row.get("client_action_id"),
+                "thirdSessionId", row.get("third_session_id"),
+                "confirmationId", row.get("confirmation_id"),
+                "approved", row.get("approved"),
+                "status", row.get("status"),
+                "errorText", row.get("error_text"),
+                "createdAt", row.get("created_at"),
+                "updatedAt", row.get("updated_at")
+        );
     }
 
     // 这个函数从 third artifact 中提取草稿。
@@ -261,23 +352,98 @@ public class RecordService {
         return Map.of();
     }
 
-    // 这个函数提交确认写入 workflow，返回 success、failed 或 waiting_user。
+    // 这个函数提交确认写入 workflow，不等待 third 执行完成。
     private Map<String, Object> invokeConfirmWorkflow(Map<String, Object> session, Map<String, Object> draft, String clientConfirmId) {
         String sessionId = String.valueOf(session.get("id"));
         Map<String, Object> draftJson = json.map(String.valueOf(draft.get("draft_json")));
         String title = String.valueOf(draftJson.getOrDefault("title", "今日自律记录"));
         String summary = String.valueOf(draftJson.getOrDefault("summary", draft.get("preview_text")));
         FeishuConfigService.WorkflowFeishuContext feishuContext = feishuContext(String.valueOf(session.get("user_id")), session);
-        return thirdClient.invokeAndWait("新增一条记录，事项名称为" + title + "，总结为" + summary, workflowMetadata(feishuContext, Map.of(
+        return thirdClient.invoke("新增一条记录，事项名称为" + title + "，总结为" + summary, workflowMetadata(feishuContext, Map.of(
                 "businessSessionId", sessionId,
                 "operation", "confirm_sync",
                 "idempotencyKey", clientConfirmId
         )), feishuContext.privateMetadata());
     }
 
+    // 这个函数把 waiting_user 的 third 状态转换成本地草稿或待确认任务。
+    private void applyWaitingUserTask(Map<String, Object> task, Map<String, Object> third) {
+        String triggerType = String.valueOf(task.get("trigger_type"));
+        String sessionId = String.valueOf(task.get("session_id"));
+        String thirdSessionId = stringOrNull(task.get("third_session_id"));
+        Map<String, Object> snapshot = safeSnapshot(thirdSessionId);
+        String confirmationId = stringOrNull(firstMappedValue(mapValue(snapshot.get("confirmation")), confirmationValue(third, "confirmation_id"), "confirmationId", "confirmation_id"));
+        String draftId = stringOrNull(task.get("draft_id"));
+        if ("message".equals(triggerType)) {
+            Map<String, Object> session = repository.requireSession(sessionId);
+            Map<String, Object> message = repository.message(String.valueOf(task.get("source_message_id")));
+            Map<String, Object> validationData = snapshotOutput(snapshot, "writePayload");
+            Map<String, Object> draftData = shouldCreateLocalDraft(validationData) ? draftFromValidation(validationData, String.valueOf(message.get("content")), session) : Map.of();
+            if (!draftData.isEmpty()) {
+                repository.replaceActiveDrafts(sessionId);
+                Map<String, Object> draft = repository.insertDraft(sessionId, draftData, String.valueOf(draftData.get("previewText")), thirdSessionId, String.valueOf(task.get("request_id")));
+                draftId = String.valueOf(draft.get("id"));
+            }
+            repository.insertMessage(sessionId, "ai", "text", "third 已生成需要确认的操作，请核对后决定是否执行。", null, null, thirdSessionId, String.valueOf(task.get("request_id")));
+        } else if ("confirm".equals(triggerType)) {
+            repository.insertMessage(sessionId, "system", "text", "请确认即将写入飞书的内容。", null, null, thirdSessionId, String.valueOf(task.get("request_id")));
+        }
+        repository.markWorkflowTaskWaitingUser(String.valueOf(task.get("id")), confirmationId, draftId);
+    }
+
+    // 这个函数把 third 终态转换成业务草稿、正式记录或错误消息。
+    private void applyTerminalTask(Map<String, Object> task, Map<String, Object> third) {
+        String triggerType = String.valueOf(task.get("trigger_type"));
+        String thirdStatus = String.valueOf(third.get("status"));
+        if ("message".equals(triggerType)) {
+            applyTerminalMessageTask(task, third, thirdStatus);
+            return;
+        }
+        applyTerminalConfirmTask(task, third);
+    }
+
+    // 这个函数处理消息阶段 workflow 的终态。
+    private void applyTerminalMessageTask(Map<String, Object> task, Map<String, Object> third, String thirdStatus) {
+        String sessionId = String.valueOf(task.get("session_id"));
+        String thirdSessionId = stringOrNull(task.get("third_session_id"));
+        String requestId = String.valueOf(task.get("request_id"));
+        if ("success".equals(thirdStatus)) {
+            Map<String, Object> session = repository.requireSession(sessionId);
+            Map<String, Object> draftData = extractDraft(thirdSessionId, session);
+            if (!draftData.isEmpty()) {
+                repository.replaceActiveDrafts(sessionId);
+                repository.insertDraft(sessionId, draftData, String.valueOf(draftData.get("previewText")), thirdSessionId, requestId);
+                repository.insertMessage(sessionId, "ai", "text", "我整理了一版草稿，你可以直接确认，也可以继续告诉我怎么改。", null, null, thirdSessionId, requestId);
+            } else {
+                repository.insertMessage(sessionId, "ai", "text", thirdAnswer(third), null, null, thirdSessionId, requestId);
+            }
+            repository.updateWorkflowTaskStatus(String.valueOf(task.get("id")), "completed", null);
+            return;
+        }
+        String errorText = String.valueOf(third.getOrDefault("error_text", thirdStatus));
+        repository.insertMessage(sessionId, "ai", "text", "third workflow 执行失败：" + errorText, null, null, thirdSessionId, requestId);
+        repository.updateWorkflowTaskStatus(String.valueOf(task.get("id")), "failed", errorText);
+    }
+
+    // 这个函数处理确认或继续确认 workflow 的终态。
+    private void applyTerminalConfirmTask(Map<String, Object> task, Map<String, Object> third) {
+        String sessionId = String.valueOf(task.get("session_id"));
+        String draftId = stringOrNull(task.get("draft_id"));
+        String thirdSessionId = stringOrNull(task.get("third_session_id"));
+        String requestId = String.valueOf(task.get("request_id"));
+        Map<String, Object> draft = draftId == null ? Map.of() : repository.draft(draftId);
+        if (draft.isEmpty()) {
+            repository.insertMessage(sessionId, "system", "text", thirdAnswer(third), null, null, thirdSessionId, requestId);
+            repository.updateWorkflowTaskStatus(String.valueOf(task.get("id")), "completed", null);
+            return;
+        }
+        completeConfirm(repository.requireSession(sessionId), draft, String.valueOf(task.get("client_action_id")), third, requestId);
+        repository.updateWorkflowTaskStatus(String.valueOf(task.get("id")), "completed", null);
+    }
+
     // 这个函数判断 third 是否正在等待用户确认。
     private boolean isWaitingUser(Map<String, Object> third) {
-        return "waiting_user".equals(String.valueOf(third.get("status"))) && third.get("confirmation") instanceof Map<?, ?>;
+        return "waiting_user".equals(String.valueOf(third.get("status")));
     }
 
     // 这个函数判断 third workflow 是否已经到终态。
@@ -285,58 +451,9 @@ public class RecordService {
         return List.of("success", "failed", "cancelled").contains(String.valueOf(third.get("status")));
     }
 
-    // 这个函数把 third 确认请求转换成前端可展示的结果。
-    private Map<String, Object> pendingConfirmationResult(String sessionId, String draftId, String clientConfirmId, Map<String, Object> third) {
-        return dto("session", sessionDto(repository.requireSession(sessionId)), "pendingConfirmation", buildPendingConfirmation(draftId, clientConfirmId, third, safeSnapshot(stringOrNull(third.get("session_id")))));
-    }
-
-    // 这个函数把消息阶段直接进入 waiting_user 的 workflow 转成前端确认结果。
-    private Map<String, Object> createPendingWorkflowResult(String sessionId, String clientConfirmId, Map<String, Object> userMessage, String content, Map<String, Object> session, Map<String, Object> third, String requestId) {
-        String thirdSessionId = stringOrNull(third.get("session_id"));
-        Map<String, Object> snapshot = safeSnapshot(thirdSessionId);
-        Map<String, Object> validationData = snapshotOutput(snapshot, "writePayload");
-        Map<String, Object> draftData = shouldCreateLocalDraft(validationData) ? draftFromValidation(validationData, content, session) : Map.of();
-        Map<String, Object> draft = Map.of();
-        if (!draftData.isEmpty()) {
-            repository.replaceActiveDrafts(sessionId);
-            draft = repository.insertDraft(sessionId, draftData, String.valueOf(draftData.get("previewText")), thirdSessionId, requestId);
-        }
-        Map<String, Object> aiMessage = repository.insertMessage(sessionId, "ai", "text", "third 已生成需要确认的操作，请核对后决定是否执行。", null, null, thirdSessionId, requestId);
-        Map<String, Object> result = dto(
-                "session", sessionDto(repository.requireSession(sessionId)),
-                "userMessage", messageDto(userMessage),
-                "aiMessage", messageDto(aiMessage),
-                "pendingConfirmation", buildPendingConfirmation(draft.isEmpty() ? null : String.valueOf(draft.get("id")), clientConfirmId, third, snapshot),
-                "thirdStatus", third.get("status")
-        );
-        if (!draft.isEmpty()) {
-            result.put("draft", draftDto(draft));
-        }
-        return result;
-    }
-
-    // 这个函数把 third 确认请求转换成前端可展示的结果。
-    private Map<String, Object> buildPendingConfirmation(String draftId, String clientConfirmId, Map<String, Object> third, Map<String, Object> snapshot) {
-        Map<String, Object> confirmation = third.get("confirmation") instanceof Map<?, ?> map ? castMap(map) : Map.of();
-        Map<String, Object> snapshotConfirmation = mapValue(snapshot.get("confirmation"));
-        Object preview = selectedConfirmationPreview(snapshot, confirmation.get("preview_json"));
-        return dto(
-                "status", third.get("status"),
-                "thirdSessionId", third.get("session_id"),
-                "confirmationId", firstMappedValue(snapshotConfirmation, confirmation.get("confirmation_id"), "confirmationId", "confirmation_id"),
-                "requestText", firstMappedValue(snapshotConfirmation, confirmation.get("request_text"), "requestText", "request_text"),
-                "preview", preview instanceof Map<?, ?> map ? castMap(map) : Map.of(),
-                "clientConfirmId", clientConfirmId,
-                "draftId", draftId
-        );
-    }
-
-    // 这个函数从 third validation artifact 中读取本次确认对应的结构化写入数据。
-    private Map<String, Object> extractValidationData(String thirdSessionId) {
-        if (thirdSessionId == null || thirdSessionId.isBlank()) {
-            return Map.of();
-        }
-        return snapshotOutput(safeSnapshot(thirdSessionId), "writePayload");
+    // 这个函数读取 third response.confirmation 里的兼容字段。
+    private Object confirmationValue(Map<String, Object> third, String key) {
+        return mapValue(third.get("confirmation")).get(key);
     }
 
     // 这个函数判断当前 waiting_user 是否可以落成本地记录草稿。
@@ -510,12 +627,6 @@ public class RecordService {
             return error;
         }
         return "third workflow 已完成，状态为 " + third.get("status") + "。";
-    }
-
-    // 这个函数判断 artifact key 是否是 validation 输出。
-    private boolean isValidationArtifact(Object key) {
-        String text = String.valueOf(key);
-        return "validation.write_payload".equals(text) || text.startsWith("validation.");
     }
 
     // 这个函数读取当前会话绑定的飞书表配置快照。

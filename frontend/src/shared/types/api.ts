@@ -70,6 +70,31 @@ export interface RecordDraft {
   };
 }
 
+export interface RecordMessage {
+  id: string;
+  sessionId: string;
+  sender: string;
+  inputType: string;
+  content: string;
+  asrText?: string | null;
+  sequenceNo: number;
+  createdAt?: string;
+}
+
+export interface RecordWorkflowTask {
+  id: string;
+  sessionId: string;
+  triggerType: string;
+  clientActionId: string;
+  thirdSessionId?: string | null;
+  confirmationId?: string | null;
+  approved?: boolean | null;
+  status: string;
+  errorText?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface PendingThirdConfirmation {
   status: string;
   thirdSessionId: string;
@@ -89,6 +114,9 @@ export interface ConfirmRecordResult {
   replyMessage?: Record<string, unknown>;
   status?: string;
   thirdStatus?: string;
+  workflowStatus?: string;
+  latestWorkflowTask?: RecordWorkflowTask;
+  pollAfterMs?: number;
   draft?: RecordDraft;
 }
 
@@ -138,11 +166,24 @@ export interface PageResult<T> {
 
 export interface SendMessageResult {
   session: RecordSession;
-  userMessage: Record<string, unknown>;
-  aiMessage: Record<string, unknown>;
+  userMessage: RecordMessage;
+  aiMessage?: RecordMessage;
   draft?: RecordDraft;
   pendingConfirmation?: PendingThirdConfirmation;
   thirdStatus?: string;
+  workflowStatus?: string;
+  latestWorkflowTask?: RecordWorkflowTask;
+  pollAfterMs?: number;
+}
+
+export interface RecordSessionDetail {
+  session: RecordSession;
+  messages: RecordMessage[];
+  currentDraft?: RecordDraft | null;
+  pendingConfirmation?: PendingThirdConfirmation | null;
+  latestWorkflowTask?: RecordWorkflowTask | null;
+  record?: Record<string, unknown> | null;
+  pollAfterMs?: number;
 }
 
 export interface FeishuAccount {

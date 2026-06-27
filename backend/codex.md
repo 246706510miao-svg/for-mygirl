@@ -71,7 +71,8 @@
 ## 实现口径
 
 - 前端只调用 SpringBoot `/api`，不直接调用 `third`。
-- third 正式链路由 `third` 决定 workflow；后端读取 `GET /internal/workflows/{thirdSessionId}/snapshot`，再裁剪字段给前端。
+- third 正式链路由 `third` 决定 workflow；用户请求只提交 workflow 并写入 `RECORD_WORKFLOW_TASK`，后台调度器查询 third 状态和 `GET /internal/workflows/{thirdSessionId}/snapshot`，再裁剪字段给前端。
+- `POST /api/record-sessions/*` 不能同步阻塞等待 OpenAI 或飞书完成；前端通过 `GET /api/record-sessions/{sessionId}` 轮询 `latestWorkflowTask`、草稿和确认卡。
 - 用户端展示以 `RECORD_DISPLAY` 和后续本地展示表为准，不直接读取飞书。
 - 评论、风格、积分和奖品是本地用户产品能力，默认不写飞书。
 - 后台人员能力放 `ops`，不要再把伴侣/绑定用户能力放进后台模块。

@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS RECORD_WORKFLOW_TASK (
+  id VARCHAR(64) PRIMARY KEY,
+  session_id VARCHAR(64) NOT NULL,
+  trigger_type VARCHAR(32) NOT NULL,
+  client_action_id VARCHAR(128) NOT NULL,
+  source_message_id VARCHAR(64) NULL,
+  draft_id VARCHAR(64) NULL,
+  third_session_id VARCHAR(64) NULL,
+  confirmation_id VARCHAR(128) NULL,
+  approved BOOLEAN NULL,
+  status VARCHAR(32) NOT NULL,
+  error_text TEXT NULL,
+  request_id VARCHAR(128) NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  UNIQUE KEY uq_record_workflow_task_action (session_id, trigger_type, client_action_id),
+  INDEX ix_record_workflow_task_session_id (session_id),
+  INDEX ix_record_workflow_task_status (status),
+  INDEX ix_record_workflow_task_third_session_id (third_session_id)
+);

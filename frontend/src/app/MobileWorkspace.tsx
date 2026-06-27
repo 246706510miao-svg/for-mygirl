@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { saveRecordComment } from "../features/comment/api";
 import { createFeishuTable, fetchFeishuAccount, fetchFeishuTables, saveFeishuAccount, setDefaultFeishuTable, testFeishuTable, updateFeishuTable, type SaveFeishuAccountPayload, type SaveFeishuTablePayload } from "../features/feishu/api";
 import { addReward, checkIn, fetchPointSummary, fetchRedemptions, fetchRewards, redeemReward } from "../features/points/api";
-import { confirmRecordDraft, createRecordSession, fetchBoundUserRecentRecords, fetchRecordHome, resumeRecordConfirm, sendRecordMessage } from "../features/record/api";
+import { confirmRecordDraft, createRecordSession, fetchBoundUserRecentRecords, fetchRecordHome, fetchRecordSession, resumeRecordConfirm, sendRecordMessage } from "../features/record/api";
 import { acceptBindingInvitation, cancelBindingInvitation, fetchIdentityContext, inviteBindingUser, rejectBindingInvitation, switchViewRole } from "../features/relationship/api";
 import { GlassScreen } from "../components/layout/GlassScreen";
 import { MobileAppShell } from "../components/layout/MobileAppShell";
@@ -16,7 +16,7 @@ import { RecordsScreen } from "../pages/RecordsScreen";
 import { AdminRewardsScreen } from "../pages/AdminRewardsScreen";
 import { AdminRecordsScreen } from "../pages/AdminRecordsScreen";
 import type { ClientRole } from "../shared/api/client";
-import type { ConfirmRecordResult, FeishuAccount, FeishuTableConfig, IdentityContext, PendingThirdConfirmation, PointSummary, RecordDisplay, RecordDraft, RecordSession, RewardItem, RewardRedemption, UserHome, ViewRole } from "../shared/types/api";
+import type { ConfirmRecordResult, FeishuAccount, FeishuTableConfig, IdentityContext, PendingThirdConfirmation, PointSummary, RecordDisplay, RecordDraft, RecordMessage, RecordSession, RecordSessionDetail, RecordWorkflowTask, RewardItem, RewardRedemption, UserHome, ViewRole } from "../shared/types/api";
 import type { FieldKey } from "../components/records/recordFields";
 
 type Screen = "home" | "profile" | "chat" | "userRecent" | "adminRewards" | "adminRecent";
@@ -44,9 +44,31 @@ function errorMessage(error: unknown) {
 }
 
 // 这个函数从后端 message DTO 中取可展示文本。
-function messageContent(message: Record<string, unknown> | undefined, fallback: string) {
+function messageContent(message: { content?: unknown } | undefined, fallback: string) {
   const content = message?.content;
   return typeof content === "string" && content.trim() ? content : fallback;
+}
+
+// 这个函数等待下一次会话轮询。
+function delay(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+// 这个函数判断 workflow task 是否仍需要继续轮询。
+function isProcessingTask(task?: RecordWorkflowTask | null) {
+  return Boolean(task && ["submitted", "running"].includes(task.status));
+}
+
+// 这个函数把后端消息转换成聊天窗口文本。
+function formatChatMessage(message: RecordMessage) {
+  const content = message.content || "";
+  if (message.sender === "user") {
+    return `我：${content}`;
+  }
+  if (message.sender === "system") {
+    return `系统：${content}`;
+  }
+  return `AI：${content}`;
 }
 
 // 这个函数在刷新飞书配置后保持当前选择稳定。
@@ -208,6 +230,68 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
     });
   }
 
+  // 这个函数把会话详情同步回聊天页状态。
+  function applyRecordSessionDetail(detail: RecordSessionDetail) {
+    setSession(detail.session.status === "confirmed" || detail.session.status === "cancelled" ? null : detail.session);
+    setDraft(detail.currentDraft ?? null);
+    setPendingConfirmation(detail.pendingConfirmation ?? null);
+    setChatMessages(detail.messages.map(formatChatMessage));
+  }
+
+  // 这个函数轮询会话，直到 third workflow 不再处于 submitted/running。
+  async function waitForWorkflow(sessionId: string, pollAfterMs?: number) {
+    let detail: RecordSessionDetail | null = null;
+    await delay(pollAfterMs ?? 1500);
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      detail = await fetchRecordSession(role, sessionId);
+      applyRecordSessionDetail(detail);
+      if (!isProcessingTask(detail.latestWorkflowTask)) {
+        return detail;
+      }
+      await delay(detail.pollAfterMs ?? 1500);
+    }
+    return detail;
+  }
+
+  // 这个函数根据轮询结果给出最终反馈。
+  async function handleWorkflowOutcome(detail: RecordSessionDetail | null, options?: { confirmationText?: string }) {
+    if (!detail) {
+      toast.info("third 仍在处理");
+      return;
+    }
+    const task = detail.latestWorkflowTask;
+    if (isProcessingTask(task)) {
+      toast.info("third 仍在处理，可以稍后回来查看");
+      return;
+    }
+    if (detail.pendingConfirmation) {
+      toast.info(options?.confirmationText || "请确认 third 操作");
+      return;
+    }
+    if (detail.currentDraft) {
+      toast.success("草稿已生成");
+      return;
+    }
+    if (detail.session.status === "confirmed" || detail.record) {
+      setDraft(null);
+      setPendingConfirmation(null);
+      setSession(null);
+      await loadMobileData(role);
+      celebrate();
+      toast.success("记录已保存");
+      return;
+    }
+    if (task?.status === "failed") {
+      toast.error(task.errorText || "third workflow 执行失败");
+      return;
+    }
+    if (task?.status === "cancelled") {
+      toast.info("已取消写入");
+      return;
+    }
+    toast.success("third workflow 已完成");
+  }
+
   // 这个函数发送对话输入，并按 third 决策展示草稿、确认卡或普通回复。
   function sendChat(event: FormEvent) {
     event.preventDefault();
@@ -223,13 +307,21 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
       }
       const result = await sendRecordMessage(role, current.id, content);
       setSession(result.session);
+      setChatInput("");
+      if (result.workflowStatus === "processing") {
+        setDraft(null);
+        setPendingConfirmation(null);
+        setChatMessages((items) => [...items, `我：${content}`, "系统：third 正在处理，完成后会自动更新。"]);
+        const detail = await waitForWorkflow(result.session.id, result.pollAfterMs);
+        await handleWorkflowOutcome(detail);
+        return;
+      }
       setDraft(result.draft ?? null);
       setPendingConfirmation(result.pendingConfirmation ?? null);
       const reply = result.pendingConfirmation
         ? "系统：third 已生成需要确认的操作，请核对后决定是否执行。"
         : `AI：${messageContent(result.aiMessage, result.draft ? "我整理了一版草稿，你可以确认或继续修改。" : "third workflow 已完成。")}`;
       setChatMessages((items) => [...items, `我：${content}`, reply]);
-      setChatInput("");
       if (result.pendingConfirmation) {
         toast.info("请确认 third 操作");
       } else if (result.draft) {
@@ -263,6 +355,11 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
       }
       const result = await confirmRecordDraft(role, session.id, draft.id);
       setSession(result.session);
+      if (result.workflowStatus === "processing") {
+        const detail = await waitForWorkflow(result.session.id, result.pollAfterMs);
+        await handleWorkflowOutcome(detail, { confirmationText: "请确认写入内容" });
+        return;
+      }
       if (result.pendingConfirmation) {
         setPendingConfirmation(result.pendingConfirmation);
         setChatMessages((items) => [...items, "系统：请确认即将写入飞书的内容。"]);
@@ -286,6 +383,12 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
         setDraft(result.draft || draft);
         setChatMessages((items) => [...items, "系统：已取消写入，可以继续修改。"]);
         toast.info("已取消写入");
+        return;
+      }
+      if (result.workflowStatus === "processing") {
+        setPendingConfirmation(null);
+        const detail = await waitForWorkflow(result.session.id, result.pollAfterMs);
+        await handleWorkflowOutcome(detail);
         return;
       }
       await finishConfirm(result);

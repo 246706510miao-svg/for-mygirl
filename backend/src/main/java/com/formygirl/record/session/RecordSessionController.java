@@ -44,8 +44,8 @@ public class RecordSessionController {
     // 这个接口查询记录会话详情。
     @GetMapping("/api/record-sessions/{sessionId}")
     public ApiResponse<Map<String, Object>> session(@PathVariable String sessionId, HttpServletRequest request) {
-        identityService.requirePerson(request);
-        return ApiResponse.ok(recordService.sessionDetail(sessionId), requestId(request));
+        CurrentPerson person = identityService.requirePerson(request);
+        return ApiResponse.ok(recordService.sessionDetail(person, sessionId), requestId(request));
     }
 
     // 这个接口确认写入记录。

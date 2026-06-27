@@ -38,12 +38,18 @@ public class ThirdWorkflowClient {
 
     // 这个函数按用户选择确认或拒绝 waiting_user workflow 并继续轮询。
     public Map<String, Object> resumeAndWait(String thirdSessionId, String confirmationId, String text, boolean approved) {
+        resume(thirdSessionId, confirmationId, text, approved);
+        return waitFor(thirdSessionId);
+    }
+
+    // 这个函数只提交确认结果，不等待 workflow 终态。
+    public Map<String, Object> resume(String thirdSessionId, String confirmationId, String text, boolean approved) {
         restClient.post()
                 .uri(properties.getThirdBaseUrl() + "/workflows/{sessionId}/resume", thirdSessionId)
                 .body(Map.of("confirmation_id", confirmationId, "approved", approved, "content", List.of(Map.of("text", text))))
                 .retrieve()
                 .body(Map.class);
-        return waitFor(thirdSessionId);
+        return get(thirdSessionId);
     }
 
     // 这个函数查询 workflow artifact 明细。
@@ -84,7 +90,7 @@ public class ThirdWorkflowClient {
     }
 
     // 这个函数提交 workflow。
-    private Map<String, Object> invoke(String text, Map<String, Object> metadata, Map<String, Object> privateMetadata) {
+    public Map<String, Object> invoke(String text, Map<String, Object> metadata, Map<String, Object> privateMetadata) {
         try {
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("content", List.of(Map.of("text", text)));
@@ -116,7 +122,7 @@ public class ThirdWorkflowClient {
     }
 
     // 这个函数查询 workflow 当前状态。
-    private Map<String, Object> get(String thirdSessionId) {
+    public Map<String, Object> get(String thirdSessionId) {
         try {
             return restClient.get()
                     .uri(properties.getThirdBaseUrl() + "/workflows/{sessionId}", thirdSessionId)

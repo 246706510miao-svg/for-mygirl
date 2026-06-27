@@ -112,6 +112,11 @@ public class BusinessRepository {
         return queryOne("SELECT * FROM RECORD_MESSAGE WHERE session_id = ? AND client_message_id = ?", sessionId, clientMessageId);
     }
 
+    // 这个函数读取单条记录会话消息。
+    public Map<String, Object> message(String messageId) {
+        return queryOne("SELECT * FROM RECORD_MESSAGE WHERE id = ?", messageId);
+    }
+
     // 这个函数写入记录会话消息。
     public Map<String, Object> insertMessage(String sessionId, String sender, String inputType, String content, String asrText, String clientMessageId, String thirdSessionId, String requestId) {
         String id = Ids.newId("msg");
@@ -134,6 +139,110 @@ public class BusinessRepository {
                 Timestamp.valueOf(LocalDateTime.now())
         );
         return queryOne("SELECT * FROM RECORD_MESSAGE WHERE id = ?", id);
+    }
+
+    // 这个函数在 third 提交成功后回写消息关联的 third session。
+    public Map<String, Object> updateMessageThirdSession(String messageId, String thirdSessionId) {
+        jdbcTemplate.update("UPDATE RECORD_MESSAGE SET third_session_id = ? WHERE id = ?", thirdSessionId, messageId);
+        return message(messageId);
+    }
+
+    // 这个函数创建 backend 侧的 third workflow 跟踪任务。
+    public Map<String, Object> createWorkflowTask(
+            String sessionId,
+            String triggerType,
+            String clientActionId,
+            String sourceMessageId,
+            String draftId,
+            String thirdSessionId,
+            String confirmationId,
+            Boolean approved,
+            String status,
+            String requestId
+    ) {
+        Map<String, Object> existing = findWorkflowTask(sessionId, triggerType, clientActionId);
+        if (!existing.isEmpty()) {
+            return existing;
+        }
+        String id = Ids.newId("task");
+        LocalDateTime now = LocalDateTime.now();
+        jdbcTemplate.update(
+                """
+                INSERT INTO RECORD_WORKFLOW_TASK (
+                  id, session_id, trigger_type, client_action_id, source_message_id, draft_id,
+                  third_session_id, confirmation_id, approved, status, error_text, request_id,
+                  created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
+                """,
+                id,
+                sessionId,
+                triggerType,
+                clientActionId,
+                sourceMessageId,
+                draftId,
+                thirdSessionId,
+                confirmationId,
+                approved,
+                status,
+                requestId,
+                Timestamp.valueOf(now),
+                Timestamp.valueOf(now)
+        );
+        return workflowTask(id);
+    }
+
+    // 这个函数读取单个 workflow 跟踪任务。
+    public Map<String, Object> workflowTask(String taskId) {
+        return queryOne("SELECT * FROM RECORD_WORKFLOW_TASK WHERE id = ?", taskId);
+    }
+
+    // 这个函数按业务幂等键读取 workflow 跟踪任务。
+    public Map<String, Object> findWorkflowTask(String sessionId, String triggerType, String clientActionId) {
+        return queryOne("SELECT * FROM RECORD_WORKFLOW_TASK WHERE session_id = ? AND trigger_type = ? AND client_action_id = ?", sessionId, triggerType, clientActionId);
+    }
+
+    // 这个函数读取会话最近一次 workflow 跟踪任务。
+    public Map<String, Object> latestWorkflowTask(String sessionId) {
+        return queryOne("SELECT * FROM RECORD_WORKFLOW_TASK WHERE session_id = ? ORDER BY created_at DESC LIMIT 1", sessionId);
+    }
+
+    // 这个函数扫描需要继续查询 third 状态的任务。
+    public List<Map<String, Object>> pendingWorkflowTasks(int limit) {
+        return jdbcTemplate.queryForList(
+                """
+                SELECT * FROM RECORD_WORKFLOW_TASK
+                WHERE status IN ('submitted', 'running')
+                  AND third_session_id IS NOT NULL
+                ORDER BY created_at ASC
+                LIMIT ?
+                """,
+                Math.max(1, limit)
+        );
+    }
+
+    // 这个函数更新 workflow 跟踪任务状态。
+    public Map<String, Object> updateWorkflowTaskStatus(String taskId, String status, String errorText) {
+        jdbcTemplate.update(
+                "UPDATE RECORD_WORKFLOW_TASK SET status = ?, error_text = ?, updated_at = ? WHERE id = ?",
+                status,
+                errorText,
+                Timestamp.valueOf(LocalDateTime.now()),
+                taskId
+        );
+        return workflowTask(taskId);
+    }
+
+    // 这个函数记录 third 确认门信息。
+    public Map<String, Object> markWorkflowTaskWaitingUser(String taskId, String confirmationId, String draftId) {
+        jdbcTemplate.update(
+                "UPDATE RECORD_WORKFLOW_TASK SET status = 'waiting_user', confirmation_id = ?, draft_id = ?, error_text = NULL, updated_at = ? WHERE id = ?",
+                confirmationId,
+                draftId,
+                Timestamp.valueOf(LocalDateTime.now()),
+                taskId
+        );
+        return workflowTask(taskId);
     }
 
     // 这个函数把旧草稿标记为 replaced。
@@ -181,6 +290,11 @@ public class BusinessRepository {
     // 这个函数根据确认幂等 ID 查找正式记录。
     public Map<String, Object> findRecordByConfirmId(String sessionId, String clientConfirmId) {
         return queryOne("SELECT * FROM DAILY_RECORD WHERE session_id = ? AND client_confirm_id = ?", sessionId, clientConfirmId);
+    }
+
+    // 这个函数读取会话对应的正式记录。
+    public Map<String, Object> findRecordBySession(String sessionId) {
+        return queryOne("SELECT * FROM DAILY_RECORD WHERE session_id = ? ORDER BY created_at DESC LIMIT 1", sessionId);
     }
 
     // 这个函数把指定草稿标记为 confirmed。

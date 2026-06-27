@@ -79,6 +79,28 @@
 | status | active、replaced、confirmed |
 | created_at | 创建时间 |
 
+### RECORD_WORKFLOW_TASK
+
+保存 SpringBoot 侧对 third workflow 的提交和轮询状态。
+
+它存在的原因是：third 本身已经异步执行，SpringBoot 面向前端不能在一次 HTTP 请求里阻塞等待 OpenAI 或飞书完成。用户写消息、确认草稿、继续确认门时，SpringBoot 先写入本表，再由后台调度器查询 third 状态并把结果落到 `RECORD_DRAFT`、`DAILY_RECORD`、`FEISHU_SYNC` 或消息表。
+
+| 字段 | 说明 |
+|---|---|
+| id | 主键，任务 ID |
+| session_id | 关联 RECORD_SESSION |
+| trigger_type | message、confirm、resume |
+| client_action_id | 前端幂等 ID，例如 clientMessageId 或 clientConfirmId |
+| source_message_id | message 任务关联的 RECORD_MESSAGE |
+| draft_id | confirm/resume 或 waiting_user 关联的 RECORD_DRAFT |
+| third_session_id | third workflow session_id |
+| confirmation_id | third 确认门 ID |
+| approved | resume 时用户是否确认 |
+| status | submitted、running、waiting_user、completed、failed、cancelled |
+| error_text | 查询或处理失败原因 |
+| request_id | 关联请求 ID |
+| created_at / updated_at | 创建和更新时间 |
+
 ### DAILY_RECORD
 
 保存用户确认后的正式记录。
@@ -333,6 +355,7 @@ DAILY_CONTENT
 | 记录过程 | RECORD_SESSION | 一次对话式记录过程 |
 | 记录过程 | RECORD_MESSAGE | 用户文本、语音识别文本、修改指令、AI 或系统消息 |
 | 记录过程 | RECORD_DRAFT | AI 每次生成或修改后的草稿版本 |
+| 记录过程 | RECORD_WORKFLOW_TASK | SpringBoot 侧 third workflow 提交、轮询和确认门状态 |
 | 正式记录 | DAILY_RECORD | 用户确认后的正式记录 |
 | 展示数据 | RECORD_DISPLAY | 用户端首页和最近记录真正读取的本地展示数据 |
 | 每日内容 | DAILY_CONTENT | 管理员配置的每日提示、主题、引导、卡片、提醒 |
@@ -353,6 +376,7 @@ DAILY_CONTENT
 - RECORD_SESSION
 - RECORD_MESSAGE
 - RECORD_DRAFT
+- RECORD_WORKFLOW_TASK
 - DAILY_RECORD
 - FEISHU_SYNC
 - DAILY_CONTENT
@@ -378,6 +402,7 @@ DAILY_CONTENT
 - 一个 APP_PERSON 可以有多次 RECORD_SESSION。
 - 一次 RECORD_SESSION 可以包含多条 RECORD_MESSAGE。
 - 一次 RECORD_SESSION 可以产生多个 RECORD_DRAFT。
+- 一次 RECORD_SESSION 可以有多个 RECORD_WORKFLOW_TASK，用于异步跟踪消息、确认和 resume。
 - 一次 RECORD_SESSION 最终最多确认成一条 DAILY_RECORD。
 - DAILY_RECORD 指向最终确认的 RECORD_DRAFT。
 - DAILY_RECORD 必须有本地展示数据 RECORD_DISPLAY，至少要能表达成功、失败或异常状态。
@@ -404,6 +429,15 @@ DAILY_CONTENT
 - `replaced`：已被新草稿替代。
 - `confirmed`：被用户最终确认。
 
+### RECORD_WORKFLOW_TASK.status
+
+- `submitted`：已提交 third，等待后台调度器首次查询。
+- `running`：third 仍在 `queued/running`。
+- `waiting_user`：third 等待用户确认，前端展示确认卡。
+- `completed`：third 结果已经落到业务表。
+- `failed`：third 或后台落库失败。
+- `cancelled`：用户拒绝确认或任务取消。
+
 ### DAILY_RECORD.status
 
 - `success`：本地记录和飞书同步都成功。
@@ -419,6 +453,7 @@ DAILY_CONTENT
 ## 数据不变量
 
 - 每次用户文本、语音识别结果、修改指令都要保存为 RECORD_MESSAGE。
+- 每次会触发 third 的用户消息、确认或 resume 都要保存 RECORD_WORKFLOW_TASK，前端通过会话详情轮询任务状态。
 - 每次 AI 生成或修改草稿都要保存为新的 RECORD_DRAFT，不能只覆盖旧草稿。
 - RECORD_SESSION.current_draft_id 必须指向当前草稿。
 - 用户确认时必须锁定一个明确的 RECORD_DRAFT。
@@ -435,10 +470,10 @@ DAILY_CONTENT
 |---|---|---|
 | `GET /api/user/home` | DAILY_CONTENT、RECORD_DISPLAY、DAILY_RECORD | 首页不直接读飞书 |
 | `POST /api/record-sessions` | RECORD_SESSION | 创建记录会话 |
-| `POST /api/record-sessions/{sessionId}/messages` | RECORD_SESSION、RECORD_MESSAGE、RECORD_DRAFT | 文本和修改指令统一入口 |
+| `POST /api/record-sessions/{sessionId}/messages` | RECORD_SESSION、RECORD_MESSAGE、RECORD_WORKFLOW_TASK | 文本和修改指令统一入口，提交 third 后立即返回 |
 | `POST /api/record-sessions/{sessionId}/voice-messages` | RECORD_SESSION、RECORD_MESSAGE、RECORD_DRAFT | 保存 `asr_text`，不长期保存音频 |
-| `GET /api/record-sessions/{sessionId}` | RECORD_SESSION、RECORD_MESSAGE、RECORD_DRAFT | 查询当前会话和草稿 |
-| `POST /api/record-sessions/{sessionId}/confirm` | RECORD_SESSION、RECORD_DRAFT、DAILY_RECORD、FEISHU_SYNC、RECORD_DISPLAY | 幂等确认和飞书同步 |
+| `GET /api/record-sessions/{sessionId}` | RECORD_SESSION、RECORD_MESSAGE、RECORD_DRAFT、RECORD_WORKFLOW_TASK、DAILY_RECORD | 查询当前会话、草稿、确认卡和轮询状态 |
+| `POST /api/record-sessions/{sessionId}/confirm` | RECORD_SESSION、RECORD_DRAFT、RECORD_WORKFLOW_TASK | 锁定草稿并提交 third 确认 workflow，最终落库由后台任务完成 |
 | `POST /api/record-sessions/{sessionId}/cancel` | RECORD_SESSION | 取消会话 |
 | `GET /api/admin/records` | DAILY_RECORD、FEISHU_SYNC、RECORD_DISPLAY | 管理员列表和异常筛选 |
 | `GET /api/admin/records/{recordId}` | DAILY_RECORD、FEISHU_SYNC、RECORD_DISPLAY、RECORD_DRAFT | 管理员详情 |

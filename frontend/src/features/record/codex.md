@@ -10,8 +10,11 @@
   - `GET /api/bound-user/records/recent`
   - `POST /api/record-sessions`
   - `POST /api/record-sessions/{sessionId}/messages`
+  - `GET /api/record-sessions/{sessionId}`
   - `POST /api/record-sessions/{sessionId}/confirm`
 - `RecordWorkspace.tsx` 只保留兼容导出，正式手机端页面状态由 `src/app/MobileWorkspace.tsx` 编排。
+
+`messages`、`confirm` 和 `confirm/resume` 会先返回 `workflowStatus=processing`，页面通过 `GET /api/record-sessions/{sessionId}` 轮询 `latestWorkflowTask`、`currentDraft` 和 `pendingConfirmation`，不要在前端等待单个长请求完成 third workflow。
 
 ## 排查顺序
 

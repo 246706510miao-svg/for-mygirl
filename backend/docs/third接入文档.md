@@ -1,6 +1,6 @@
 # backend third 接入文档
 
-本文档给 Codex 和前端对接使用。前端不直接调用 third，也不理解 third artifact key；SpringBoot 调用 third、读取 snapshot、选择展示字段，再把稳定 DTO 返回给前端。
+本文档给 Codex 和前端对接使用。前端不直接调用 third，也不理解 third artifact key；SpringBoot 调用 third、读取 snapshot、选择展示字段，再把稳定 DTO 返回给前端。SpringBoot 面向前端不再同步阻塞等待 third 终态：写接口提交 third 后立即返回 `workflowStatus=processing`，后台任务轮询 third 并落库，前端通过会话详情接口轮询结果。
 
 ## 后端调用 third
 
@@ -34,6 +34,7 @@ POST /api/record-sessions/{sessionId}/messages
 | `thirdSessionId` | third `session_id` | 轮询、snapshot、resume、trace。 |
 | `confirmationId` | third `confirmation.confirmation_id` 或 snapshot `confirmation.confirmationId` | 用户确认或取消时回传 third。 |
 | `clientConfirmId` | 后端生成或前端传入 | 本地 `DAILY_RECORD` 幂等。 |
+| `workflowTaskId` | `RECORD_WORKFLOW_TASK.id` | SpringBoot 侧跟踪 third 状态，避免前端请求阻塞。 |
 
 ## 后端读取 third snapshot
 
@@ -62,14 +63,14 @@ GET /internal/workflows/{thirdSessionId}/snapshot
 
 ## 后端给前端的 messages 返回
 
-`POST /api/record-sessions/{sessionId}/messages` 返回：
+`POST /api/record-sessions/{sessionId}/messages` 只保证完成本地用户消息保存、third 提交和任务登记，立即返回：
 
 ```json
 {
   "session": {
     "id": "session_xxx",
     "status": "editing",
-    "currentDraftId": "draft_xxx",
+    "currentDraftId": null,
     "createdAt": "2026-06-22T10:00:00",
     "updatedAt": "2026-06-22T10:00:05"
   },
@@ -83,64 +84,34 @@ GET /internal/workflows/{thirdSessionId}/snapshot
     "sequenceNo": 1,
     "createdAt": "2026-06-22T10:00:00"
   },
-  "aiMessage": {
-    "id": "msg_xxx",
-    "sessionId": "session_xxx",
-    "sender": "ai",
-    "inputType": "text",
-    "content": "third 已生成需要确认的操作，请核对后决定是否执行。",
-    "asrText": null,
-    "sequenceNo": 2,
-    "createdAt": "2026-06-22T10:00:05"
-  },
-  "draft": {
-    "id": "draft_xxx",
-    "sessionId": "session_xxx",
-    "versionNo": 1,
-    "status": "active",
-    "previewText": "今天学习了韩语",
-    "draft": {
-      "title": "韩语学习",
-      "recordDate": "2026-06-22",
-      "summary": "今天学习了韩语",
-      "score": 80,
-      "tags": ["飞书写入"],
-      "suggestion": "已根据 third 的写入预览生成，确认后会继续执行 workflow。"
-    },
-    "createdAt": "2026-06-22T10:00:05"
-  },
-  "pendingConfirmation": {
-    "status": "waiting_user",
+  "workflowStatus": "processing",
+  "pollAfterMs": 1500,
+  "latestWorkflowTask": {
+    "id": "task_xxx",
+    "triggerType": "message",
     "thirdSessionId": "sess_xxx",
-    "confirmationId": "confirm_xxx",
-    "requestText": "确认执行以下飞书写入操作吗？",
-    "preview": {
-      "record_count": 1,
-      "records": [
-        {
-          "record_id": null,
-          "fields": {
-            "事项名称": "韩语学习",
-            "总结": "今天学习了韩语"
-          },
-          "lookup": {}
-        }
-      ]
-    },
-    "clientConfirmId": "cfid_xxx",
-    "draftId": "draft_xxx"
-  },
-  "thirdStatus": "waiting_user"
+    "status": "submitted",
+    "errorText": null
+  }
 }
 ```
 
 字段规则：
 
-- `draft` 可选。只有 third 输出 `outputs.draft`，或后端能从 `outputs.writePayload.operation=create_record` 生成本地草稿时返回。
-- `pendingConfirmation` 可选。只有 third `status=waiting_user` 时返回。
+- `workflowStatus=processing` 表示前端应轮询 `GET /api/record-sessions/{sessionId}`。
+- `latestWorkflowTask.status` 为 `submitted/running/waiting_user/completed/failed/cancelled`。
+- `draft` 可选。只有轮询详情时 third 输出 `outputs.draft`，或后端能从 `outputs.writePayload.operation=create_record` 生成本地草稿后返回。
+- `pendingConfirmation` 可选。只有轮询详情时 third `status=waiting_user` 且后台任务已落库后返回。
 - `pendingConfirmation.preview` 是后端选择后的展示 JSON，优先来自 `outputs.writePayload.preview`，其次来自 `confirmation.previewJson`。
-- `thirdStatus` 是 third 当前状态，不等同于 `session.status`。
 - third 原始 snapshot 不给前端；只保存到后端 trace 或 `FEISHU_SYNC.payload_json`。
+
+会话轮询接口：
+
+```text
+GET /api/record-sessions/{sessionId}
+```
+
+返回 `session`、`messages`、`currentDraft`、`pendingConfirmation`、`latestWorkflowTask`、`record` 和 `pollAfterMs`。前端在 `latestWorkflowTask.status=submitted/running` 时继续轮询；出现 `currentDraft`、`pendingConfirmation`、`record` 或任务进入 `failed/cancelled/completed` 后停止。
 
 ## 前端确认或取消
 
@@ -189,9 +160,10 @@ POST /api/record-sessions/{sessionId}/confirm/resume
 
 返回规则：
 
-- `approved=false` 时返回 `status=cancelled`，不落 `DAILY_RECORD`。
-- `approved=true` 且有 `draftId` 时，成功后落 `DAILY_RECORD`、`RECORD_DISPLAY`、`FEISHU_SYNC`。
-- `approved=true` 但没有 `draftId` 时，只返回 third 最终结果和 reply，不伪造本地记录。
+- `approved=false` 时立即返回 `status=cancelled`，不落 `DAILY_RECORD`。
+- `approved=true` 时立即返回 `workflowStatus=processing`，由后台任务继续查询 third。
+- `approved=true` 且有 `draftId` 时，后台成功后落 `DAILY_RECORD`、`RECORD_DISPLAY`、`FEISHU_SYNC`。
+- `approved=true` 但没有 `draftId` 时，后台只写入 third 最终结果和 reply，不伪造本地记录。
 
 ## 后端落库规则
 
@@ -200,3 +172,4 @@ POST /api/record-sessions/{sessionId}/confirm/resume
 - `FEISHU_SYNC.payload_json.thirdSnapshot` 保存 third 原始 snapshot，便于追踪。
 - `DAILY_RECORD` 只在后端确认这是本地记录写入时创建。
 - 前端最近记录列表只读本地 `DAILY_RECORD` 和 `RECORD_DISPLAY`。
+- `RECORD_WORKFLOW_TASK` 保存 SpringBoot 侧对 third workflow 的提交、轮询、确认门和错误状态，避免用户请求被 OpenAI 或飞书耗时阻塞。

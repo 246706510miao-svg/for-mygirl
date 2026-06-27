@@ -1,5 +1,5 @@
 import { apiRequest, newClientId, type ClientRole } from "../../shared/api/client";
-import type { ConfirmRecordResult, PageResult, PendingThirdConfirmation, RecordDisplay, RecordSession, SendMessageResult, UserHome } from "../../shared/types/api";
+import type { ConfirmRecordResult, PageResult, PendingThirdConfirmation, RecordDisplay, RecordSession, RecordSessionDetail, SendMessageResult, UserHome } from "../../shared/types/api";
 
 // 这个函数读取用户首页和最近记录。
 export async function fetchRecordHome(role: ClientRole) {
@@ -27,6 +27,11 @@ export function createRecordSession(role: ClientRole, recordDate: string, feishu
     role,
     body: JSON.stringify({ recordDate, source: "user_home", feishuTableConfigId })
   });
+}
+
+// 这个函数读取记录会话详情，包含 third workflow 最新处理状态。
+export function fetchRecordSession(role: ClientRole, sessionId: string) {
+  return apiRequest<RecordSessionDetail>(`/api/record-sessions/${sessionId}`, { role });
 }
 
 // 这个函数发送文本消息并生成草稿。
