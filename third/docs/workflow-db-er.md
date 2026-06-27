@@ -258,10 +258,11 @@ erDiagram
 
 同步规则：
 
-1. 修改或新增 `Prompt/runagent/*.yaml` 后，先在项目根目录执行 `alembic upgrade head`，再执行 `python -m third.scripts.seed_runagent_prompts`。
+1. 修改或新增 `Prompt/runagent/*.yaml` 后，本地直接 Python 运行时先在项目根目录执行 `alembic upgrade head`，再执行 `python -m third.scripts.seed_runagent_prompts`。
 2. 脚本按 `prompt_key` 覆盖更新本表。
-3. LLM workflow 执行前必须能从本表读取至少一个启用 Agent；否则直接失败。
-4. Agent Runner 找不到 `prompt_ref` 对应的启用记录时直接失败，不读取文件兜底。
+3. 生产私有 Compose 通过 `third-prompt-seed` 在 `third-migration` 后自动执行同一条 seed 命令，`third-api` 和 `third-worker` 依赖 seed 成功后再启动。
+4. LLM workflow 执行前必须能从本表读取至少一个启用 Agent；否则直接失败。
+5. Agent Runner 找不到 `prompt_ref` 对应的启用记录时直接失败，不读取文件兜底。
 
 ### tool_registry
 

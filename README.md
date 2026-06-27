@@ -26,6 +26,8 @@
 docker compose --profile third-container --profile app up -d --build
 ```
 
+说明：生产私有 Compose 中包含 `third-prompt-seed` 一次性容器，会在 `third-migration` 成功后把 `third/Prompt/runagent/*.yaml` 同步到 `prompt_registry`，再启动 `third-api` 和 `third-worker`。服务器生产启动不需要再手动执行 seed；本地直接跑 Python 或修改 prompt 后的手动同步见 [third/README.md](./third/README.md)。
+
 代码改动后的刷新方式见 [docs/运行与刷新.md](./docs/运行与刷新.md)。重点：只重启容器不会把新代码打进 Docker 镜像；改 `backend/`、`frontend/` 或 migration 后，如果当前用 Docker 跑应用，需要重新 `--build` 对应服务。MySQL/Redis 默认使用 volume 保留数据，不要随手执行 `docker compose down -v`。
 
 常用地址：

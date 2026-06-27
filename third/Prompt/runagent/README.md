@@ -1,6 +1,6 @@
 # runagent 提示词目录
 
-这个目录是业务 Agent 提示词的文件来源。运行时不直接读取这里；先执行 seed 脚本把 YAML 同步到 MySQL `prompt_registry`，workflowagent 和 Agent Runner 都只读数据库。
+这个目录是业务 Agent 提示词的文件来源。运行时不直接读取这里；需要先把 YAML 同步到 MySQL `prompt_registry`，workflowagent 和 Agent Runner 都只读数据库。生产私有 Compose 通过 `third-prompt-seed` 一次性容器自动执行同步；下面的命令用于本地直接 Python 运行、prompt 变更后的手动验证，或没有 seed job 的旧容器链路。
 
 ## YAML 字段
 
@@ -32,6 +32,8 @@ python -m third.scripts.seed_runagent_prompts
 ```
 
 脚本按 `prompt_key` 覆盖更新数据库记录。新增或修改提示词后，需要重新执行脚本。若提示 `prompt_registry` 缺少字段，说明 migration 尚未执行成功。
+
+生产容器部署时，`third-prompt-seed` 会在 `third-migration` 成功后执行同一条 seed 命令，并作为 `third-api`、`third-worker` 的启动前置条件；服务器上不需要再手动执行。
 
 ## 新增 Agent
 

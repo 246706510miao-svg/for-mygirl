@@ -23,6 +23,7 @@ Starts local MySQL on `3307` and Redis on `6380`.
 docker compose --profile third-container --profile app up -d --build
 ```
 Starts the full local container chain. When backend/frontend code or Flyway migrations change and the app is running in Docker, rebuild the affected service image; do not expect `restart` alone to load new code. Preserve MySQL/Redis volumes unless a data reset is explicitly intended; never use `docker compose down -v` casually.
+Production/private Compose also runs a one-shot `third-prompt-seed` container after `third-migration`, so server startup syncs `Prompt/runagent/*.yaml` into `prompt_registry` automatically before `third-api` and `third-worker` start.
 
 ```powershell
 Copy-Item third/.env.local.docker.example third/.env
@@ -31,6 +32,7 @@ alembic upgrade head
 python -m third.scripts.seed_runagent_prompts
 ```
 Prepares the local Python service and syncs `Prompt/runagent/*.yaml` into `prompt_registry`.
+Use this manual seed path for local direct-Python development or after prompt edits outside the production Compose flow; production startup should use the Compose seed job instead of shelling into the server manually.
 
 ```powershell
 uvicorn third.api:app --host 0.0.0.0 --port 8001 --reload

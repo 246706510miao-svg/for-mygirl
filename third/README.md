@@ -118,7 +118,7 @@ alembic upgrade head
 python -m third.scripts.seed_runagent_prompts
 ```
 
-说明：`Prompt/runagent/` 是维护来源，MySQL `prompt_registry` 是运行时唯一事实来源。当前至少包含 `parse_feishu_record.v1`、`parse_feishu_schema_change.v1` 和 `search_feishu_record.v1`；新增或修改业务 Agent 提示词后，需要重新执行 seed 脚本，同名 `prompt_key` 会覆盖更新。
+说明：`Prompt/runagent/` 是维护来源，MySQL `prompt_registry` 是运行时唯一事实来源。当前至少包含 `parse_feishu_record.v1`、`parse_feishu_schema_change.v1` 和 `search_feishu_record.v1`；新增或修改业务 Agent 提示词后，需要重新执行 seed 脚本，同名 `prompt_key` 会覆盖更新。生产私有 Compose 已把这一步封装成 `third-prompt-seed` 一次性容器，服务器启动时会在 `third-migration` 后自动执行，不需要手动进入服务器 seed。
 
 启动本地 API：
 
@@ -202,6 +202,14 @@ docker compose --profile third-container up -d --build
 ```
 
 mock 模式默认使用 `third/.env.docker.mock`。
+
+生产私有 Compose 和其他带 `third-prompt-seed` 服务的容器链路会按顺序执行：
+
+1. `third-migration`：执行 Alembic，确保 `prompt_registry` 等表结构存在。
+2. `third-prompt-seed`：执行 `python -m third.scripts.seed_runagent_prompts`，把 `Prompt/runagent/*.yaml` 写入 `prompt_registry`。
+3. `third-api` / `third-worker`：在 seed 成功后启动，运行时只读数据库里的 prompt。
+
+因此生产服务器部署时不要再手动 seed；只有本地直接 Python 运行、手动改 prompt 后立即验证，或使用不包含 `third-prompt-seed` 的旧 Compose 文件时，才需要执行 seed 命令。
 
 真实飞书容器验证时，复制 `third/.env.docker.real.example` 为本地私有 env 文件，填入真实飞书和 OpenAI 配置，然后让 Compose 只加载这个文件：
 
