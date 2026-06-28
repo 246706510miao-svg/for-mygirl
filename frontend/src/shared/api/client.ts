@@ -1,18 +1,15 @@
 import type { ApiResponse, AuthResult, IdentityContext, Role } from "../types/api";
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || defaultApiBaseUrl()).replace(/\/$/, "");
+const API_BASE_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL || "");
 const SUCCESS_CODES = new Set(["OK", "CREATED"]);
 export type ClientRole = "user" | "partner" | "ops";
 const LEGACY_AUTH_TOKEN_KEY = "for-mygirl.authToken";
 
 clearLegacyStoredToken();
 
-// 这个函数生成未显式配置时的 API 地址：开发走 Vite 代理，静态包按当前主机推导后端端口。
-function defaultApiBaseUrl() {
-  if (import.meta.env.DEV || typeof window === "undefined") {
-    return "";
-  }
-  return `${window.location.protocol}//${window.location.hostname}:8080`;
+// 这个函数规范化可选的 API base URL；未配置时使用同源相对 /api 路径。
+function normalizeApiBaseUrl(value: string) {
+  return value.trim().replace(/\/$/, "");
 }
 
 export class ApiRequestError extends Error {
@@ -55,9 +52,16 @@ export function newRequestId() {
   return newClientId("req");
 }
 
-// 这个函数拼接 API 地址，未配置 base URL 时使用当前前端源的相对路径。
+// 这个函数拼接 API 地址；调用方保留后端契约里的 /api 前缀。
 function apiUrl(path: string) {
-  return `${API_BASE_URL}${path}`;
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  if (!API_BASE_URL) {
+    return normalizedPath;
+  }
+  if (API_BASE_URL.endsWith("/api") && normalizedPath.startsWith("/api/")) {
+    return `${API_BASE_URL}${normalizedPath.slice("/api".length)}`;
+  }
+  return `${API_BASE_URL}${normalizedPath}`;
 }
 
 // 这个函数解析后端统一响应，兼容空响应和非 JSON 错误页。

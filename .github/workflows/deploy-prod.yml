@@ -44,8 +44,6 @@ jobs:
 
       - name: Build frontend
         working-directory: frontend
-        env:
-          VITE_API_BASE_URL: /api
         run: |
           npm ci
           npm run build
@@ -97,8 +95,6 @@ jobs:
           context: .
           file: frontend/Dockerfile
           push: true
-          build-args: |
-            VITE_API_BASE_URL=/api
           tags: |
             ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
             ${{ env.FRONTEND_IMAGE }}:main
