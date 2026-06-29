@@ -1,0 +1,21 @@
+:80 {
+	encode zstd gzip
+
+	handle /api/* {
+		reverse_proxy backend:8080 {
+			header_up Host {host}
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			transport http {
+				dial_timeout 10s
+				read_timeout 120s
+				write_timeout 120s
+			}
+		}
+	}
+
+	handle {
+		reverse_proxy frontend:5173
+	}
+}

@@ -73,6 +73,21 @@ services:
     command: ["alembic", "upgrade", "head"]
     restart: "no"
 
+  third-prompt-seed:
+    <<: *third-common
+    profiles: ["third-container"]
+    command: ["python", "-m", "third.scripts.seed_runagent_prompts"]
+    restart: "no"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      mysql-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      third-migration:
+        condition: service_completed_successfully
+
   third-api:
     <<: *third-common
     profiles: ["third-container"]
@@ -86,7 +101,7 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
-      third-migration:
+      third-prompt-seed:
         condition: service_completed_successfully
     healthcheck:
       test:
@@ -110,7 +125,7 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
-      third-migration:
+      third-prompt-seed:
         condition: service_completed_successfully
 
   backend:
@@ -146,12 +161,25 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
       args:
-        VITE_API_BASE_URL: ${FRONTEND_API_BASE_URL:-http://localhost:8080}
+        VITE_API_BASE_URL: ${FRONTEND_API_BASE_URL:-}
     profiles: ["app"]
-    ports:
-      - "${FRONTEND_HOST_PORT:-5173}:5173"
+    expose:
+      - "5173"
     depends_on:
       - backend
+
+  local-caddy:
+    image: caddy:2.8-alpine
+    profiles: ["app"]
+    ports:
+      - "${FRONTEND_HOST_PORT:-5173}:80"
+    volumes:
+      - ./deploy/local/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      frontend:
+        condition: service_started
+      backend:
+        condition: service_started
 
 volumes:
   third_mysql_data:

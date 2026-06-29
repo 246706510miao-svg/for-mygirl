@@ -26,13 +26,15 @@
 docker compose --profile third-container --profile app up -d --build
 ```
 
-说明：生产私有 Compose 中包含 `third-prompt-seed` 一次性容器，会在 `third-migration` 成功后把 `third/Prompt/runagent/*.yaml` 同步到 `prompt_registry`，再启动 `third-api` 和 `third-worker`。服务器生产启动不需要再手动执行 seed；本地直接跑 Python 或修改 prompt 后的手动同步见 [third/README.md](./third/README.md)。
+说明：完整 Docker 链路包含 `third-prompt-seed` 一次性容器，会在 `third-migration` 成功后把 `third/Prompt/runagent/*.yaml` 同步到 `prompt_registry`，再启动 `third-api` 和 `third-worker`。本地直接跑 Python 或修改 prompt 后的手动同步见 [third/README.md](./third/README.md)。
+
+Docker 前端默认不设置 `VITE_API_BASE_URL`，浏览器请求同源相对路径 `/api/...`，由本地 Caddy 反代到 `backend:8080`。只有前后端不同源部署时才设置完整后端源地址，不要设置成 `/api` 或默认 `http://localhost:8080`。
 
 代码改动后的刷新方式见 [docs/运行与刷新.md](./docs/运行与刷新.md)。重点：只重启容器不会把新代码打进 Docker 镜像；改 `backend/`、`frontend/` 或 migration 后，如果当前用 Docker 跑应用，需要重新 `--build` 对应服务。MySQL/Redis 默认使用 volume 保留数据，不要随手执行 `docker compose down -v`。
 
 常用地址：
 
-- 前端：`http://localhost:5173`
+- 前端：`http://localhost:5173`（本地 Caddy，同源 `/api`）
 - 后端：`http://localhost:8080`
 - third 调试台：`http://localhost:8001/debug`
 - MySQL：`127.0.0.1:3307`，包含 `for_mygirl_app`、`third_service` 和 `third_test` 三个逻辑库
