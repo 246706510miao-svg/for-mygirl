@@ -86,6 +86,8 @@ export interface RecordWorkflowTask {
   sessionId: string;
   triggerType: string;
   clientActionId: string;
+  recordId?: string | null;
+  syncId?: string | null;
   thirdSessionId?: string | null;
   confirmationId?: string | null;
   approved?: boolean | null;

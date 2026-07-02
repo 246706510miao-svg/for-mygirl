@@ -160,6 +160,24 @@ public class BusinessRepository {
             String status,
             String requestId
     ) {
+        return createWorkflowTask(sessionId, triggerType, clientActionId, sourceMessageId, draftId, null, null, thirdSessionId, confirmationId, approved, status, requestId);
+    }
+
+    // 这个函数创建带正式记录/同步记录引用的 workflow 跟踪任务。
+    public Map<String, Object> createWorkflowTask(
+            String sessionId,
+            String triggerType,
+            String clientActionId,
+            String sourceMessageId,
+            String draftId,
+            String recordId,
+            String syncId,
+            String thirdSessionId,
+            String confirmationId,
+            Boolean approved,
+            String status,
+            String requestId
+    ) {
         Map<String, Object> existing = findWorkflowTask(sessionId, triggerType, clientActionId);
         if (!existing.isEmpty()) {
             return existing;
@@ -169,11 +187,11 @@ public class BusinessRepository {
         jdbcTemplate.update(
                 """
                 INSERT INTO RECORD_WORKFLOW_TASK (
-                  id, session_id, trigger_type, client_action_id, source_message_id, draft_id,
+                  id, session_id, trigger_type, client_action_id, source_message_id, draft_id, record_id, sync_id,
                   third_session_id, confirmation_id, approved, status, error_text, request_id,
                   created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
                 """,
                 id,
                 sessionId,
@@ -181,6 +199,8 @@ public class BusinessRepository {
                 clientActionId,
                 sourceMessageId,
                 draftId,
+                recordId,
+                syncId,
                 thirdSessionId,
                 confirmationId,
                 approved,
@@ -365,6 +385,34 @@ public class BusinessRepository {
         return queryOne("SELECT * FROM FEISHU_SYNC WHERE id = ?", id);
     }
 
+    // 这个函数更新一次飞书同步尝试的最终状态。
+    public Map<String, Object> updateFeishuSync(String syncId, String syncStatus, String errorMessage, Map<String, Object> payload) {
+        jdbcTemplate.update(
+                """
+                UPDATE FEISHU_SYNC
+                SET payload_json = CAST(? AS JSON),
+                    feishu_ref_id = ?,
+                    sync_status = ?,
+                    error_message = ?,
+                    last_sync_at = ?
+                WHERE id = ?
+                """,
+                json.stringify(payload),
+                payload.get("feishuRefId"),
+                syncStatus,
+                errorMessage,
+                Timestamp.valueOf(LocalDateTime.now()),
+                syncId
+        );
+        return queryOne("SELECT * FROM FEISHU_SYNC WHERE id = ?", syncId);
+    }
+
+    // 这个函数更新正式记录状态。
+    public Map<String, Object> updateDailyRecordStatus(String recordId, String status) {
+        jdbcTemplate.update("UPDATE DAILY_RECORD SET status = ? WHERE id = ?", status, recordId);
+        return record(recordId);
+    }
+
     // 这个函数写入或更新用户端展示数据。
     public Map<String, Object> upsertDisplay(String recordId, String title, String summary, int score, String displayStatus, Map<String, Object> adminContent, Map<String, Object> displayJson) {
         Map<String, Object> existing = queryOne("SELECT * FROM RECORD_DISPLAY WHERE record_id = ?", recordId);
@@ -490,6 +538,11 @@ public class BusinessRepository {
     // 这个函数读取最新飞书同步记录。
     public Map<String, Object> latestFeishuSync(String recordId) {
         return queryOne("SELECT * FROM FEISHU_SYNC WHERE record_id = ? ORDER BY created_at DESC LIMIT 1", recordId);
+    }
+
+    // 这个函数读取单次飞书同步记录。
+    public Map<String, Object> feishuSync(String syncId) {
+        return queryOne("SELECT * FROM FEISHU_SYNC WHERE id = ?", syncId);
     }
 
     // 这个函数列出正式记录所有飞书同步记录。

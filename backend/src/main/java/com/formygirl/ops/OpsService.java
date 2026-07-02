@@ -1,5 +1,6 @@
 package com.formygirl.ops;
 
+import com.formygirl.common.ApiException;
 import com.formygirl.common.JsonSupport;
 import com.formygirl.feishu.FeishuConfigService;
 import com.formygirl.persistence.BusinessRepository;
@@ -8,6 +9,7 @@ import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -76,25 +78,40 @@ public class OpsService {
     @Transactional
     public Map<String, Object> retrySync(String recordId, String mode, String requestId) {
         Map<String, Object> record = repository.record(recordId);
+        if (record.isEmpty()) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "记录不存在");
+        }
         Map<String, Object> latest = repository.latestFeishuSync(recordId);
         Map<String, Object> session = repository.requireSession(String.valueOf(record.get("session_id")));
+        if (session.isEmpty()) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "记录会话不存在");
+        }
         FeishuConfigService.WorkflowFeishuContext feishuContext = feishuConfigService.workflowContext(String.valueOf(record.get("user_id")), stringOrNull(session.get("feishu_table_config_id")));
         Map<String, Object> metadata = dto(
                 "businessRecordId", recordId,
                 "operation", "retry_sync",
-                "mode", mode
+                "mode", mode,
+                "idempotencyKey", requestId
         );
         metadata.putAll(feishuContext.publicMetadata());
-        Map<String, Object> third = thirdClient.invokeAndWait("新增一条记录，重试同步：" + record.getOrDefault("final_text", ""), metadata, feishuContext.privateMetadata());
-        String thirdStatus = String.valueOf(third.get("status"));
-        String syncStatus = "success".equals(thirdStatus) ? "success" : "failed";
-        int retryCount = intValue(latest.get("retry_count"), 0) + 1;
-        Map<String, Object> sync = repository.insertFeishuSync(recordId, feishuContext.tableConfigId(), String.valueOf(third.get("session_id")), requestId, syncStatus, "success".equals(syncStatus) ? null : String.valueOf(third.get("error_text")), retryCount, Map.of("retryMode", mode, "thirdStatus", thirdStatus));
-        Map<String, Object> display = repository.display(recordId);
-        if (!display.isEmpty() && "success".equals(syncStatus)) {
-            repository.upsertDisplay(recordId, String.valueOf(display.get("title")), String.valueOf(display.get("summary")), intValue(display.get("score"), 80), "success", json.map(String.valueOf(display.get("admin_content_json"))), json.map(String.valueOf(display.get("display_json"))));
+        Map<String, Object> third = thirdClient.invoke("新增一条记录，重试同步：" + record.getOrDefault("final_text", ""), metadata, feishuContext.privateMetadata());
+        String thirdSessionId = stringOrNull(third.get("session_id"));
+        if (thirdSessionId == null) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "AI_SERVICE_ERROR", "third workflow 未返回 session_id");
         }
-        return dto("recordId", recordId, "recordStatus", "success".equals(syncStatus) ? "success" : record.get("status"), "feishuSync", syncDto(sync), "displayStatus", "success".equals(syncStatus) ? "success" : display.get("display_status"));
+        int retryCount = intValue(latest.get("retry_count"), 0) + 1;
+        Map<String, Object> display = repository.display(recordId);
+        Map<String, Object> sync = repository.insertFeishuSync(recordId, feishuContext.tableConfigId(), thirdSessionId, requestId, "syncing", null, retryCount, dto("retryMode", mode, "thirdStatus", third.get("status"), "thirdSessionId", thirdSessionId));
+        Map<String, Object> task = repository.createWorkflowTask(String.valueOf(session.get("id")), "retry_sync", requestId, null, null, recordId, String.valueOf(sync.get("id")), thirdSessionId, null, true, "submitted", requestId);
+        return dto(
+                "recordId", recordId,
+                "recordStatus", record.get("status"),
+                "workflowStatus", "processing",
+                "latestWorkflowTask", workflowTaskDto(task),
+                "pollAfterMs", 1500,
+                "feishuSync", syncDto(sync),
+                "displayStatus", display.get("display_status")
+        );
     }
 
     // 这个函数更新用户端展示数据。
@@ -154,6 +171,25 @@ public class OpsService {
         dto.put("targetId", row.get("target_id"));
         dto.put("payload", json.map(String.valueOf(row.get("payload_json"))));
         return dto;
+    }
+
+    // 这个函数转换后台重试关联的 workflow task。
+    private Map<String, Object> workflowTaskDto(Map<String, Object> row) {
+        return dto(
+                "id", row.get("id"),
+                "sessionId", row.get("session_id"),
+                "triggerType", row.get("trigger_type"),
+                "clientActionId", row.get("client_action_id"),
+                "recordId", row.get("record_id"),
+                "syncId", row.get("sync_id"),
+                "thirdSessionId", row.get("third_session_id"),
+                "confirmationId", row.get("confirmation_id"),
+                "approved", row.get("approved"),
+                "status", row.get("status"),
+                "errorText", row.get("error_text"),
+                "createdAt", row.get("created_at"),
+                "updatedAt", row.get("updated_at")
+        );
     }
 
     // 这个函数把对象安全转换为整数。

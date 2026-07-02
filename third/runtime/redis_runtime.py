@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections import deque
+from datetime import datetime, timezone
 from typing import Any
 
 try:
@@ -26,6 +27,10 @@ class WorkflowRuntimeStore:
 
     # 这个方法确认任务已消费。
     def ack(self, message_id: str) -> None:
+        raise NotImplementedError
+
+    # 这个方法把超过重试上限的消息移入死信队列。
+    def dead_letter(self, message: dict[str, Any], reason: str) -> str | None:
         raise NotImplementedError
 
     # 这个方法获取 session 执行锁。
@@ -83,6 +88,9 @@ class RedisWorkflowRuntimeStore(WorkflowRuntimeStore):
 
     # 这个方法消费一条 workflow session 任务。
     def consume_one(self, block_ms: int = 1000) -> dict[str, Any] | None:
+        claimed = self._claim_stale_pending()
+        if claimed:
+            return claimed
         response = self.client.xreadgroup(
             groupname=self.config.workflow_consumer_group,
             consumername=self.config.workflow_consumer_name,
@@ -94,11 +102,22 @@ class RedisWorkflowRuntimeStore(WorkflowRuntimeStore):
             return None
         _, messages = response[0]
         message_id, payload = messages[0]
-        return {"message_id": message_id, "session_id": payload.get("session_id", "")}
+        return self._message(str(message_id), payload, "new")
 
     # 这个方法确认任务已消费。
     def ack(self, message_id: str) -> None:
         self.client.xack(self.config.workflow_queue_name, self.config.workflow_consumer_group, message_id)
+
+    # 这个方法把不可恢复的消息写到死信 stream，随后由 worker ack 原消息。
+    def dead_letter(self, message: dict[str, Any], reason: str) -> str | None:
+        payload = {
+            "session_id": str(message.get("session_id") or ""),
+            "original_message_id": str(message.get("message_id") or ""),
+            "reason": reason,
+            "delivery_count": str(message.get("delivery_count") or 0),
+            "failed_at": datetime.now(timezone.utc).isoformat(),
+        }
+        return str(self.client.xadd(self.config.workflow_dead_letter_queue_name, payload))
 
     # 这个方法获取 session 执行锁。
     def acquire_lock(self, session_id: str) -> bool:
@@ -154,6 +173,63 @@ class RedisWorkflowRuntimeStore(WorkflowRuntimeStore):
     def acquire_schema_refresh_lock(self, table_key: str, ttl_seconds: int = 120) -> bool:
         return bool(self.client.set(f"third:feishu:schema:refreshing:{table_key}", "1", nx=True, ex=ttl_seconds))
 
+    # 这个方法回收长时间没有 ack 的 pending 消息。
+    def _claim_stale_pending(self) -> dict[str, Any] | None:
+        try:
+            response = self.client.xautoclaim(
+                self.config.workflow_queue_name,
+                self.config.workflow_consumer_group,
+                self.config.workflow_consumer_name,
+                self.config.workflow_pending_idle_ms,
+                start_id="0-0",
+                count=1,
+            )
+        except AttributeError:
+            response = self.client.execute_command(
+                "XAUTOCLAIM",
+                self.config.workflow_queue_name,
+                self.config.workflow_consumer_group,
+                self.config.workflow_consumer_name,
+                self.config.workflow_pending_idle_ms,
+                "0-0",
+                "COUNT",
+                1,
+            )
+        if not response or len(response) < 2 or not response[1]:
+            return None
+        message_id, payload = response[1][0]
+        return self._message(str(message_id), payload, "claimed")
+
+    # 这个方法组装 worker 消费到的消息并附带投递次数。
+    def _message(self, message_id: str, payload: dict[str, Any], source: str) -> dict[str, Any]:
+        return {
+            "message_id": message_id,
+            "session_id": payload.get("session_id", ""),
+            "delivery_count": self._delivery_count(message_id),
+            "source": source,
+        }
+
+    # 这个方法读取 Redis consumer group 里的 delivery count。
+    def _delivery_count(self, message_id: str) -> int:
+        try:
+            entries = self.client.xpending_range(
+                self.config.workflow_queue_name,
+                self.config.workflow_consumer_group,
+                message_id,
+                message_id,
+                1,
+            )
+        except Exception:
+            return 1
+        if not entries:
+            return 1
+        entry = entries[0]
+        if isinstance(entry, dict):
+            return int(entry.get("times_delivered") or entry.get("delivery_count") or 1)
+        if isinstance(entry, (list, tuple)) and len(entry) >= 4:
+            return int(entry[3] or 1)
+        return 1
+
     # 这个方法确保 Redis Stream consumer group 存在。
     def _ensure_group(self) -> None:
         try:
@@ -168,6 +244,7 @@ class InMemoryWorkflowRuntimeStore(WorkflowRuntimeStore):
     # 这个构造函数初始化内存队列和缓存。
     def __init__(self) -> None:
         self.queue: deque[dict[str, str]] = deque()
+        self.dead_letters: list[dict[str, Any]] = []
         self.locks: set[str] = set()
         self.cursors: dict[str, str] = {}
         self.temp_artifacts: dict[str, dict[str, Any]] = {}
@@ -184,11 +261,17 @@ class InMemoryWorkflowRuntimeStore(WorkflowRuntimeStore):
     def consume_one(self, block_ms: int = 1000) -> dict[str, Any] | None:
         if not self.queue:
             return None
-        return self.queue.popleft()
+        message = self.queue.popleft()
+        return {**message, "delivery_count": 1, "source": "new"}
 
     # 这个方法确认任务已消费，内存队列弹出后不需要额外处理。
     def ack(self, message_id: str) -> None:
         return None
+
+    # 这个方法记录内存死信，便于测试。
+    def dead_letter(self, message: dict[str, Any], reason: str) -> str | None:
+        self.dead_letters.append({**message, "reason": reason})
+        return f"dead-{len(self.dead_letters)}"
 
     # 这个方法获取 session 执行锁。
     def acquire_lock(self, session_id: str) -> bool:

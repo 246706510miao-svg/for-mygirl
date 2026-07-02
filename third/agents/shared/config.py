@@ -48,6 +48,9 @@ class ThirdServiceConfig:
     workflow_consumer_group: str
     workflow_consumer_name: str
     workflow_lock_ttl_seconds: int
+    workflow_pending_idle_ms: int
+    workflow_max_deliveries: int
+    workflow_dead_letter_queue_name: str
     workflow_artifact_ttl_seconds: int
     workflow_idempotency_ttl_seconds: int
     feishu_field_cache_ttl_seconds: int
@@ -121,6 +124,9 @@ def load_config(private_metadata: dict[str, Any] | None = None) -> ThirdServiceC
         workflow_consumer_group=os.getenv("THIRD_WORKFLOW_CONSUMER_GROUP", "third-workflow-workers"),
         workflow_consumer_name=os.getenv("THIRD_WORKFLOW_CONSUMER_NAME", "worker-1"),
         workflow_lock_ttl_seconds=_read_int("THIRD_WORKFLOW_LOCK_TTL_SECONDS", 300),
+        workflow_pending_idle_ms=_read_int("THIRD_WORKFLOW_PENDING_IDLE_MS", 60000),
+        workflow_max_deliveries=_read_int("THIRD_WORKFLOW_MAX_DELIVERIES", 5),
+        workflow_dead_letter_queue_name=os.getenv("THIRD_WORKFLOW_DEAD_LETTER_QUEUE_NAME", "third:workflow:dead"),
         workflow_artifact_ttl_seconds=_read_int("THIRD_WORKFLOW_ARTIFACT_TTL_SECONDS", 3600),
         workflow_idempotency_ttl_seconds=_read_int("THIRD_WORKFLOW_IDEMPOTENCY_TTL_SECONDS", 604800),
         feishu_field_cache_ttl_seconds=_read_int("THIRD_FEISHU_FIELD_CACHE_TTL_SECONDS", 1800),

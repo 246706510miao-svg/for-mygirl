@@ -330,6 +330,8 @@ public class RecordService {
                 "sessionId", row.get("session_id"),
                 "triggerType", row.get("trigger_type"),
                 "clientActionId", row.get("client_action_id"),
+                "recordId", row.get("record_id"),
+                "syncId", row.get("sync_id"),
                 "thirdSessionId", row.get("third_session_id"),
                 "confirmationId", row.get("confirmation_id"),
                 "approved", row.get("approved"),
@@ -374,6 +376,15 @@ public class RecordService {
         Map<String, Object> snapshot = safeSnapshot(thirdSessionId);
         String confirmationId = stringOrNull(firstMappedValue(mapValue(snapshot.get("confirmation")), confirmationValue(third, "confirmation_id"), "confirmationId", "confirmation_id"));
         String draftId = stringOrNull(task.get("draft_id"));
+        if ("retry_sync".equals(triggerType)) {
+            if (thirdSessionId == null || confirmationId == null) {
+                repository.updateWorkflowTaskStatus(String.valueOf(task.get("id")), "failed", "third waiting_user 缺少 third_session_id 或 confirmation_id");
+                return;
+            }
+            thirdClient.resume(thirdSessionId, confirmationId, "后台重试同步确认写入", true);
+            repository.updateWorkflowTaskStatus(String.valueOf(task.get("id")), "running", null);
+            return;
+        }
         if ("message".equals(triggerType)) {
             Map<String, Object> session = repository.requireSession(sessionId);
             Map<String, Object> message = repository.message(String.valueOf(task.get("source_message_id")));
@@ -397,6 +408,10 @@ public class RecordService {
         String thirdStatus = String.valueOf(third.get("status"));
         if ("message".equals(triggerType)) {
             applyTerminalMessageTask(task, third, thirdStatus);
+            return;
+        }
+        if ("retry_sync".equals(triggerType)) {
+            applyTerminalRetrySyncTask(task, third, thirdStatus);
             return;
         }
         applyTerminalConfirmTask(task, third);
@@ -423,6 +438,42 @@ public class RecordService {
         String errorText = String.valueOf(third.getOrDefault("error_text", thirdStatus));
         repository.insertMessage(sessionId, "ai", "text", "third workflow 执行失败：" + errorText, null, null, thirdSessionId, requestId);
         repository.updateWorkflowTaskStatus(String.valueOf(task.get("id")), "failed", errorText);
+    }
+
+    // 这个函数处理后台重试飞书同步的终态。
+    private void applyTerminalRetrySyncTask(Map<String, Object> task, Map<String, Object> third, String thirdStatus) {
+        String taskId = String.valueOf(task.get("id"));
+        String recordId = stringOrNull(task.get("record_id"));
+        String syncId = stringOrNull(task.get("sync_id"));
+        String thirdSessionId = stringOrNull(task.get("third_session_id"));
+        if (recordId == null || syncId == null) {
+            repository.updateWorkflowTaskStatus(taskId, "failed", "retry_sync 缺少 record_id 或 sync_id");
+            return;
+        }
+        Map<String, Object> existingSync = repository.feishuSync(syncId);
+        Map<String, Object> payload = existingSync.isEmpty() ? new LinkedHashMap<>() : new LinkedHashMap<>(json.map(String.valueOf(existingSync.get("payload_json"))));
+        payload.put("thirdStatus", thirdStatus);
+        payload.put("thirdSessionId", thirdSessionId);
+        if (thirdSessionId != null && !thirdSessionId.isBlank()) {
+            payload.put("thirdSnapshot", safeSnapshot(thirdSessionId));
+        }
+        boolean success = "success".equals(thirdStatus);
+        String errorText = success ? null : String.valueOf(third.getOrDefault("error_text", thirdAnswer(third)));
+        repository.updateFeishuSync(syncId, success ? "success" : "failed", errorText, payload);
+        Map<String, Object> display = repository.display(recordId);
+        if (success) {
+            repository.updateDailyRecordStatus(recordId, "success");
+            if (!display.isEmpty()) {
+                repository.upsertDisplay(recordId, String.valueOf(display.get("title")), String.valueOf(display.get("summary")), intValue(display.get("score"), 80), "success", json.map(String.valueOf(display.get("admin_content_json"))), json.map(String.valueOf(display.get("display_json"))));
+            }
+            repository.updateWorkflowTaskStatus(taskId, "completed", null);
+            return;
+        }
+        repository.updateDailyRecordStatus(recordId, "sync_failed");
+        if (!display.isEmpty()) {
+            repository.upsertDisplay(recordId, String.valueOf(display.get("title")), String.valueOf(display.get("summary")), intValue(display.get("score"), 80), "sync_failed", json.map(String.valueOf(display.get("admin_content_json"))), json.map(String.valueOf(display.get("display_json"))));
+        }
+        repository.updateWorkflowTaskStatus(taskId, "failed", errorText);
     }
 
     // 这个函数处理确认或继续确认 workflow 的终态。

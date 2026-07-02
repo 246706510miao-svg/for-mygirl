@@ -19,29 +19,6 @@ public class ThirdWorkflowClient {
         this.properties = properties;
     }
 
-    // 这个函数提交 workflow 并轮询到终态或等待确认态。
-    public Map<String, Object> invokeAndWait(String text, Map<String, Object> metadata) {
-        return invokeAndWait(text, metadata, Map.of());
-    }
-
-    // 这个函数提交 workflow，并把敏感上下文放入 third 私有 metadata。
-    public Map<String, Object> invokeAndWait(String text, Map<String, Object> metadata, Map<String, Object> privateMetadata) {
-        Map<String, Object> created = invoke(text, metadata, privateMetadata);
-        String sessionId = String.valueOf(created.get("session_id"));
-        return waitFor(sessionId);
-    }
-
-    // 这个函数确认 waiting_user workflow 并继续轮询。
-    public Map<String, Object> resumeAndWait(String thirdSessionId, String confirmationId, String text) {
-        return resumeAndWait(thirdSessionId, confirmationId, text, true);
-    }
-
-    // 这个函数按用户选择确认或拒绝 waiting_user workflow 并继续轮询。
-    public Map<String, Object> resumeAndWait(String thirdSessionId, String confirmationId, String text, boolean approved) {
-        resume(thirdSessionId, confirmationId, text, approved);
-        return waitFor(thirdSessionId);
-    }
-
     // 这个函数只提交确认结果，不等待 workflow 终态。
     public Map<String, Object> resume(String thirdSessionId, String confirmationId, String text, boolean approved) {
         restClient.post()
@@ -106,21 +83,6 @@ public class ThirdWorkflowClient {
         }
     }
 
-    // 这个函数等待 workflow 进入 success、failed、cancelled 或 waiting_user。
-    private Map<String, Object> waitFor(String thirdSessionId) {
-        Map<String, Object> response = Map.of("session_id", thirdSessionId, "status", "queued");
-        int attempts = Math.max(1, properties.getThirdPollTimes());
-        for (int index = 0; index < attempts; index++) {
-            response = get(thirdSessionId);
-            String status = String.valueOf(response.get("status"));
-            if ("success".equals(status) || "failed".equals(status) || "cancelled".equals(status) || "waiting_user".equals(status)) {
-                return response;
-            }
-            sleep();
-        }
-        return response;
-    }
-
     // 这个函数查询 workflow 当前状态。
     public Map<String, Object> get(String thirdSessionId) {
         try {
@@ -130,15 +92,6 @@ public class ThirdWorkflowClient {
                     .body(Map.class);
         } catch (Exception exception) {
             throw new ApiException(HttpStatus.BAD_GATEWAY, "AI_SERVICE_ERROR", "third workflow 查询失败：" + exception.getMessage());
-        }
-    }
-
-    // 这个函数在轮询间隔内短暂等待。
-    private void sleep() {
-        try {
-            Thread.sleep(Math.max(50, properties.getThirdPollIntervalMs()));
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
         }
     }
 }
