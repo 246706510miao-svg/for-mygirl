@@ -20,6 +20,7 @@
 - `Prompt/workflowagent.yaml`：workflowagent 系统提示词。
 - `Prompt/runagent/`：业务 Agent 提示词文件来源，执行 seed 后写入 MySQL `prompt_registry`。
 - `scripts/seed_runagent_prompts.py`：把 `Prompt/runagent/*.yaml` 覆盖同步到 `prompt_registry`。
+- `scripts/probe_llm_routes.py`：探测 OpenAI 代理和国内模型兜底通道，不发送业务数据。
 - `migrations/`：Alembic migration。
 - `docs/`：外部调用契约、架构图、ER 图和流程说明。
 
@@ -39,15 +40,43 @@ THIRD_FEISHU_FIELD_NAME_MAP={}
 
 说明：`THIRD_FEISHU_FIELD_NAME_MAP` 用于把用户常用语义字段映射到真实飞书字段名，例如 `{"标题":"事项名称"}`。真实飞书写入时，未映射且不在当前表字段列表中的字段会被拒绝，避免写入错误列。
 
-OpenAI 配置：
+LLM 配置：
 
 ```env
 OPENAI_API_KEY=sk-xxx
 THIRD_WORKFLOWAGENT_USE_LLM=1
 THIRD_WORKFLOWAGENT_MODEL=gpt-4o-mini
+THIRD_OPENAI_PROXY_URL=http://user:password@jp.example.com:3128
+THIRD_OPENAI_TIMEOUT_SECONDS=60
+THIRD_OPENAI_MAX_RETRIES=2
+
+THIRD_LLM_ROUTE_MODE=auto
+THIRD_LLM_FALLBACK_PROVIDERS=deepseek,minimax
+THIRD_LLM_PROBE_ENABLED=1
+THIRD_LLM_PROBE_TTL_SECONDS=60
+THIRD_LLM_PROBE_SAMPLES=3
+THIRD_LLM_PROBE_MIN_SUCCESSES=2
+THIRD_LLM_UNHEALTHY_TTL_SECONDS=120
+
+THIRD_DEEPSEEK_API_KEY=
+THIRD_DEEPSEEK_BASE_URL=
+THIRD_DEEPSEEK_MODEL=
+THIRD_DEEPSEEK_TIMEOUT_SECONDS=60
+THIRD_DEEPSEEK_MAX_RETRIES=0
+THIRD_MINIMAX_API_KEY=
+THIRD_MINIMAX_BASE_URL=
+THIRD_MINIMAX_MODEL=
+THIRD_MINIMAX_TIMEOUT_SECONDS=60
+THIRD_MINIMAX_MAX_RETRIES=0
 ```
 
-说明：`THIRD_WORKFLOWAGENT_USE_LLM=1` 会同时启用 workflowagent 的模板选择、business_agent 的写入 payload 解析、schema_agent 的字段变更解析，以及 search_agent 的更新/删除候选记录匹配。LLM 模式下，workflowagent 会拿到三类目录：代码内置 Tool 能力目录、代码内置 Workflow Template 目录，以及 MySQL `prompt_registry` 中启用的 Agent 目录。workflowagent 优先输出 `template_key`，由代码模板 builder 生成完整 `workflow_plan.steps`；Agent Runner 执行时再从数据库读取对应 `prompt_text`。数据库没有启用 Agent、缺少对应 prompt、OpenAI 不可用或输出 JSON 非法都会让当前步骤失败，不读取文件兜底。
+说明：`THIRD_WORKFLOWAGENT_USE_LLM=1` 会同时启用 workflowagent 的模板选择、business_agent 的写入 payload 解析、schema_agent 的字段变更解析，以及 search_agent 的更新/删除候选记录匹配。LLM 模式下，workflowagent 会拿到三类目录：代码内置 Tool 能力目录、代码内置 Workflow Template 目录，以及 MySQL `prompt_registry` 中启用的 Agent 目录。workflowagent 优先输出 `template_key`，由代码模板 builder 生成完整 `workflow_plan.steps`；Agent Runner 执行时再从数据库读取对应 `prompt_text`。数据库没有启用 Agent、缺少对应 prompt 或 LLM 输出 JSON 非法都会让当前步骤失败，不读取文件兜底。
+
+说明：`THIRD_LLM_ROUTE_MODE=auto` 时，`third` 会按探测缓存判断 OpenAI 日本代理链路是否健康；主通道不健康或实际调用出现连接、代理、超时、上游 5xx 时，按 `THIRD_LLM_FALLBACK_PROVIDERS` 切到国内模型。鉴权错误、参数错误、限流和输出格式错误不会自动切换。DeepSeek 和 MiniMax 按 OpenAI-compatible 接口接入，配置不完整会被跳过；国内 provider 会显式使用不继承环境代理的 HTTP client，不走 `THIRD_OPENAI_PROXY_URL`。
+
+说明：国内 provider 默认 timeout 是 60 秒、max retries 是 0。旧 env 如果从早期模板复制过 `THIRD_DEEPSEEK_TIMEOUT_SECONDS=30` 和 `THIRD_DEEPSEEK_MAX_RETRIES=1`，建议改成上面的值后重启 `third-api` 和 `third-worker`。
+
+说明：如果本地开启了系统 TUN 全局代理，想直接跳过 OpenAI 主通道，设置 `THIRD_LLM_ROUTE_MODE=domestic`。这个模式会直接按 `THIRD_LLM_FALLBACK_PROVIDERS` 使用国内 provider；它能绕开应用层代理配置，但系统级 TUN 是否仍转发流量取决于 TUN 分流规则。
 
 存储和异步执行配置：
 
@@ -152,6 +181,20 @@ GET /debug/health
 
 它只显示 `configured / missing / ok / error` 等状态，不输出 OpenAI、飞书或数据库密钥明文。真实飞书和 LLM 联调时，先看这里确认 `Feishu real`、`WorkflowAgent LLM`、MySQL、Redis、OpenAI key、飞书表格定位和鉴权配置是否满足要求。
 
+主动探测 LLM 出口：
+
+```powershell
+python -m third.scripts.probe_llm_routes --samples 3 --json --refresh
+```
+
+也可以在 debug 开启时访问：
+
+```http
+GET /debug/llm-routes/probe?refresh=1
+```
+
+探测只发送固定的无业务 prompt，用于判断 OpenAI 代理、DeepSeek 和 MiniMax 的连通性、成功率、延迟和失败分类。
+
 提交一次 workflow：
 
 ```bash
@@ -228,10 +271,22 @@ THIRD_FEISHU_APP_TOKEN=app_xxx
 THIRD_FEISHU_TABLE_ID=tbl_xxx
 OPENAI_API_KEY=sk_xxx
 THIRD_WORKFLOWAGENT_USE_LLM=1
+THIRD_OPENAI_PROXY_URL=http://user:password@jp.example.com:3128
+THIRD_LLM_ROUTE_MODE=auto
 THIRD_ALLOW_IN_MEMORY_FALLBACK=0
 ```
 
 真实模式下不会读取 `.env.docker.mock`，也不会把缺失的飞书 `app_token/table_id` 替换成 mock 默认值。飞书配置缺失、字段读取失败或接口失败时，workflow 会返回错误状态。字段变更还要求飞书自建应用具备多维表格字段管理权限；权限不足时字段 Tool 会返回飞书接口错误。
+
+如果要启用国内兜底，再补齐至少一个 provider，例如 DeepSeek：
+
+```env
+THIRD_DEEPSEEK_API_KEY=xxx
+THIRD_DEEPSEEK_BASE_URL=https://your-deepseek-compatible-endpoint/v1
+THIRD_DEEPSEEK_MODEL=your-deepseek-model
+THIRD_DEEPSEEK_TIMEOUT_SECONDS=60
+THIRD_DEEPSEEK_MAX_RETRIES=0
+```
 
 ### 同步 LangGraph / LangSmith 调试
 
@@ -333,6 +388,7 @@ GET /debug/workflows/latest
 GET /debug/workflows/{session_id}/timeline
 GET /debug/workflows/{session_id}/artifacts
 GET /debug/workflows/{session_id}/graph
+GET /debug/llm-routes/probe?refresh=1
 ```
 
 `/debug/workflows/{session_id}/timeline` 会从现有 MySQL 表推导执行过程，不依赖新增事件表。读取类 workflow 通常直接到 `success`；新增、更新、删除和字段变更会先停在 `waiting_user`，调试台确认后 worker 才会继续执行有副作用的 Tool。
@@ -348,6 +404,8 @@ GET /debug/workflows/{session_id}/graph
 - 调试日志由 `THIRD_WORKFLOW_DEBUG_LOG` 控制，本地开启时会输出脱敏后的 workflow plan、无效 plan 和失败 step 摘要。
 - `THIRD_WORKFLOWAGENT_USE_LLM=1` 时，workflowagent 只能从注入的 Tool 能力目录、Workflow Template 目录和数据库 Agent 目录中选择能力；复杂流程优先输出 `template_key`，由代码模板 builder 生成步骤。
 - `THIRD_WORKFLOWAGENT_USE_LLM=0` 时，保留规则 workflowagent 和规则 payload 解析，用于 mock 或离线调试。
+- LLM 路由只在 OpenAI 主通道连接、代理、超时或上游 5xx 时兜底；鉴权、参数、限流和输出 JSON 不合法会直接失败并输出脱敏错误。
+- LLM 出口探测使用固定无业务 prompt；`/health` 不做任何外部模型调用，只保留容器探活。
 - 写入、更新、删除前必须经过字段读取、字段转换、校验和确认门。
 - 字段变更走同一套 workflow runtime，不新建执行流；典型步骤是 `read_schema -> schema_agent -> schema_validation -> confirm -> change_fields_tool -> refresh_schema`。
 - 用户一句话同时要求改字段再写记录时，先确认并执行字段变更，刷新 schema 后再进入现有记录写入链路和写入确认门。

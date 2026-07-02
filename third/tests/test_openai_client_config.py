@@ -17,6 +17,21 @@ class OpenAIClientConfigTests(unittest.TestCase):
             "THIRD_OPENAI_PROXY_URL": "http://user:pass@jp.example.com:3128",
             "THIRD_OPENAI_TIMEOUT_SECONDS": "45",
             "THIRD_OPENAI_MAX_RETRIES": "4",
+            "THIRD_LLM_ROUTE_MODE": "auto",
+            "THIRD_LLM_FALLBACK_PROVIDERS": "deepseek,minimax",
+            "THIRD_LLM_PROBE_ENABLED": "1",
+            "THIRD_LLM_PROBE_TTL_SECONDS": "90",
+            "THIRD_LLM_PROBE_SAMPLES": "5",
+            "THIRD_LLM_PROBE_MIN_SUCCESSES": "3",
+            "THIRD_LLM_UNHEALTHY_TTL_SECONDS": "180",
+            "THIRD_DEEPSEEK_API_KEY": "ds-test",
+            "THIRD_DEEPSEEK_BASE_URL": "https://api.deepseek.example/v1",
+            "THIRD_DEEPSEEK_MODEL": "deepseek-chat",
+            "THIRD_DEEPSEEK_TIMEOUT_SECONDS": "35",
+            "THIRD_DEEPSEEK_MAX_RETRIES": "1",
+            "THIRD_MINIMAX_API_KEY": "mm-test",
+            "THIRD_MINIMAX_BASE_URL": "https://api.minimax.example/v1",
+            "THIRD_MINIMAX_MODEL": "minimax-text",
         }
 
         with patch.dict(os.environ, env, clear=True), patch.object(config_module, "_load_env_files", return_value=None):
@@ -26,6 +41,15 @@ class OpenAIClientConfigTests(unittest.TestCase):
         self.assertEqual(config.openai_proxy_url, "http://user:pass@jp.example.com:3128")
         self.assertEqual(config.openai_timeout_seconds, 45)
         self.assertEqual(config.openai_max_retries, 4)
+        self.assertEqual(config.llm_route_mode, "auto")
+        self.assertEqual(config.llm_fallback_providers, ["deepseek", "minimax"])
+        self.assertTrue(config.llm_probe_enabled)
+        self.assertEqual(config.llm_probe_ttl_seconds, 90)
+        self.assertEqual(config.llm_probe_samples, 5)
+        self.assertEqual(config.llm_probe_min_successes, 3)
+        self.assertEqual(config.llm_unhealthy_ttl_seconds, 180)
+        self.assertTrue(config.deepseek_ready)
+        self.assertTrue(config.minimax_ready)
 
     def test_create_chat_openai_omits_empty_proxy(self) -> None:
         config = SimpleNamespace(
@@ -75,6 +99,14 @@ class OpenAIClientConfigTests(unittest.TestCase):
         redacted = executor._redact_for_log({"THIRD_OPENAI_PROXY_URL": "http://user:pass@jp.example.com:3128"})
 
         self.assertEqual(redacted["THIRD_OPENAI_PROXY_URL"], "***")
+
+    def test_domestic_llm_keys_are_redacted(self) -> None:
+        redacted = executor._redact_text(
+            "THIRD_DEEPSEEK_API_KEY=ds-secret THIRD_MINIMAX_BASE_URL=https://api.minimax.example/v1"
+        )
+
+        self.assertNotIn("ds-secret", redacted)
+        self.assertNotIn("api.minimax.example", redacted)
 
 
 if __name__ == "__main__":

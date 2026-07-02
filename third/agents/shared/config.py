@@ -40,6 +40,23 @@ class ThirdServiceConfig:
     openai_proxy_url: str
     openai_timeout_seconds: int
     openai_max_retries: int
+    llm_route_mode: str
+    llm_fallback_providers: list[str]
+    llm_probe_enabled: bool
+    llm_probe_ttl_seconds: int
+    llm_probe_samples: int
+    llm_probe_min_successes: int
+    llm_unhealthy_ttl_seconds: int
+    deepseek_api_key: str
+    deepseek_base_url: str
+    deepseek_model: str
+    deepseek_timeout_seconds: int
+    deepseek_max_retries: int
+    minimax_api_key: str
+    minimax_base_url: str
+    minimax_model: str
+    minimax_timeout_seconds: int
+    minimax_max_retries: int
     workflowagent_use_llm: bool
     workflowagent_model: str
     mysql_dsn: str
@@ -97,6 +114,19 @@ class ThirdServiceConfig:
             "user_id_type": self.feishu_user_id_type,
         }
 
+    @property
+    def deepseek_ready(self) -> bool:
+        return bool(self.deepseek_api_key and self.deepseek_base_url and self.deepseek_model)
+
+    @property
+    def minimax_ready(self) -> bool:
+        return bool(self.minimax_api_key and self.minimax_base_url and self.minimax_model)
+
+    @property
+    def has_usable_llm_provider(self) -> bool:
+        has_primary = bool(self.openai_api_key and self.workflowagent_model)
+        return has_primary or self.deepseek_ready or self.minimax_ready
+
 
 # 这个函数从环境变量和 .env 文件创建配置对象；你后续收集到真实信息后只需要填配置。
 def load_config(private_metadata: dict[str, Any] | None = None) -> ThirdServiceConfig:
@@ -116,6 +146,23 @@ def load_config(private_metadata: dict[str, Any] | None = None) -> ThirdServiceC
         openai_proxy_url=os.getenv("THIRD_OPENAI_PROXY_URL", ""),
         openai_timeout_seconds=_read_int("THIRD_OPENAI_TIMEOUT_SECONDS", 60),
         openai_max_retries=_read_int("THIRD_OPENAI_MAX_RETRIES", 2),
+        llm_route_mode=os.getenv("THIRD_LLM_ROUTE_MODE", "auto").strip().lower() or "auto",
+        llm_fallback_providers=_read_csv("THIRD_LLM_FALLBACK_PROVIDERS", ["deepseek", "minimax"]),
+        llm_probe_enabled=_read_bool("THIRD_LLM_PROBE_ENABLED", default=True),
+        llm_probe_ttl_seconds=_read_int("THIRD_LLM_PROBE_TTL_SECONDS", 60),
+        llm_probe_samples=_read_int("THIRD_LLM_PROBE_SAMPLES", 3),
+        llm_probe_min_successes=_read_int("THIRD_LLM_PROBE_MIN_SUCCESSES", 2),
+        llm_unhealthy_ttl_seconds=_read_int("THIRD_LLM_UNHEALTHY_TTL_SECONDS", 120),
+        deepseek_api_key=os.getenv("THIRD_DEEPSEEK_API_KEY", ""),
+        deepseek_base_url=os.getenv("THIRD_DEEPSEEK_BASE_URL", ""),
+        deepseek_model=os.getenv("THIRD_DEEPSEEK_MODEL", ""),
+        deepseek_timeout_seconds=_read_int("THIRD_DEEPSEEK_TIMEOUT_SECONDS", 60),
+        deepseek_max_retries=_read_int("THIRD_DEEPSEEK_MAX_RETRIES", 0),
+        minimax_api_key=os.getenv("THIRD_MINIMAX_API_KEY", ""),
+        minimax_base_url=os.getenv("THIRD_MINIMAX_BASE_URL", ""),
+        minimax_model=os.getenv("THIRD_MINIMAX_MODEL", ""),
+        minimax_timeout_seconds=_read_int("THIRD_MINIMAX_TIMEOUT_SECONDS", 60),
+        minimax_max_retries=_read_int("THIRD_MINIMAX_MAX_RETRIES", 0),
         workflowagent_use_llm=_read_bool("THIRD_WORKFLOWAGENT_USE_LLM", default=False),
         workflowagent_model=os.getenv("THIRD_WORKFLOWAGENT_MODEL") or "gpt-4o-mini",
         mysql_dsn=os.getenv("THIRD_MYSQL_DSN", ""),
@@ -284,3 +331,11 @@ def _read_int(name: str, default: int) -> int:
         return int(raw_value.strip())
     except ValueError:
         return default
+
+
+def _read_csv(name: str, default: list[str]) -> list[str]:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return list(default)
+    values = [item.strip().lower() for item in raw_value.split(",") if item.strip()]
+    return values or list(default)

@@ -12,12 +12,14 @@ from fastapi.responses import HTMLResponse
 
 try:
     from ..agents.shared.config import ThirdServiceConfig, load_config
+    from ..agents.shared.llm_routes import probe_llm_routes
     from ..runtime.factory import get_workflow_runtime_store
     from ..storage.factory import get_workflow_repository
     from ..storage.repository import WorkflowRepository, now
     from .page import debug_page_html
 except ImportError:
     from agents.shared.config import ThirdServiceConfig, load_config
+    from agents.shared.llm_routes import probe_llm_routes
     from runtime.factory import get_workflow_runtime_store
     from storage.factory import get_workflow_repository
     from storage.repository import WorkflowRepository, now
@@ -49,11 +51,23 @@ def debug_health() -> dict[str, Any]:
             "feishu": "real" if config.feishu_use_real else "mock",
             "workflowagent": "llm" if config.workflowagent_use_llm else "rule",
             "model": config.workflowagent_model,
+            "llm_route": config.llm_route_mode,
             "storage": storage_mode,
             "runtime": runtime_mode,
         },
         "checks": checks,
     }
+
+
+# 这个接口主动探测 LLM 出口，只在 debug 开启时可访问，且不会发送业务数据。
+@router.get("/llm-routes/probe")
+def debug_llm_routes_probe(refresh: bool = Query(default=False)) -> dict[str, Any]:
+    _ensure_debug_enabled()
+    config = load_config()
+    try:
+        return probe_llm_routes(config, refresh=refresh)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=_safe_error(exc, config)) from exc
 
 
 # 这个接口返回最近 workflow session 列表。
@@ -146,6 +160,7 @@ def _build_health_checks(config: ThirdServiceConfig) -> tuple[list[dict[str, str
     redis_check, runtime_mode = _check_redis(config)
     checks.extend([mysql_check, redis_check])
     checks.append(_check_openai(config))
+    checks.extend(_check_llm_routes(config))
     checks.append(_check_feishu_table(config))
     checks.append(_check_feishu_auth(config))
     checks.append(_check_memory_fallback(config))
@@ -191,6 +206,27 @@ def _check_openai(config: ThirdServiceConfig) -> dict[str, str]:
     if config.workflowagent_use_llm:
         return _check("openai_api_key", "error", "THIRD_WORKFLOWAGENT_USE_LLM=1 但 OPENAI_API_KEY 未配置。")
     return _check("openai_api_key", "missing", "OPENAI_API_KEY 未配置，当前使用规则 workflowagent。")
+
+
+def _check_llm_routes(config: ThirdServiceConfig) -> list[dict[str, str]]:
+    fallback_names = ", ".join(config.llm_fallback_providers) if config.llm_fallback_providers else "none"
+    known_mode = config.llm_route_mode in {"auto", "domestic", "fallback", "fallback_only", "primary", "openai"}
+    checks = [
+        _check(
+            "llm_route",
+            "ok" if known_mode else "warning",
+            f"mode={config.llm_route_mode}, probe={'enabled' if config.llm_probe_enabled else 'disabled'}, fallback={fallback_names}",
+        )
+    ]
+    if config.deepseek_ready:
+        checks.append(_check("llm_provider_deepseek", "ok", "configured"))
+    else:
+        checks.append(_check("llm_provider_deepseek", "missing", "THIRD_DEEPSEEK_API_KEY/BASE_URL/MODEL 未完整配置。"))
+    if config.minimax_ready:
+        checks.append(_check("llm_provider_minimax", "ok", "configured"))
+    else:
+        checks.append(_check("llm_provider_minimax", "missing", "THIRD_MINIMAX_API_KEY/BASE_URL/MODEL 未完整配置。"))
+    return checks
 
 
 # 这个函数检查飞书表格定位信息是否满足当前模式。
@@ -410,10 +446,14 @@ def _safe_error(exc: Exception, config: ThirdServiceConfig) -> str:
     text = str(exc)
     sensitive_values = [
         getattr(config, "openai_api_key", ""),
+        getattr(config, "deepseek_api_key", ""),
+        getattr(config, "minimax_api_key", ""),
         getattr(config, "feishu_app_secret", ""),
         getattr(config, "feishu_tenant_access_token", ""),
         getattr(config, "feishu_app_token", ""),
         getattr(config, "openai_proxy_url", ""),
+        getattr(config, "deepseek_base_url", ""),
+        getattr(config, "minimax_base_url", ""),
         getattr(config, "mysql_dsn", ""),
         getattr(config, "redis_url", ""),
     ]

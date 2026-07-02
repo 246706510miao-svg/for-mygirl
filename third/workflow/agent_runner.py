@@ -169,8 +169,8 @@ def _parse_schema_change_with_llm(
     table_fields: dict[str, Any],
     config: Any,
 ) -> dict[str, Any]:
-    if not config.openai_api_key:
-        raise RuntimeError("THIRD_WORKFLOWAGENT_USE_LLM=1 但 OPENAI_API_KEY 未配置，无法运行 schema_agent。")
+    if not getattr(config, "has_usable_llm_provider", bool(getattr(config, "openai_api_key", ""))):
+        raise RuntimeError("THIRD_WORKFLOWAGENT_USE_LLM=1 但未配置可用 LLM provider，无法运行 schema_agent。")
     prompt_config = _load_business_prompt(PARSE_FEISHU_SCHEMA_CHANGE_PROMPT, context)
     prompt_text = str(prompt_config.get("prompt_text") or "").strip()
     if not prompt_text:
@@ -214,8 +214,8 @@ def _parse_feishu_record_with_llm(
     table_fields: dict[str, Any],
     config: Any,
 ) -> dict[str, Any]:
-    if not config.openai_api_key:
-        raise RuntimeError("THIRD_WORKFLOWAGENT_USE_LLM=1 但 OPENAI_API_KEY 未配置，无法运行 business_agent。")
+    if not getattr(config, "has_usable_llm_provider", bool(getattr(config, "openai_api_key", ""))):
+        raise RuntimeError("THIRD_WORKFLOWAGENT_USE_LLM=1 但未配置可用 LLM provider，无法运行 business_agent。")
     prompt_config = _load_business_prompt(PARSE_FEISHU_RECORD_PROMPT, context)
     prompt_text = str(prompt_config.get("prompt_text") or "").strip()
     if not prompt_text:
@@ -331,8 +331,8 @@ def _search_feishu_record_with_llm(
     table_fields: dict[str, Any],
     config: Any,
 ) -> dict[str, Any]:
-    if not config.openai_api_key:
-        raise RuntimeError("THIRD_WORKFLOWAGENT_USE_LLM=1 但 OPENAI_API_KEY 未配置，无法运行 search_agent。")
+    if not getattr(config, "has_usable_llm_provider", bool(getattr(config, "openai_api_key", ""))):
+        raise RuntimeError("THIRD_WORKFLOWAGENT_USE_LLM=1 但未配置可用 LLM provider，无法运行 search_agent。")
     prompt_config = _load_business_prompt(SEARCH_FEISHU_RECORD_PROMPT, context)
     prompt_text = str(prompt_config.get("prompt_text") or "").strip()
     if not prompt_text:

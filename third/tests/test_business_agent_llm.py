@@ -220,9 +220,9 @@ class BusinessAgentLlmTests(unittest.TestCase):
         self.assertIn("current_date", prompt)
         self.assertIn("current_datetime", prompt)
 
-    def test_llm_mode_requires_openai_api_key(self) -> None:
+    def test_llm_mode_requires_any_llm_provider(self) -> None:
         with patch.object(agent_runner, "load_config", return_value=fake_config(api_key="")):
-            with self.assertRaisesRegex(RuntimeError, "OPENAI_API_KEY"):
+            with self.assertRaisesRegex(RuntimeError, "可用 LLM provider"):
                 agent_runner.run_business_agent(business_context())
 
     def test_llm_mode_rejects_invalid_json(self) -> None:

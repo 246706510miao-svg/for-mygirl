@@ -88,8 +88,8 @@ def build_workflow_plan(
 ) -> dict[str, Any]:
     resolved_config = config or load_config()
     if resolved_config.workflowagent_use_llm:
-        if not resolved_config.openai_api_key:
-            raise RuntimeError("THIRD_WORKFLOWAGENT_USE_LLM=1 但 OPENAI_API_KEY 未配置。")
+        if not getattr(resolved_config, "has_usable_llm_provider", bool(getattr(resolved_config, "openai_api_key", ""))):
+            raise RuntimeError("THIRD_WORKFLOWAGENT_USE_LLM=1 但未配置可用 LLM provider。")
         available_agents = agent_prompts if agent_prompts is not None else _load_agent_prompts(repository)
         if not available_agents:
             raise RuntimeError("THIRD_WORKFLOWAGENT_USE_LLM=1 但 prompt_registry 中没有启用的 runagent 提示词。")
