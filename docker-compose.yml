@@ -68,14 +68,38 @@ services:
 
   third-migration:
     <<: *third-common
-    profiles: ["third-container"]
     working_dir: /app/third
     command: ["alembic", "upgrade", "head"]
     restart: "no"
 
+  third-two-api:
+    <<: *third-common
+    command: ["uvicorn", "third_two.api:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "${THIRD_API_HOST_PORT:-8001}:8000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      mysql-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      third-migration:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)\"",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
   third-prompt-seed:
     <<: *third-common
-    profiles: ["third-container"]
+    profiles: ["third-legacy"]
     command: ["python", "-m", "third.scripts.seed_runagent_prompts"]
     restart: "no"
     depends_on:
@@ -90,10 +114,10 @@ services:
 
   third-api:
     <<: *third-common
-    profiles: ["third-container"]
+    profiles: ["third-legacy"]
     command: ["uvicorn", "third.api:app", "--host", "0.0.0.0", "--port", "8000"]
     ports:
-      - "${THIRD_API_HOST_PORT:-8001}:8000"
+      - "${THIRD_LEGACY_API_HOST_PORT:-8002}:8000"
     depends_on:
       mysql:
         condition: service_healthy
@@ -116,7 +140,7 @@ services:
 
   third-worker:
     <<: *third-common
-    profiles: ["third-container"]
+    profiles: ["third-legacy"]
     command: ["python", "-m", "third.worker"]
     depends_on:
       mysql:
@@ -137,7 +161,7 @@ services:
       BACKEND_MYSQL_URL: jdbc:mysql://mysql:3306/for_mygirl_app?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
       BACKEND_MYSQL_USERNAME: backend_user
       BACKEND_MYSQL_PASSWORD: backend_password
-      THIRD_BASE_URL: http://third-api:8000
+      THIRD_BASE_URL: http://third-two-api:8000
       BACKEND_CORS_ORIGIN: http://localhost:*,http://127.0.0.1:*,http://10.*:*,http://172.*:*,http://192.168.*:*
       BACKEND_ADMIN_INITIAL_PASSWORD: admin-dev-password
       BACKEND_LEGACY_USER_LOGIN_NAME: legacy_user
@@ -153,7 +177,7 @@ services:
         condition: service_healthy
       mysql-init:
         condition: service_completed_successfully
-      third-api:
+      third-two-api:
         condition: service_healthy
 
   frontend:

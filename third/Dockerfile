@@ -14,5 +14,6 @@ COPY third/requirements.txt /tmp/third-requirements.txt
 RUN pip install --upgrade pip \
     && pip install -r /tmp/third-requirements.txt
 
-# 这一层复制 third 模块源码，API、worker 和 migration 共用同一个镜像。
+# 这一层复制共享 third 能力和默认 third_two 运行时。
 COPY third ./third
+COPY third_two ./third_two

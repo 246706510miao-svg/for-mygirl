@@ -2,13 +2,14 @@
 
 ## Project Structure & Module Organization
 
-This repository contains project documentation, a static UI prototype, and the `third` Python service.
+This repository contains project documentation, the application, the default `third_two` rolling Agent, and the legacy `third` service.
 
 - `README.md` links the main documentation entry points.
 - `docs/` contains product, API, database, architecture, and activity-flow documents.
 - `docs/ui/` contains the static UI prototype: `index.html`, `app.js`, `styles.css`, and UI flow docs.
 - `third/` contains the Python workflow service, including `agents/`, `workflow/`, `Tool/`, `Prompt/`, `storage/`, `runtime/`, `migrations/`, and `tests/`.
-- `docker-compose.yml` starts MySQL, Redis, `third`, backend, and frontend profiles. Runtime refresh rules live in `docs/运行与刷新.md`.
+- `third_two/` owns the default rolling planner, TaskState, compatibility API, debug UI, and tests; it reuses Tool/config capabilities from `third/`.
+- `docker-compose.yml` starts MySQL, Redis, and `third_two` by default. The original `third` API/worker require the explicit `third-legacy` profile.
 
 ## Build, Test, and Development Commands
 
@@ -17,13 +18,13 @@ Run commands from the repository root unless noted.
 ```powershell
 docker compose up -d
 ```
-Starts local MySQL on `3307` and Redis on `6380`.
+Starts MySQL on `3307`, Redis on `6380`, and the default `third-two-api` on `8001`.
 
 ```powershell
-docker compose --profile third-container --profile app up -d --build
+docker compose --profile app up -d --build
 ```
 Starts the full local container chain. When backend/frontend code or Flyway migrations change and the app is running in Docker, rebuild the affected service image; do not expect `restart` alone to load new code. Preserve MySQL/Redis volumes unless a data reset is explicitly intended; never use `docker compose down -v` casually.
-The full Docker chain also runs a one-shot `third-prompt-seed` container after `third-migration`, so startup syncs `Prompt/runagent/*.yaml` into `prompt_registry` automatically before `third-api` and `third-worker` start. The Docker frontend defaults to same-origin `/api/...` through local Caddy; only set `FRONTEND_API_BASE_URL` to a full backend origin for non-same-origin deployments, never to `/api` or `http://localhost:8080` as a default.
+Spring Boot calls the compatibility endpoints exposed by `third-two-api`. The Docker frontend defaults to same-origin `/api/...` through local Caddy; only set `FRONTEND_API_BASE_URL` to a full backend origin for non-same-origin deployments, never to `/api` or `http://localhost:8080` as a default.
 
 ```powershell
 Copy-Item third/.env.local.docker.example third/.env
@@ -35,15 +36,15 @@ Prepares the local Python service and syncs `Prompt/runagent/*.yaml` into `promp
 Use this manual seed path for local direct-Python development or after prompt edits outside the Docker Compose flow; Docker startup should use the Compose seed job instead of shelling into the server manually.
 
 ```powershell
-uvicorn third.api:app --host 0.0.0.0 --port 8001 --reload
-python -m third.worker
+uvicorn third_two.api:app --host 0.0.0.0 --port 8001 --reload
 ```
-Runs the API and async worker locally.
+Runs the default rolling Agent API locally. Use the `third-legacy` Docker profile only for old API/worker comparisons.
 
 ```powershell
 python -m unittest discover third\tests
+python -m unittest discover third_two\tests
 ```
-Runs the Python test suite.
+Runs both Python test suites.
 
 ## Coding Style & Naming Conventions
 

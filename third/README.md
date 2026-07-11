@@ -1,5 +1,7 @@
 # 第三方服务模块
 
+> 本模块现在是 legacy Template Executor。默认本地 Docker 使用 `third_two`；只有显式启用 `third-legacy` profile 才启动本模块的 API 和 worker。
+
 当前实现是 `workflowagent + Workflow Runtime + Tool` 架构。`third` 可以作为独立 Python 服务运行，SpringBoot 后端后续通过 HTTP 提交 workflow、查询状态、确认后 resume。
 
 ## 当前结构
@@ -46,7 +48,7 @@ LLM 配置：
 OPENAI_API_KEY=sk-xxx
 THIRD_WORKFLOWAGENT_USE_LLM=1
 THIRD_WORKFLOWAGENT_MODEL=gpt-4o-mini
-THIRD_OPENAI_PROXY_URL=http://user:password@jp.example.com:3128
+THIRD_OPENAI_PROXY_URL=http://127.0.0.1:7890
 THIRD_OPENAI_TIMEOUT_SECONDS=60
 THIRD_OPENAI_MAX_RETRIES=2
 
@@ -72,7 +74,7 @@ THIRD_MINIMAX_MAX_RETRIES=0
 
 说明：`THIRD_WORKFLOWAGENT_USE_LLM=1` 会同时启用 workflowagent 的模板选择、business_agent 的写入 payload 解析、schema_agent 的字段变更解析，以及 search_agent 的更新/删除候选记录匹配。LLM 模式下，workflowagent 会拿到三类目录：代码内置 Tool 能力目录、代码内置 Workflow Template 目录，以及 MySQL `prompt_registry` 中启用的 Agent 目录。workflowagent 优先输出 `template_key`，由代码模板 builder 生成完整 `workflow_plan.steps`；Agent Runner 执行时再从数据库读取对应 `prompt_text`。数据库没有启用 Agent、缺少对应 prompt 或 LLM 输出 JSON 非法都会让当前步骤失败，不读取文件兜底。
 
-说明：`THIRD_LLM_ROUTE_MODE=auto` 时，`third` 会按探测缓存判断 OpenAI 日本代理链路是否健康；主通道不健康或实际调用出现连接、代理、超时、上游 5xx 时，按 `THIRD_LLM_FALLBACK_PROVIDERS` 切到国内模型。鉴权错误、参数错误、限流和输出格式错误不会自动切换。DeepSeek 和 MiniMax 按 OpenAI-compatible 接口接入，配置不完整会被跳过；国内 provider 会显式使用不继承环境代理的 HTTP client，不走 `THIRD_OPENAI_PROXY_URL`。
+说明：`THIRD_LLM_ROUTE_MODE=auto` 时，`third` 会按探测缓存判断 OpenAI 主通道代理链路是否健康；主通道不健康或实际调用出现连接、代理、超时、上游 5xx 时，按 `THIRD_LLM_FALLBACK_PROVIDERS` 切到国内模型。鉴权错误、参数错误、限流和输出格式错误不会自动切换。DeepSeek 和 MiniMax 按 OpenAI-compatible 接口接入，配置不完整会被跳过；国内 provider 会显式使用不继承环境代理的 HTTP client，不走 `THIRD_OPENAI_PROXY_URL`。本地 Python 直跑如需使用本机 mihomo，可填 `http://127.0.0.1:7890`；本地容器和 SH 生产容器使用 `http://host.docker.internal:7890`。SH 生产实际值由 `deploy-private/prod/apply-openai-proxy-mode.sh` 写入私有 `third.env.prod`。
 
 说明：国内 provider 默认 timeout 是 60 秒、max retries 是 0。旧 env 如果从早期模板复制过 `THIRD_DEEPSEEK_TIMEOUT_SECONDS=30` 和 `THIRD_DEEPSEEK_MAX_RETRIES=1`，建议改成上面的值后重启 `third-api` 和 `third-worker`。
 
@@ -241,7 +243,7 @@ alembic upgrade head
 这不是当前推荐的本地开发方式，主要用于后续服务器部署或完整容器链路验证。使用 profile 后才会 build third 镜像：
 
 ```bash
-docker compose --profile third-container up -d --build
+docker compose --profile third-legacy up -d --build third-api third-worker
 ```
 
 mock 模式默认使用 `third/.env.docker.mock`。
@@ -258,7 +260,7 @@ mock 模式默认使用 `third/.env.docker.mock`。
 
 ```powershell
 $env:THIRD_ENV_FILE = "./third/.env.docker.real"
-docker compose --profile third-container up -d --build
+docker compose --profile third-legacy up -d --build third-api third-worker
 ```
 
 真实模式必须设置：
@@ -271,7 +273,7 @@ THIRD_FEISHU_APP_TOKEN=app_xxx
 THIRD_FEISHU_TABLE_ID=tbl_xxx
 OPENAI_API_KEY=sk_xxx
 THIRD_WORKFLOWAGENT_USE_LLM=1
-THIRD_OPENAI_PROXY_URL=http://user:password@jp.example.com:3128
+THIRD_OPENAI_PROXY_URL=http://host.docker.internal:7890
 THIRD_LLM_ROUTE_MODE=auto
 THIRD_ALLOW_IN_MEMORY_FALLBACK=0
 ```
