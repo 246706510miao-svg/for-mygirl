@@ -18,6 +18,7 @@ import { AdminRecordsScreen } from "../pages/AdminRecordsScreen";
 import type { ClientRole } from "../shared/api/client";
 import type { ConfirmRecordResult, FeishuAccount, FeishuTableConfig, IdentityContext, PendingThirdConfirmation, PointSummary, RecordDisplay, RecordDraft, RecordMessage, RecordSession, RecordSessionDetail, RecordWorkflowTask, RewardItem, RewardRedemption, ThirdInteractionResponse, UserHome, ViewRole } from "../shared/types/api";
 import type { FieldKey } from "../components/records/recordFields";
+import { recordConversationState } from "./recordSessionState";
 
 type Screen = "home" | "profile" | "chat" | "userRecent" | "adminRewards" | "adminRecent";
 
@@ -232,9 +233,10 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
 
   // 这个函数把会话详情同步回聊天页状态。
   function applyRecordSessionDetail(detail: RecordSessionDetail) {
-    setSession(detail.session.status === "confirmed" || detail.session.status === "cancelled" ? null : detail.session);
-    setDraft(detail.currentDraft ?? null);
-    setPendingConfirmation(detail.pendingConfirmation ?? null);
+    const state = recordConversationState(detail);
+    setSession(state.session);
+    setDraft(state.draft);
+    setPendingConfirmation(state.pendingConfirmation);
     setChatMessages(detail.messages.map(formatChatMessage));
   }
 
@@ -264,14 +266,6 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
       toast.info("third 仍在处理，可以稍后回来查看");
       return;
     }
-    if (detail.pendingConfirmation) {
-      toast.info(options?.confirmationText || "请确认 third 操作");
-      return;
-    }
-    if (detail.currentDraft) {
-      toast.success("草稿已生成");
-      return;
-    }
     if (detail.session.status === "confirmed" || detail.record) {
       setDraft(null);
       setPendingConfirmation(null);
@@ -279,6 +273,14 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
       await loadMobileData(role);
       celebrate();
       toast.success("记录已保存");
+      return;
+    }
+    if (detail.pendingConfirmation) {
+      toast.info(options?.confirmationText || "请确认 third 操作");
+      return;
+    }
+    if (detail.currentDraft) {
+      toast.success("草稿已生成");
       return;
     }
     if (task?.status === "failed") {

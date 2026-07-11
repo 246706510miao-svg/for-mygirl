@@ -227,6 +227,7 @@ public class RecordService {
     // 这个函数把 third 终态落成本地正式记录、同步记录和展示记录。
     private Map<String, Object> completeConfirm(Map<String, Object> session, Map<String, Object> draft, String clientConfirmId, Map<String, Object> third, String requestId) {
         String sessionId = String.valueOf(session.get("id"));
+        repository.confirmDraft(sessionId, String.valueOf(draft.get("id")));
         String thirdStatus = String.valueOf(third.get("status"));
         Object thirdSessionValue = third.get("session_id");
         String thirdSessionId = thirdSessionValue == null ? null : String.valueOf(thirdSessionValue);
