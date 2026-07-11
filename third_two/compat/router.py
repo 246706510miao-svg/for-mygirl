@@ -47,9 +47,11 @@ def create_compat_router(
             raise HTTPException(status_code=400, detail="confirmation_id 不属于当前 task。")
         content = _content_text(request.content)
         kind = str(interaction.get("kind") or "")
-        response = "approve" if request.approved and kind == "confirm" else "answer"
-        if not request.approved:
-            response = "cancel"
+        response = (request.response or "").strip().lower()
+        if not response:
+            response = "approve" if request.approved and kind == "confirm" else "answer"
+            if not request.approved:
+                response = "cancel"
         try:
             resumed = executor.resume(task_id, request.confirmation_id, response, content)
         except (KeyError, ValueError) as exc:

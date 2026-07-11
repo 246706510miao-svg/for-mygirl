@@ -906,37 +906,128 @@ textarea:focus {
 
 .third-confirm-panel {
   display: grid;
-  gap: 12px;
+  gap: 14px;
   border-radius: var(--radius-large);
-  padding: 14px;
-  border: 1px solid rgba(79, 192, 217, 0.24);
-  background: rgba(79, 192, 217, 0.12);
+  padding: 16px;
+  border: 1px solid rgba(119, 205, 215, 0.28);
+  background:
+    linear-gradient(145deg, rgba(79, 192, 217, 0.14), rgba(177, 138, 206, 0.1)),
+    rgba(255, 255, 255, 0.04);
+  box-shadow: 0 18px 44px rgba(4, 12, 24, 0.18);
+}
+
+.third-confirm-panel__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.third-confirm-panel__heading > span {
+  color: #d9f7fb;
+  font-weight: 850;
+}
+
+.third-confirm-panel__heading > span::before {
+  content: "♡";
+  margin-right: 6px;
+  color: #8ddce7;
+}
+
+.third-confirm-panel__heading small {
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-text-muted);
 }
 
 .third-confirm-panel h2 {
-  margin: 4px 0 0;
+  margin: 0;
   font-size: 1rem;
-  line-height: 1.35;
+  line-height: 1.55;
+  font-weight: 720;
   overflow-wrap: anywhere;
 }
 
-.third-confirm-panel pre {
+.third-confirm-panel__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.third-confirm-panel__options button {
+  min-height: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 7px 11px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-text-secondary);
+}
+
+.third-confirm-panel__preview {
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  background: rgba(5, 13, 27, 0.14);
+}
+
+.third-confirm-panel__preview summary {
+  padding: 9px 11px;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+}
+
+.third-confirm-panel__preview pre {
   max-height: 180px;
   overflow: auto;
   margin: 0;
-  border-radius: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
   padding: 10px;
-  background: rgba(0, 0, 0, 0.22);
+  background: rgba(0, 0, 0, 0.12);
   color: var(--color-text-secondary);
   font: 0.78rem/1.45 "SFMono-Regular", Consolas, monospace;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
+.third-confirm-panel__reply {
+  display: grid;
+  gap: 7px;
+}
+
+.third-confirm-panel__reply label {
+  color: var(--color-text-secondary);
+  font-size: 0.84rem;
+  font-weight: 760;
+}
+
+.third-confirm-panel__reply textarea {
+  min-height: 104px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.1);
+  line-height: 1.55;
+}
+
+.third-confirm-panel__reply small {
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+}
+
 .third-confirm-panel__actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+}
+
+.third-confirm-panel__actions:not(.is-question) .primary-button {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+
+.third-confirm-panel__actions button {
+  min-width: 0;
+  padding-inline: 12px;
 }
 
 .draft-panel__score {
@@ -957,8 +1048,18 @@ textarea:focus {
 .composer {
   display: grid;
   grid-template-columns: 48px 1fr 52px;
+  align-items: end;
   gap: 8px;
   padding-bottom: env(safe-area-inset-bottom);
+}
+
+.composer textarea {
+  min-height: 44px;
+  max-height: 132px;
+  resize: none;
+  overflow-y: auto;
+  line-height: 1.5;
+  padding: 10px 14px;
 }
 
 .composer__voice {

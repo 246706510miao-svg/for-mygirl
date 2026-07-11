@@ -22,6 +22,10 @@ class ApiTests(unittest.TestCase):
         self.assertIn("third_two 对话调试台", page.text)
         self.assertIn("步骤时间线", page.text)
         self.assertIn("/tasks/invoke", page.text)
+        self.assertIn('textarea class="interaction-input"', page.text)
+        self.assertIn("Ctrl / Cmd + Enter", page.text)
+        self.assertIn("请先完成上方的小确认", page.text)
+        self.assertNotIn('class="inline-input"', page.text)
 
         health = client.get("/debug/health")
         self.assertEqual(health.status_code, 200)

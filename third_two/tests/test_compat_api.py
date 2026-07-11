@@ -81,6 +81,38 @@ class CompatibilityApiTests(unittest.TestCase):
         self.assertEqual(resumed.status_code, 200)
         self.assertEqual(resumed.json()["status"], "success")
 
+    def test_clarification_resume_uses_explicit_answer_content(self) -> None:
+        repository = InMemoryTaskRepository()
+        planner = ScriptedPlanner(
+            [
+                ActionDecision(action_name="ask_user", arguments={"question": "C 是评分还是记录类型？"}),
+                ActionDecision(action_name="finish", arguments={"content": "信息已经补充完整。"}),
+            ]
+        )
+        executor = RollingTaskExecutor(repository=repository, planner=planner)
+        client = TestClient(create_app(executor=executor, repository=repository))
+
+        invoked = client.post(
+            "/workflows/invoke",
+            json={"content": [{"text": "今天练背两小时，C"}], "metadata": {}, "privateMetadata": {}},
+        ).json()
+        self.assertEqual(invoked["confirmation"]["interaction_kind"], "clarify")
+
+        resumed = client.post(
+            f"/workflows/{invoked['session_id']}/resume",
+            json={
+                "confirmation_id": invoked["confirmation"]["confirmation_id"],
+                "approved": False,
+                "response": "answer",
+                "content": [{"text": "C 是评分，总结写练背两小时。"}],
+            },
+        )
+
+        self.assertEqual(resumed.status_code, 200)
+        self.assertEqual(resumed.json()["status"], "success")
+        state = repository.get_task(invoked["session_id"])
+        self.assertEqual(state.user_events[-1]["content"], "C 是评分，总结写练背两小时。")
+
 
 if __name__ == "__main__":
     unittest.main()

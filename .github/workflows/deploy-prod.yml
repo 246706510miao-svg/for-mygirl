@@ -60,6 +60,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r third/requirements.txt
           python -m unittest discover third/tests
+          python -m unittest discover third_two/tests
 
   build-and-push:
     name: Build and push images

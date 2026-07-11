@@ -16,7 +16,7 @@ import { RecordsScreen } from "../pages/RecordsScreen";
 import { AdminRewardsScreen } from "../pages/AdminRewardsScreen";
 import { AdminRecordsScreen } from "../pages/AdminRecordsScreen";
 import type { ClientRole } from "../shared/api/client";
-import type { ConfirmRecordResult, FeishuAccount, FeishuTableConfig, IdentityContext, PendingThirdConfirmation, PointSummary, RecordDisplay, RecordDraft, RecordMessage, RecordSession, RecordSessionDetail, RecordWorkflowTask, RewardItem, RewardRedemption, UserHome, ViewRole } from "../shared/types/api";
+import type { ConfirmRecordResult, FeishuAccount, FeishuTableConfig, IdentityContext, PendingThirdConfirmation, PointSummary, RecordDisplay, RecordDraft, RecordMessage, RecordSession, RecordSessionDetail, RecordWorkflowTask, RewardItem, RewardRedemption, ThirdInteractionResponse, UserHome, ViewRole } from "../shared/types/api";
 import type { FieldKey } from "../components/records/recordFields";
 
 type Screen = "home" | "profile" | "chat" | "userRecent" | "adminRewards" | "adminRecent";
@@ -98,7 +98,7 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
   const [draft, setDraft] = useState<RecordDraft | null>(null);
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingThirdConfirmation | null>(null);
   const [chatMessages, setChatMessages] = useState<string[]>([]);
-  const [chatInput, setChatInput] = useState("今天完成了晨间拉伸，也按时吃了早餐。");
+  const [chatInput, setChatInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [busyLabel, setBusyLabel] = useState("");
   const [status, setStatus] = useState("");
@@ -370,25 +370,26 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
     });
   }
 
-  // 这个函数继续或取消 third 等待中的写入确认。
-  function resolvePendingConfirmation(approved: boolean) {
-    void runAction(approved ? "写入中" : "取消中", async () => {
+  // 这个函数回答或处理 third 当前等待中的交互。
+  function resolvePendingConfirmation(response: ThirdInteractionResponse, content = "") {
+    const actionText = response === "approve" ? "写入中" : response === "cancel" ? "取消中" : "继续思考中";
+    void runAction(actionText, async () => {
       if (!session || !pendingConfirmation) {
         return;
       }
-      const result = await resumeRecordConfirm(role, session.id, pendingConfirmation, approved);
+      const result = await resumeRecordConfirm(role, session.id, pendingConfirmation, response, content);
       setSession(result.session);
-      if (!approved) {
+      if (response === "cancel") {
         setPendingConfirmation(null);
         setDraft(result.draft || draft);
-        setChatMessages((items) => [...items, "系统：已取消写入，可以继续修改。"]);
-        toast.info("已取消写入");
+        setChatMessages((items) => [...items, "系统：已取消本次操作，可以继续修改。"]);
+        toast.info("已取消本次操作");
         return;
       }
       if (result.workflowStatus === "processing") {
         setPendingConfirmation(null);
         const detail = await waitForWorkflow(result.session.id, result.pollAfterMs);
-        await handleWorkflowOutcome(detail);
+        await handleWorkflowOutcome(detail, { confirmationText: response === "approve" ? "请确认写入内容" : "信息已收到，请继续确认下一步" });
         return;
       }
       await finishConfirm(result);
@@ -593,8 +594,7 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
           onInputChange={setChatInput}
           onSend={sendChat}
           onConfirmDraft={confirmDraft}
-          onApproveConfirmation={() => resolvePendingConfirmation(true)}
-          onRejectConfirmation={() => resolvePendingConfirmation(false)}
+          onRespondConfirmation={resolvePendingConfirmation}
           onEditDraft={editDraft}
           onVoice={() => toast.info("语音入口暂未接入")}
           onSelectFeishuTable={selectFeishuTable}

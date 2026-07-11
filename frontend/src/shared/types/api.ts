@@ -102,10 +102,14 @@ export interface PendingThirdConfirmation {
   thirdSessionId: string;
   confirmationId: string;
   requestText?: string;
+  interactionKind?: "clarify" | "confirm" | "choose_candidate";
+  options?: unknown[];
   preview: Record<string, unknown>;
   clientConfirmId?: string;
   draftId?: string | null;
 }
+
+export type ThirdInteractionResponse = "approve" | "answer" | "modify" | "cancel";
 
 export interface ConfirmRecordResult {
   session: RecordSession;

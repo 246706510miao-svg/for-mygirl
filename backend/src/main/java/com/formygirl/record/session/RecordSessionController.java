@@ -59,7 +59,7 @@ public class RecordSessionController {
     @PostMapping("/api/record-sessions/{sessionId}/confirm/resume")
     public ApiResponse<Map<String, Object>> resumeConfirm(@PathVariable String sessionId, @Valid @RequestBody ResumeConfirmRequest body, HttpServletRequest request) {
         CurrentPerson person = identityService.requirePerson(request);
-        return ApiResponse.ok(recordService.resumeConfirm(person, sessionId, body.draftId(), body.clientConfirmId(), body.thirdSessionId(), body.confirmationId(), body.approved(), requestId(request)), requestId(request));
+        return ApiResponse.ok(recordService.resumeConfirm(person, sessionId, body.draftId(), body.clientConfirmId(), body.thirdSessionId(), body.confirmationId(), body.response(), body.content(), body.approved(), requestId(request)), requestId(request));
     }
 
     // 这个接口取消记录会话。
@@ -82,6 +82,6 @@ public class RecordSessionController {
     public record ConfirmRequest(@NotBlank String clientConfirmId, @NotBlank String draftId) {
     }
 
-    public record ResumeConfirmRequest(String clientConfirmId, String draftId, @NotBlank String thirdSessionId, @NotBlank String confirmationId, boolean approved) {
+    public record ResumeConfirmRequest(String clientConfirmId, String draftId, @NotBlank String thirdSessionId, @NotBlank String confirmationId, String response, String content, boolean approved) {
     }
 }

@@ -20,6 +20,7 @@ class InvokeWorkflowRequest(BaseModel):
 class ResumeWorkflowRequest(BaseModel):
     confirmation_id: str
     approved: bool
+    response: str | None = None
     content: list[ContentPart] = Field(default_factory=list)
 
 

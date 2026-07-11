@@ -8,7 +8,7 @@ import { DraftPanel } from "../components/chat/DraftPanel";
 import { FeishuTablePanel } from "../components/chat/FeishuTablePanel";
 import { ThirdConfirmationPanel } from "../components/chat/ThirdConfirmationPanel";
 import { EmptyState } from "../components/ui/EmptyState";
-import type { FeishuAccount, FeishuTableConfig, PendingThirdConfirmation, RecordDraft } from "../shared/types/api";
+import type { FeishuAccount, FeishuTableConfig, PendingThirdConfirmation, RecordDraft, ThirdInteractionResponse } from "../shared/types/api";
 import type { SaveFeishuAccountPayload, SaveFeishuTablePayload } from "../features/feishu/api";
 
 interface ChatScreenProps {
@@ -25,8 +25,7 @@ interface ChatScreenProps {
   onInputChange: (value: string) => void;
   onSend: (event: FormEvent) => void;
   onConfirmDraft: () => void;
-  onApproveConfirmation: () => void;
-  onRejectConfirmation: () => void;
+  onRespondConfirmation: (response: ThirdInteractionResponse, content?: string) => void;
   onEditDraft: () => void;
   onVoice: () => void;
   onSelectFeishuTable: (tableId: string) => void;
@@ -62,8 +61,7 @@ export function ChatScreen({
   onInputChange,
   onSend,
   onConfirmDraft,
-  onApproveConfirmation,
-  onRejectConfirmation,
+  onRespondConfirmation,
   onEditDraft,
   onVoice,
   onSelectFeishuTable,
@@ -73,8 +71,6 @@ export function ChatScreen({
   onSetDefaultFeishuTable,
   onTestFeishuTable
 }: ChatScreenProps) {
-  const composerBusy = busy || Boolean(pendingConfirmation);
-
   return (
     <MobileAppShell>
       <GlassScreen className="chat-screen">
@@ -100,9 +96,9 @@ export function ChatScreen({
             </ChatBubble>
           ))}
         </section>
-        {pendingConfirmation && <ThirdConfirmationPanel confirmation={pendingConfirmation} busy={busy} onApprove={onApproveConfirmation} onReject={onRejectConfirmation} />}
+        {pendingConfirmation && <ThirdConfirmationPanel confirmation={pendingConfirmation} busy={busy} onRespond={onRespondConfirmation} />}
         {draft && !pendingConfirmation && <DraftPanel draft={draft} busy={busy} onConfirm={onConfirmDraft} onEdit={onEditDraft} />}
-        <Composer value={input} busy={composerBusy} onChange={onInputChange} onSubmit={onSend} onVoice={onVoice} />
+        {!pendingConfirmation && <Composer value={input} busy={busy} onChange={onInputChange} onSubmit={onSend} onVoice={onVoice} />}
       </GlassScreen>
     </MobileAppShell>
   );

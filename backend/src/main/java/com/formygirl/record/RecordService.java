@@ -12,6 +12,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -147,24 +148,36 @@ public class RecordService {
         return processingConfirmResult(sessionId, draft, task);
     }
 
-    // 这个函数处理用户对 third 写入确认预览的最终选择。
+    // 这个函数处理 third 追问、修改、确认或取消交互。
     @Transactional
-    public Map<String, Object> resumeConfirm(CurrentPerson person, String sessionId, String draftId, String clientConfirmId, String thirdSessionId, String confirmationId, boolean approved, String requestId) {
+    public Map<String, Object> resumeConfirm(CurrentPerson person, String sessionId, String draftId, String clientConfirmId, String thirdSessionId, String confirmationId, String response, String content, boolean approved, String requestId) {
         requireOwnedSession(person, sessionId);
+        Map<String, Object> sourceTask = repository.latestWorkflowTask(sessionId);
+        if (!sourceTask.isEmpty() && !thirdSessionId.equals(stringOrNull(sourceTask.get("third_session_id")))) {
+            throw new ApiException(HttpStatus.CONFLICT, "CONFLICT", "待处理交互已发生变化，请刷新后重试");
+        }
+        String normalizedResponse = response == null || response.isBlank()
+                ? (approved ? "approve" : "cancel")
+                : response.trim().toLowerCase(Locale.ROOT);
+        if (!List.of("approve", "answer", "modify", "cancel").contains(normalizedResponse)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "BAD_REQUEST", "不支持的交互响应类型");
+        }
         String resolvedConfirmId = clientConfirmId == null || clientConfirmId.isBlank() ? thirdSessionId + "_confirm" : clientConfirmId;
+        String resolvedDraftId = draftId == null || draftId.isBlank() ? stringOrNull(sourceTask.get("draft_id")) : draftId;
         Map<String, Object> existing = repository.findRecordByConfirmId(sessionId, resolvedConfirmId);
         if (!existing.isEmpty()) {
             return confirmResult(existing);
         }
-        Map<String, Object> draft = draftId == null || draftId.isBlank() ? Map.of() : repository.draft(draftId);
+        Map<String, Object> draft = resolvedDraftId == null ? Map.of() : repository.draft(resolvedDraftId);
         if (!draft.isEmpty() && !sessionId.equals(String.valueOf(draft.get("session_id")))) {
             throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "草稿不存在");
         }
-        if (!approved) {
+        if ("cancel".equals(normalizedResponse)) {
             thirdClient.resume(thirdSessionId, confirmationId, "业务前端取消写入", false);
-            Map<String, Object> task = repository.createWorkflowTask(sessionId, "resume", resolvedConfirmId, null, draftId, thirdSessionId, confirmationId, false, "cancelled", requestId);
-            Map<String, Object> reopened = draft.isEmpty() ? Map.of() : repository.reopenDraft(sessionId, draftId);
-            Map<String, Object> reply = repository.insertMessage(sessionId, "system", "text", "已取消写入，可以继续修改。", null, null, thirdSessionId, requestId);
+            closeInteractionTask(sourceTask, "cancelled");
+            Map<String, Object> task = repository.createWorkflowTask(sessionId, "resume", resolvedConfirmId, null, resolvedDraftId, thirdSessionId, confirmationId, false, "cancelled", requestId);
+            Map<String, Object> reopened = draft.isEmpty() ? Map.of() : repository.reopenDraft(sessionId, resolvedDraftId);
+            Map<String, Object> reply = repository.insertMessage(sessionId, "system", "text", "已取消本次操作，可以继续修改。", null, null, thirdSessionId, requestId);
             return dto(
                     "status", "cancelled",
                     "workflowStatus", "cancelled",
@@ -174,9 +187,41 @@ public class RecordService {
                     "replyMessage", messageDto(reply)
             );
         }
-        thirdClient.resume(thirdSessionId, confirmationId, "业务前端已确认写入", true);
-        Map<String, Object> task = repository.createWorkflowTask(sessionId, "resume", resolvedConfirmId, null, draftId, thirdSessionId, confirmationId, true, "submitted", requestId);
+
+        if ("answer".equals(normalizedResponse) || "modify".equals(normalizedResponse)) {
+            String userContent = content == null ? "" : content.trim();
+            if (userContent.isBlank()) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "BAD_REQUEST", "请先填写回答或修改内容");
+            }
+            thirdClient.resume(thirdSessionId, confirmationId, userContent, normalizedResponse, false);
+            closeInteractionTask(sourceTask, "completed");
+            Map<String, Object> userMessage = repository.insertMessage(sessionId, "user", "text", userContent, null, confirmationId, thirdSessionId, requestId);
+            Map<String, Object> task = repository.createWorkflowTask(
+                    sessionId,
+                    "message",
+                    confirmationId,
+                    String.valueOf(userMessage.get("id")),
+                    resolvedDraftId,
+                    thirdSessionId,
+                    confirmationId,
+                    null,
+                    "submitted",
+                    requestId
+            );
+            return processingResult(sessionId, userMessage, task);
+        }
+
+        thirdClient.resume(thirdSessionId, confirmationId, "业务前端已确认写入", "approve", true);
+        closeInteractionTask(sourceTask, "completed");
+        Map<String, Object> task = repository.createWorkflowTask(sessionId, "resume", resolvedConfirmId, null, resolvedDraftId, thirdSessionId, confirmationId, true, "submitted", requestId);
         return processingConfirmResult(sessionId, draft, task);
+    }
+
+    // 这个函数关闭已被用户处理的旧 waiting_user 跟踪任务。
+    private void closeInteractionTask(Map<String, Object> sourceTask, String status) {
+        if (sourceTask != null && !sourceTask.isEmpty()) {
+            repository.updateWorkflowTaskStatus(String.valueOf(sourceTask.get("id")), status, null);
+        }
     }
 
     // 这个函数把 third 终态落成本地正式记录、同步记录和展示记录。
@@ -314,6 +359,8 @@ public class RecordService {
                 "thirdSessionId", thirdSessionId,
                 "confirmationId", firstMappedValue(confirmation, task.get("confirmation_id"), "confirmationId", "confirmation_id"),
                 "requestText", firstMappedValue(confirmation, null, "requestText", "request_text"),
+                "interactionKind", firstMappedValue(confirmation, "confirm", "interactionKind", "interaction_kind"),
+                "options", firstMappedValue(confirmation, List.of(), "options"),
                 "preview", preview instanceof Map<?, ?> map ? castMap(map) : Map.of(),
                 "clientConfirmId", task.get("client_action_id"),
                 "draftId", stringOrNull(task.get("draft_id"))
@@ -374,7 +421,9 @@ public class RecordService {
         String sessionId = String.valueOf(task.get("session_id"));
         String thirdSessionId = stringOrNull(task.get("third_session_id"));
         Map<String, Object> snapshot = safeSnapshot(thirdSessionId);
-        String confirmationId = stringOrNull(firstMappedValue(mapValue(snapshot.get("confirmation")), confirmationValue(third, "confirmation_id"), "confirmationId", "confirmation_id"));
+        Map<String, Object> confirmation = mapValue(snapshot.get("confirmation"));
+        String confirmationId = stringOrNull(firstMappedValue(confirmation, confirmationValue(third, "confirmation_id"), "confirmationId", "confirmation_id"));
+        String interactionKind = String.valueOf(firstMappedValue(confirmation, "confirm", "interactionKind", "interaction_kind"));
         String draftId = stringOrNull(task.get("draft_id"));
         if ("retry_sync".equals(triggerType)) {
             if (thirdSessionId == null || confirmationId == null) {
@@ -395,9 +444,15 @@ public class RecordService {
                 Map<String, Object> draft = repository.insertDraft(sessionId, draftData, String.valueOf(draftData.get("previewText")), thirdSessionId, String.valueOf(task.get("request_id")));
                 draftId = String.valueOf(draft.get("id"));
             }
-            repository.insertMessage(sessionId, "ai", "text", "third 已生成需要确认的操作，请核对后决定是否执行。", null, null, thirdSessionId, String.valueOf(task.get("request_id")));
+            String reply = "clarify".equals(interactionKind)
+                    ? "还差一点信息，回答后我会继续帮你整理。"
+                    : "choose_candidate".equals(interactionKind)
+                            ? "我找到几个可能的选项，想请你选一下。"
+                            : "我已经准备好下一步，确认后才会执行。";
+            repository.insertMessage(sessionId, "ai", "text", reply, null, null, thirdSessionId, String.valueOf(task.get("request_id")));
         } else if ("confirm".equals(triggerType)) {
-            repository.insertMessage(sessionId, "system", "text", "请确认即将写入飞书的内容。", null, null, thirdSessionId, String.valueOf(task.get("request_id")));
+            String reply = "confirm".equals(interactionKind) ? "请确认即将写入飞书的内容。" : "请补充信息，我会继续准备写入内容。";
+            repository.insertMessage(sessionId, "system", "text", reply, null, null, thirdSessionId, String.valueOf(task.get("request_id")));
         }
         repository.markWorkflowTaskWaitingUser(String.valueOf(task.get("id")), confirmationId, draftId);
     }

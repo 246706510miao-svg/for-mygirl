@@ -21,9 +21,19 @@ public class ThirdWorkflowClient {
 
     // 这个函数只提交确认结果，不等待 workflow 终态。
     public Map<String, Object> resume(String thirdSessionId, String confirmationId, String text, boolean approved) {
+        return resume(thirdSessionId, confirmationId, text, approved ? "approve" : "cancel", approved);
+    }
+
+    // 这个函数提交明确的交互类型，支持追问回答和确认修改。
+    public Map<String, Object> resume(String thirdSessionId, String confirmationId, String text, String response, boolean approved) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("confirmation_id", confirmationId);
+        body.put("approved", approved);
+        body.put("response", response);
+        body.put("content", List.of(Map.of("text", text)));
         restClient.post()
                 .uri(properties.getThirdBaseUrl() + "/workflows/{sessionId}/resume", thirdSessionId)
-                .body(Map.of("confirmation_id", confirmationId, "approved", approved, "content", List.of(Map.of("text", text))))
+                .body(body)
                 .retrieve()
                 .body(Map.class);
         return get(thirdSessionId);
