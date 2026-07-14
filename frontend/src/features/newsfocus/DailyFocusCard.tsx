@@ -2,7 +2,7 @@ import { ExternalLink, Flame, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { BottomSheet } from "../../components/ui/BottomSheet";
 import { Pressable } from "../../components/ui/Pressable";
-import { fetchNewsFocus } from "../record/api";
+import { fetchNewsFocus } from "./api";
 import type { ClientRole } from "../../shared/api/client";
 import type { NewsFocus } from "../../shared/types/api";
 
