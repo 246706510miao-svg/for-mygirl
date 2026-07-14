@@ -27,6 +27,7 @@
 | trace | `src/main/java/com/formygirl/trace` | 只读聚合 session、message、draft、record、display、sync 和 third workflow。 |
 | ops | `src/main/java/com/formygirl/ops` | 后台人员模块：全量记录、测试、追踪、重试、重写入。当前接口路径仍兼容 `/api/admin/*`。 |
 | thirdclient | `src/main/java/com/formygirl/thirdclient` | SpringBoot 调用 Python `third` workflow 的 HTTP 适配。 |
+| newsfocus | `src/main/java/com/formygirl/newsfocus` | 四类共享热门的内部 third Client、两日结果/7 日去重持久化、首页与昨日 DTO 和 07:30 上海时区调度器。 |
 | persistence | `src/main/java/com/formygirl/persistence` | 业务库 SQL。当前 `BusinessRepository` 是过渡聚合仓储，新增功能优先拆独立 Repository。 |
 | migration | `src/main/resources/db/migration` | Flyway 业务表。`V3__future_module_tables.sql` 预留模块表，`V4__mvp_binding_points_comments.sql` 落地双用户绑定、积分奖品、评论打分和兑换记录。 |
 
@@ -59,6 +60,7 @@
 | 签到、积分或奖品异常 | `points` | `relationship`、`POINT_LEDGER` |
 | 奖品兑换后仍显示 | `points` | `REWARD_ITEM.status`、`REWARD_REDEMPTION` |
 | 后台人员测试能力 | `ops` | `trace`、`sync` |
+| 今日热门没有更新 | `newsfocus`、`NEWS_FOCUS_RUN` | `third-two-api`、`third/news_focus`、既有 LLM 出口 |
 
 ## 新增功能流程
 
@@ -71,6 +73,7 @@
 ## 实现口径
 
 - 前端只调用 SpringBoot `/api`，不直接调用 `third`。
+- 每日热门由 `newsfocus` 调用 third Docker 内部接口；成功结果才替换四类 `NEWS_FOCUS_ITEM`，展示仅保留当天/昨天，7 日指纹保存在 `NEWS_FOCUS_SEEN`，前端通过 `/api/user/home.newsFocus` 与 `/api/user/news-focus` 读取。
 - third 正式链路由 `third` 决定 workflow；用户请求只提交 workflow 并写入 `RECORD_WORKFLOW_TASK`，后台调度器查询 third 状态和 `GET /internal/workflows/{thirdSessionId}/snapshot`，再裁剪字段给前端。
 - `POST /api/record-sessions/*` 不能同步阻塞等待 OpenAI 或飞书完成；前端通过 `GET /api/record-sessions/{sessionId}` 轮询 `latestWorkflowTask`、草稿和确认卡。
 - 用户端展示以 `RECORD_DISPLAY` 和后续本地展示表为准，不直接读取飞书。

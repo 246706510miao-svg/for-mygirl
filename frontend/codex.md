@@ -17,6 +17,7 @@
 | shared/api            | `src/shared/api`            | 统一 API client、token、`X-Request-Id` 和错误处理。              |
 | shared/types          | `src/shared/types`          | 根据接口文档维护 DTO 类型。                                        |
 | features/record       | `src/features/record`       | 记录写入主链路和最近记录 API：首页、输入、草稿、确认、本人/绑定用户最近记录。 |
+| features/newsfocus    | `src/features/newsfocus`    | 首页「今日热门」单卡片与 BottomSheet；按 AI/中国大事/新闻/开源连续分段展示，并提供今日/昨日切换，原文由新窗口外链打开。 |
 | features/style        | `src/features/style`        | 背景、主题、用户端风格配置。                                       |
 | features/relationship | `src/features/relationship` | 当前登录人、视角切换、用户绑定和授权范围。                         |
 | features/comment      | `src/features/comment`      | 绑定管理员对记录评论和打分，只走本地业务库，不进飞书。             |
@@ -37,6 +38,7 @@
 | 评论或打分异常             | `features/comment/api.ts`  | 后端 `comment`、`points`                                      |
 | 签到、积分、奖品或兑换异常 | `features/points/api.ts`   | 后端 `points`、`relationship`                                 |
 | 后台记录、追踪、重试异常   | `features/ops/api.ts`      | 后端 `ops`、`trace`、`sync`                                |
+| 今日热门卡片或抽屉异常     | `features/newsfocus/DailyFocusCard.tsx` | `shared/types/api.ts`、`GET /api/user/home` |
 
 ## 新增功能流程
 
@@ -54,6 +56,7 @@
 - 后台人员页面统一叫 `ops`，即使当前接口路径仍是 `/api/admin/*`。
 - 用户端优先适配 iPhone 宽度，按钮最小高度保持 44px。
 - API 调用必须经过 `shared/api/client.ts` 和 feature `api.ts`。
+- 每日热门不在前端调用第三方来源或抓取文章正文；首页消费 `UserHome.newsFocus`，昨日切换经 feature API 调用 `/api/user/news-focus`，原文链接固定用新窗口打开且不显示数值评分。
 - 语音按钮当前是 UI 入口，不接真实 ASR；验证码只做本地开发校验，不调用后端服务。
 - 新增 hook、API helper 和页面级函数前保留简短中文注释。
 

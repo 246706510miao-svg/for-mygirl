@@ -172,6 +172,12 @@
 | created_at | 创建时间 |
 | updated_at | 更新时间 |
 
+### NEWS_FOCUS_RUN、NEWS_FOCUS_ITEM、NEWS_FOCUS_SEEN
+
+保存所有用户共享的每日热门，不关联用户或飞书。`NEWS_FOCUS_RUN.focus_date` 唯一，记录每次当天生成的状态、统计、错误和生成时间；只有 `status=ready` 的 run 可展示。`NEWS_FOCUS_ITEM` 以 `category_key + rank_no` 保存 AI、中国大事、新闻、开源的中文标题/摘要、标签、来源、原文链接和发布时间，不保存数值评分。`NEWS_FOCUS_SEEN` 保存 7 日标题指纹去重记忆；同日覆盖读取时不取当天指纹，以便幂等重试重新选出完整分组。
+
+当天生成失败或没有候选时不能删除既有 `ready` 条目；首页仅可回退昨天并以 `stale=true` 告知前端。展示 run/item 成功后仅保留当天与前一天，`NEWS_FOCUS_SEEN` 独立保留 7 天。
+
 ### RESOURCE_FILE
 
 保存上传文件的元信息。
@@ -359,6 +365,7 @@ DAILY_CONTENT
 | 正式记录 | DAILY_RECORD | 用户确认后的正式记录 |
 | 展示数据 | RECORD_DISPLAY | 用户端首页和最近记录真正读取的本地展示数据 |
 | 每日内容 | DAILY_CONTENT | 管理员配置的每日提示、主题、引导、卡片、提醒 |
+| 每日热门 | NEWS_FOCUS_RUN、NEWS_FOCUS_ITEM、NEWS_FOCUS_SEEN | 固定 RSS 快照生成的四类共享焦点；两日展示、7 日去重，不保存正文、不写飞书 |
 | 风格配置 | USER_STYLE | 用户端背景、主题、风格配置 |
 | 评论 | RECORD_COMMENT | 本地记录评论，不写入飞书 |
 | 积分 | POINT_ACCOUNT、POINT_LEDGER | 积分账户和流水 |
@@ -408,6 +415,7 @@ DAILY_CONTENT
 - DAILY_RECORD 必须有本地展示数据 RECORD_DISPLAY，至少要能表达成功、失败或异常状态。
 - DAILY_RECORD 可以对应多条 FEISHU_SYNC，用于首次写入和后续重试。
 - DAILY_CONTENT 面向某个 target_user 和 content_date 生效。
+- NEWS_FOCUS_RUN 面向所有用户共享，focus_date 唯一；NEWS_FOCUS_ITEM 只能在所属 run 成功后按分类替换；NEWS_FOCUS_SEEN 不参与页面展示。
 - USER_BINDING 和 USER_PERMISSION 决定绑定用户能否评论、改风格或管理奖品权利。
 - RECORD_COMMENT 只依赖本地 record_id，不进入 FEISHU_SYNC。
 - POINT_LEDGER 是积分变更事实来源，POINT_ACCOUNT.balance 只是当前余额。
@@ -469,6 +477,8 @@ DAILY_CONTENT
 | API | 主要读写表 | 说明 |
 |---|---|---|
 | `GET /api/user/home` | DAILY_CONTENT、RECORD_DISPLAY、DAILY_RECORD | 首页不直接读飞书 |
+| `GET /api/user/home` 的 `newsFocus` | NEWS_FOCUS_RUN、NEWS_FOCUS_ITEM | 读取当天或昨天的四类共享热门，不读原站正文 |
+| `GET /api/user/news-focus` | NEWS_FOCUS_RUN、NEWS_FOCUS_ITEM | 读取明确指定的当天或昨天热门 |
 | `POST /api/record-sessions` | RECORD_SESSION | 创建记录会话 |
 | `POST /api/record-sessions/{sessionId}/messages` | RECORD_SESSION、RECORD_MESSAGE、RECORD_WORKFLOW_TASK | 文本和修改指令统一入口，提交 third 后立即返回 |
 | `POST /api/record-sessions/{sessionId}/voice-messages` | RECORD_SESSION、RECORD_MESSAGE、RECORD_DRAFT | 保存 `asr_text`，不长期保存音频 |

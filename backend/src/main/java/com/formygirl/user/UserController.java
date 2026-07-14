@@ -1,28 +1,34 @@
 package com.formygirl.user;
 
 import com.formygirl.common.ApiResponse;
+import com.formygirl.common.ApiException;
 import com.formygirl.common.RequestIds;
 import com.formygirl.identity.CurrentPerson;
 import com.formygirl.identity.IdentityService;
 import com.formygirl.record.RecordService;
+import com.formygirl.newsfocus.NewsFocusService;
 import com.formygirl.relationship.RelationshipService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.HttpStatus;
 
 @RestController
 public class UserController {
     private final IdentityService identityService;
     private final RecordService recordService;
     private final RelationshipService relationshipService;
+    private final NewsFocusService newsFocusService;
 
-    public UserController(IdentityService identityService, RecordService recordService, RelationshipService relationshipService) {
+    public UserController(IdentityService identityService, RecordService recordService, RelationshipService relationshipService, NewsFocusService newsFocusService) {
         this.identityService = identityService;
         this.recordService = recordService;
         this.relationshipService = relationshipService;
+        this.newsFocusService = newsFocusService;
     }
 
     // 这个接口返回登录用户首页所需数据。
@@ -30,6 +36,17 @@ public class UserController {
     public ApiResponse<Map<String, Object>> home(@RequestParam(required = false) LocalDate date, HttpServletRequest request) {
         CurrentPerson person = identityService.requirePerson(request);
         return ApiResponse.ok(recordService.home(person, date == null ? LocalDate.now() : date), requestId(request));
+    }
+
+    // 这个接口只允许读取当天或前一天的共享日榜，供首页抽屉切换往期。
+    @GetMapping("/api/user/news-focus")
+    public ApiResponse<Map<String, Object>> newsFocus(@RequestParam LocalDate date, HttpServletRequest request) {
+        identityService.requirePerson(request);
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Shanghai"));
+        if (!date.equals(today) && !date.equals(today.minusDays(1))) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "NEWS_FOCUS_DATE_INVALID", "每日热门只保留当天与前一天。");
+        }
+        return ApiResponse.ok(newsFocusService.historyFocus(date), requestId(request));
     }
 
     // 这个接口返回登录用户最近记录列表。

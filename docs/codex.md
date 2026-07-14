@@ -22,6 +22,7 @@
 |---|---|---|---|
 | 身份和视角 | `identity` | `src/App.tsx`、`features/relationship` | `APP_PERSON.current_view_role` |
 | 用户首页和记录展示 | `user`、`record/display` | `features/record` | `DAILY_RECORD`、`RECORD_DISPLAY` |
+| 共享每日热门 | `newsfocus` | `features/newsfocus` | `NEWS_FOCUS_RUN`、`NEWS_FOCUS_ITEM`、`NEWS_FOCUS_SEEN` |
 | 记录写入主链路 | `record/session`、`record` | `features/record` | `RECORD_SESSION`、`RECORD_MESSAGE`、`RECORD_DRAFT` |
 | 飞书同步 | `sync`、`thirdclient` | `features/ops` 触发后台动作 | `FEISHU_SYNC` |
 | 链路排查 | `trace` | `features/ops` | 业务表 + third HTTP workflow 状态 |
@@ -50,6 +51,7 @@
 | [future/codex.md](future/codex.md) | 后续功能文档入口，说明模板使用方式、模块归属和落地检查项。 |
 | [future/模板.md](future/模板.md) | 新功能文档模板。 |
 | [future/01-优化mvp功能.md](future/01-优化mvp功能.md) | 当前手机端双向绑定 MVP，实现两个普通用户、绑定管理员视角、积分奖品、评论打分和兑换记录。 |
+| [future/03-每日信息焦点.md](future/03-每日信息焦点.md) | 四类 RSS 信息焦点的快照、规则、两日历史、接口和排查入口。 |
 
 ### 实现工程
 
@@ -93,3 +95,4 @@
 - 积分、奖品或兑换异常：`features/points` -> `backend points` -> `POINT_LEDGER` / `REWARD_*`。
 - 后台重试或重写入异常：`features/ops` -> `backend ops` -> `trace` -> `sync` -> `thirdclient`。
 - 新接口返回 `No static resource ...`：优先读 [运行与刷新.md](运行与刷新.md)，确认 Docker 后端镜像是否重新 build、Flyway 是否跑到当前版本。
+- 今日热门异常：`NEWS_FOCUS_RUN`、`NEWS_FOCUS_SEEN` -> `third/news_focus` 的 Redis 来源快照/健康状态 -> `third-two-api /internal/news-focus/generate`；不要通过抓取原文或付费搜索排查。

@@ -149,6 +149,33 @@ export interface RecordComment {
   updatedAt?: string;
 }
 
+export interface NewsFocusItem {
+  rank: number;
+  title: string;
+  summary: string;
+  tags: string[];
+  source: string;
+  sourceUrl: string;
+  publishedAt?: string;
+}
+
+export type NewsFocusCategoryKey = "ai" | "china_focus" | "news" | "open_source";
+
+export interface NewsFocusGroup {
+  key: NewsFocusCategoryKey;
+  title: string;
+  items: NewsFocusItem[];
+}
+
+export interface NewsFocus {
+  available: boolean;
+  stale: boolean;
+  status: "ready" | "generating" | "unavailable";
+  focusDate?: string;
+  generatedAt?: string;
+  groups: NewsFocusGroup[];
+}
+
 export interface UserHome {
   date: string;
   homeContent: {
@@ -161,6 +188,7 @@ export interface UserHome {
     items?: string[];
   };
   latestRecord?: Partial<RecordDisplay>;
+  newsFocus?: NewsFocus;
 }
 
 export interface PageResult<T> {

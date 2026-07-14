@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from .executor import RollingTaskExecutor
 from .compat.router import create_compat_router
 from .debug.router import create_debug_router
+from .news_focus_router import create_news_focus_router
 from .repository import InMemoryTaskRepository
 
 
@@ -45,6 +46,7 @@ def create_app(
     app.state.task_executor = task_executor
     app.include_router(create_compat_router(task_repository, task_executor))
     app.include_router(create_debug_router(task_repository))
+    app.include_router(create_news_focus_router())
 
     @app.get("/health")
     def health() -> dict[str, str]:

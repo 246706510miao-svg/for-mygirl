@@ -555,6 +555,7 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
           points={points}
           isBoundAdmin={Boolean(isBoundAdmin)}
           busy={busy}
+          role={role}
           onProfile={() => setScreen("profile")}
           onCheckIn={doCheckIn}
           onChat={() => setScreen("chat")}

@@ -3,7 +3,9 @@ import { MobileAppShell } from "../components/layout/MobileAppShell";
 import type { MobileTabKey } from "../components/layout/MobileAppShell";
 import { PageTransition } from "../components/motion/PageTransition";
 import { Pressable } from "../components/ui/Pressable";
+import { DailyFocusCard } from "../features/newsfocus/DailyFocusCard";
 import type { IdentityContext, PointSummary, UserHome } from "../shared/types/api";
+import type { ClientRole } from "../shared/api/client";
 
 interface HomeScreenProps {
   context: IdentityContext;
@@ -11,6 +13,7 @@ interface HomeScreenProps {
   points: PointSummary | null;
   isBoundAdmin: boolean;
   busy: boolean;
+  role: ClientRole;
   onProfile: () => void;
   onCheckIn: () => void;
   onChat: () => void;
@@ -26,6 +29,7 @@ export function HomeScreen({
   points,
   isBoundAdmin,
   busy,
+  role,
   onProfile,
   onCheckIn,
   onChat,
@@ -76,6 +80,7 @@ export function HomeScreen({
             </Pressable>
           )}
         </section>
+        <DailyFocusCard focus={home?.newsFocus} role={role} />
         <div className="home-shortcuts">
           <Pressable className="shortcut-card" onClick={isBoundAdmin ? onAdminRecent : onUserRecent}>
             <NotebookText size={18} />
