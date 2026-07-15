@@ -207,7 +207,11 @@ async def refresh_news_focus_catalog(
     """显式刷新固定提交的 OPML 快照；日榜任务不会主动更新已存在的快照。"""
     active_config = config or load_config()
     timeout = httpx.Timeout(15.0, connect=5.0)
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, transport=transport) as client:
+    async with httpx.AsyncClient(
+        timeout=timeout,
+        follow_redirects=True,
+        **_news_focus_http_client_kwargs(active_config, transport),
+    ) as client:
         sources, errors = await import_snapshot(client)
     if not sources:
         raise NewsFocusGenerationError("RSS 目录快照没有导入到可用来源。")
@@ -231,7 +235,12 @@ async def generate_news_focus(
     state = state_store or NewsFocusStateStore(active_config.redis_url)
     timeout = httpx.Timeout(SOURCE_TIMEOUT_SECONDS, connect=3.0)
     limits = httpx.Limits(max_connections=SOURCE_CONCURRENCY, max_keepalive_connections=SOURCE_CONCURRENCY)
-    async with httpx.AsyncClient(timeout=timeout, limits=limits, follow_redirects=True, transport=transport) as client:
+    async with httpx.AsyncClient(
+        timeout=timeout,
+        limits=limits,
+        follow_redirects=True,
+        **_news_focus_http_client_kwargs(active_config, transport),
+    ) as client:
         source_errors: list[str] = []
         sources = list(catalog_sources) if catalog_sources is not None else state.catalog()
         if not sources:
@@ -274,6 +283,17 @@ async def generate_news_focus(
         "sourceErrors": source_errors[:MAX_REPORTED_ERRORS],
         "groups": groups,
     }
+
+
+def _news_focus_http_client_kwargs(
+    config: ThirdServiceConfig,
+    transport: httpx.AsyncBaseTransport | None,
+) -> dict[str, Any]:
+    """只给 RSS/OPML 客户端设置独立代理；测试 transport 始终保持本地可控。"""
+    if transport is not None:
+        return {"transport": transport}
+    proxy_url = str(config.news_focus_proxy_url or "").strip()
+    return {"proxy": proxy_url} if proxy_url else {}
 
 
 def group_candidates(

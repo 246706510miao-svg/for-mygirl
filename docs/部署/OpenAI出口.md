@@ -4,15 +4,15 @@
 
 ## 生产固定口径
 
-生产 SH 服务器固定使用本机 mihomo `7890` 出口：
+生产 SH 服务器固定使用本机 mihomo 的主机入口和容器入口：
 
 ```text
 SH 主机工具： http://127.0.0.1:7890
-Docker 容器： http://host.docker.internal:7890
+Docker 容器： http://host.docker.internal:7891
 Docker bridge：172.18.0.1
 ```
 
-这个端口不再作为项目配置切换。如果 `7890` 不通，只修 SH 上的 mihomo 监听或暴露方式，不改项目端口。
+`7890` 仅给主机 Git 和 Docker daemon 使用；`7891` 仅绑定 Docker bridge，并由 10 节点自动回退组提供容器出口。
 
 生产私有文件在本地：
 
@@ -29,7 +29,7 @@ deploy-private/prod/
 生产上由 `deploy-private/prod/apply-openai-proxy-mode.sh` 写入 `third.env.prod`：
 
 - `OPENAI_PROXY_ENABLED=0`：强制国内模型，`THIRD_LLM_ROUTE_MODE=domestic`，`THIRD_OPENAI_PROXY_URL=`。
-- `OPENAI_PROXY_ENABLED=1`：OpenAI 主通道 + 国内兜底，`THIRD_LLM_ROUTE_MODE=auto`，`THIRD_OPENAI_PROXY_URL=http://host.docker.internal:7890`。
+- `OPENAI_PROXY_ENABLED=1`：OpenAI 主通道 + 国内兜底，`THIRD_LLM_ROUTE_MODE=auto`，`THIRD_OPENAI_PROXY_URL=http://host.docker.internal:7891`。
 
 `THIRD_OPENAI_PROXY_URL` 只给 `third` 内部 OpenAI 主通道使用。DeepSeek 和 MiniMax 会显式使用不继承环境代理的 HTTP client，不走这个代理。MySQL、Redis、SpringBoot 内部 HTTP、飞书 OpenAPI 也不会因为这个配置自动走代理。
 
@@ -40,7 +40,7 @@ tracked 的本地项目配置只保留通用模板，不保存生产真实密钥
 | 位置 | 用途 | 和生产的差异 |
 |---|---|---|
 | `third/.env.example` | 本地 Python 直跑模板 | 代理默认留空；需要本机代理时手动填 `http://127.0.0.1:7890` 或自己的本地端口。 |
-| `third/.env.docker.real.example` | 本地完整 third 容器真实联调模板 | 容器内代理可填 `http://host.docker.internal:7890`；生产实际值由私有脚本写入。 |
+| `third/.env.docker.real.example` | 本地完整 third 容器真实联调模板 | 本地容器代理通常填 `http://host.docker.internal:7890`；SH 生产固定使用专用的 `7891`。 |
 | `deploy-private/prod/third.env.prod` | 生产私有 env | 保存真实 key/provider，且 `THIRD_OPENAI_PROXY_URL` 由私有脚本维护；不进 git。 |
 | `deploy-private/prod/openai-proxy.env` | 生产模型出口开关 | 只保留 `OPENAI_PROXY_ENABLED`，不再维护端口或 SSH 隧道配置。 |
 
@@ -69,8 +69,11 @@ THIRD_OPENAI_MAX_RETRIES=2
 # 本地 Python 直跑，需要走本机代理时：
 THIRD_OPENAI_PROXY_URL=http://127.0.0.1:7890
 
-# 本地容器联调或 SH 生产容器：
+# 本地容器联调：
 THIRD_OPENAI_PROXY_URL=http://host.docker.internal:7890
+
+# SH 生产容器：
+THIRD_OPENAI_PROXY_URL=http://host.docker.internal:7891
 ```
 
 如果强制只用国内模型：

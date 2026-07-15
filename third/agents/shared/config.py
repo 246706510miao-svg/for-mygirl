@@ -38,6 +38,7 @@ class ThirdServiceConfig:
     feishu_use_real: bool
     openai_api_key: str
     openai_proxy_url: str
+    news_focus_proxy_url: str
     openai_timeout_seconds: int
     openai_max_retries: int
     llm_route_mode: str
@@ -144,6 +145,7 @@ def load_config(private_metadata: dict[str, Any] | None = None) -> ThirdServiceC
         feishu_use_real=_read_bool("THIRD_FEISHU_USE_REAL", default=False),
         openai_api_key=os.getenv("OPENAI_API_KEY", ""),
         openai_proxy_url=os.getenv("THIRD_OPENAI_PROXY_URL", ""),
+        news_focus_proxy_url=os.getenv("THIRD_NEWS_FOCUS_PROXY_URL", "").strip(),
         openai_timeout_seconds=_read_int("THIRD_OPENAI_TIMEOUT_SECONDS", 60),
         openai_max_retries=_read_int("THIRD_OPENAI_MAX_RETRIES", 2),
         llm_route_mode=os.getenv("THIRD_LLM_ROUTE_MODE", "auto").strip().lower() or "auto",

@@ -3,6 +3,7 @@
 .idea
 .vscode
 backend/target
+backend/src/test/
 frontend/node_modules
 frontend/dist
 frontend/tsconfig.tsbuildinfo
@@ -15,6 +16,8 @@ __pycache__
 .ruff_cache
 .venv
 venv
+third/tests/
+third_two/tests/
 
 # 这一段排除本地真实环境变量；Compose 会从宿主机 env_file 注入。
 .env

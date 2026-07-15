@@ -15,6 +15,7 @@ class OpenAIClientConfigTests(unittest.TestCase):
         env = {
             "OPENAI_API_KEY": "sk-test",
             "THIRD_OPENAI_PROXY_URL": "http://user:pass@jp.example.com:3128",
+            "THIRD_NEWS_FOCUS_PROXY_URL": "http://host.docker.internal:7891",
             "THIRD_OPENAI_TIMEOUT_SECONDS": "45",
             "THIRD_OPENAI_MAX_RETRIES": "4",
             "THIRD_LLM_ROUTE_MODE": "auto",
@@ -39,6 +40,7 @@ class OpenAIClientConfigTests(unittest.TestCase):
 
         self.assertEqual(config.openai_api_key, "sk-test")
         self.assertEqual(config.openai_proxy_url, "http://user:pass@jp.example.com:3128")
+        self.assertEqual(config.news_focus_proxy_url, "http://host.docker.internal:7891")
         self.assertEqual(config.openai_timeout_seconds, 45)
         self.assertEqual(config.openai_max_retries, 4)
         self.assertEqual(config.llm_route_mode, "auto")
@@ -99,6 +101,11 @@ class OpenAIClientConfigTests(unittest.TestCase):
         redacted = executor._redact_for_log({"THIRD_OPENAI_PROXY_URL": "http://user:pass@jp.example.com:3128"})
 
         self.assertEqual(redacted["THIRD_OPENAI_PROXY_URL"], "***")
+
+    def test_news_focus_proxy_is_redacted_in_logs(self) -> None:
+        redacted = executor._redact_text("THIRD_NEWS_FOCUS_PROXY_URL=http://host.docker.internal:7891")
+
+        self.assertEqual(redacted, "THIRD_NEWS_FOCUS_PROXY_URL=***")
 
     def test_domestic_llm_keys_are_redacted(self) -> None:
         redacted = executor._redact_text(
