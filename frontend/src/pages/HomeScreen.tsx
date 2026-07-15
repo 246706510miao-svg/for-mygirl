@@ -1,6 +1,5 @@
-import { Gift, NotebookText, Sparkles } from "lucide-react";
-import { MobileAppShell } from "../components/layout/MobileAppShell";
-import type { MobileTabKey } from "../components/layout/MobileAppShell";
+import { ArrowRight, CalendarDays, Gift, Heart, MessageCircle, NotebookText, Sparkles } from "lucide-react";
+import { MobileAppShell, type MobileTabItem } from "../components/layout/MobileAppShell";
 import { PageTransition } from "../components/motion/PageTransition";
 import { Pressable } from "../components/ui/Pressable";
 import { DailyFocusCard } from "../features/newsfocus/DailyFocusCard";
@@ -11,86 +10,95 @@ interface HomeScreenProps {
   context: IdentityContext;
   home: UserHome | null;
   points: PointSummary | null;
-  isBoundAdmin: boolean;
   busy: boolean;
   role: ClientRole;
+  tabs: MobileTabItem[];
   onProfile: () => void;
   onCheckIn: () => void;
   onChat: () => void;
   onUserRecent: () => void;
-  onAdminRewards: () => void;
-  onAdminRecent: () => void;
+  onRewards: () => void;
 }
 
-// 这个页面是用户和绑定管理员共用的手机端首页。
+// 这个页面只承载用户自己的首页；照顾者活动从个人页独立进入。
 export function HomeScreen({
   context,
   home,
   points,
-  isBoundAdmin,
   busy,
   role,
+  tabs,
   onProfile,
   onCheckIn,
   onChat,
   onUserRecent,
-  onAdminRewards,
-  onAdminRecent
+  onRewards
 }: HomeScreenProps) {
-  const balance = isBoundAdmin ? points?.viewOwner.balance ?? 0 : points?.currentUser.balance ?? 0;
+  const balance = points?.currentUser.balance ?? 0;
   const checkedIn = Boolean(points?.currentUser.checkedInToday);
-  const tabs = isBoundAdmin
-    ? [
-        { key: "home" as MobileTabKey, label: "首页", onSelect: () => undefined },
-        { key: "rewards" as MobileTabKey, label: "奖品", onSelect: onAdminRewards },
-        { key: "records" as MobileTabKey, label: "记录", onSelect: onAdminRecent },
-        { key: "profile" as MobileTabKey, label: "身份", onSelect: onProfile }
-      ]
-    : [
-        { key: "home" as MobileTabKey, label: "首页", onSelect: () => undefined },
-        { key: "chat" as MobileTabKey, label: "对话", onSelect: onChat },
-        { key: "records" as MobileTabKey, label: "记录", onSelect: onUserRecent },
-        { key: "profile" as MobileTabKey, label: "身份", onSelect: onProfile }
-      ];
+  const today = new Intl.DateTimeFormat("zh-CN", {
+    month: "long",
+    day: "numeric",
+    weekday: "long",
+    timeZone: "Asia/Shanghai"
+  }).format(new Date());
+  const latest = home?.latestRecord;
 
   return (
     <MobileAppShell activeTab="home" tabs={tabs}>
       <PageTransition className="home-screen" direction="none">
-        <Pressable className="avatar-button" onClick={onProfile} aria-label="用户界面">
-          {context.person.displayName.slice(0, 1)}
-        </Pressable>
-        <span className="role-pill">{isBoundAdmin ? "管理员视角" : "用户视角"}</span>
-        <section className="home-card">
-          <div className="home-card__eyebrow">
-            <Sparkles size={18} />
-            <span>{isBoundAdmin ? "Bound admin" : "Daily sign-in"}</span>
+        <header className="home-header">
+          <div>
+            <p>{today}</p>
+            <h1>晚上好，{context.person.displayName}</h1>
           </div>
-          <h1>{isBoundAdmin ? "TA 的今日积分" : `晚上好，${context.person.displayName}`}</h1>
+          <Pressable className="avatar-button" onClick={onProfile} aria-label="打开个人与关系设置">
+            {context.person.displayName.slice(0, 1)}
+          </Pressable>
+        </header>
+        <span className="role-pill"><Heart size={13} fill="currentColor" />我的视角</span>
+
+        <section className="home-card">
+          <div className="home-card__eyebrow"><Sparkles size={18} /><span>今天也在认真生活</span></div>
+          <h2>{home?.homeContent.mainText || "留下今天的心意"}</h2>
           <p>{home?.homeContent.subText || "把完成过的小事写下来，慢慢看到自己的节奏。"}</p>
-          <strong>{balance}</strong>
-          {isBoundAdmin ? (
-            <Pressable className="primary-button" onClick={onAdminRewards} disabled={busy}>
-              <Gift size={18} />
-              管理奖品
-            </Pressable>
-          ) : (
-            <Pressable className="checkin-button" onClick={onCheckIn} disabled={busy || checkedIn}>
-              <Sparkles size={24} />
-              {checkedIn ? "已签到" : "签到"}
-            </Pressable>
-          )}
+          <Pressable className="checkin-button home-card__checkin" onClick={onCheckIn} disabled={busy || checkedIn}>
+            <Sparkles size={18} />
+            {checkedIn ? "今日份心意已收集" : "今日签到 · 积分 +10"}
+          </Pressable>
         </section>
+
+        <section className="points-card">
+          <div className="points-card__icon"><Gift size={20} /></div>
+          <div className="points-card__value"><span>我们的小金库</span><strong>{balance}<small>积分</small></strong></div>
+          <Pressable className="points-card__action" onClick={onRewards}>去心意商店<ArrowRight size={15} /></Pressable>
+        </section>
+
         <DailyFocusCard focus={home?.newsFocus} role={role} />
-        <div className="home-shortcuts">
-          <Pressable className="shortcut-card" onClick={isBoundAdmin ? onAdminRecent : onUserRecent}>
-            <NotebookText size={18} />
-            <span>{isBoundAdmin ? "绑定用户最近" : "最近记录"}</span>
+
+        <section className="home-section">
+          <div className="home-section__heading"><div><span>今日入口</span><h2>想从哪里开始？</h2></div></div>
+          <div className="home-shortcuts">
+            <Pressable className="shortcut-card" onClick={onUserRecent}>
+              <span className="shortcut-card__icon"><NotebookText size={19} /></span>
+              <span><b>最近记录</b><small>回看最近收藏的片段</small></span>
+              <ArrowRight size={17} />
+            </Pressable>
+            <Pressable className="shortcut-card" onClick={onChat}>
+              <span className="shortcut-card__icon"><MessageCircle size={19} /></span>
+              <span><b>和 CCC 聊聊</b><small>把今天的碎片整理成记录</small></span>
+              <ArrowRight size={17} />
+            </Pressable>
+          </div>
+        </section>
+
+        {latest?.recordId && (
+          <Pressable className="latest-record-card" onClick={onUserRecent}>
+            <span className="latest-record-card__icon"><CalendarDays size={18} /></span>
+            <span><small>最近收藏</small><b>{latest.title || "一篇新的日常"}</b><p>{latest.summary || "打开看看最近记录"}</p></span>
+            <ArrowRight size={17} />
           </Pressable>
-          <Pressable className="shortcut-card" onClick={isBoundAdmin ? onAdminRewards : onChat}>
-            {isBoundAdmin ? <Gift size={18} /> : <Sparkles size={18} />}
-            <span>{isBoundAdmin ? "积分奖品" : "记录对话"}</span>
-          </Pressable>
-        </div>
+        )}
       </PageTransition>
     </MobileAppShell>
   );

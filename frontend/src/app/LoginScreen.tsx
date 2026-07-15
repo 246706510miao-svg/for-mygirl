@@ -83,8 +83,9 @@ export function LoginScreen({ busy, status, onSubmit }: LoginScreenProps) {
           transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
         >
         <div className="login-brand">
-          <span>For My Girl</span>
-          <h1>{mode === "register" ? "Create account" : "Welcome back"}</h1>
+          <span>FOR MY GIRL · 只属于你们的日常</span>
+          <h1>{mode === "register" ? "一起开始记录" : "欢迎回来"}</h1>
+          <p>{mode === "register" ? "创建账号后，可以邀请对方建立双向绑定。" : "登录后继续收藏那些平凡又重要的小事。"}</p>
         </div>
         <div className="auth-tabs">
           <Pressable className={mode === "login" ? "is-selected" : ""} onClick={() => setMode("login")} disabled={busy}>

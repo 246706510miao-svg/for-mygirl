@@ -1,25 +1,21 @@
 import { FormEvent, useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
-import { LogOut, UserPlus, UserRound } from "lucide-react";
+import { ChevronRight, Gift, HeartHandshake, LogOut, Sparkles, UserPlus, UserRound } from "lucide-react";
 import { GlassScreen } from "../components/layout/GlassScreen";
-import { MobileAppShell } from "../components/layout/MobileAppShell";
+import { MobileAppShell, type MobileTabItem } from "../components/layout/MobileAppShell";
 import { ScreenHeader } from "../components/layout/ScreenHeader";
-import { MetricLine } from "../components/ui/MetricLine";
 import { Pressable } from "../components/ui/Pressable";
-import { EmptyState } from "../components/ui/EmptyState";
-import { RewardCard } from "../components/rewards/RewardCard";
 import type { IdentityContext, PointSummary, RewardItem } from "../shared/types/api";
 
 interface RoleScreenProps {
   context: IdentityContext;
   points: PointSummary | null;
   rewards: RewardItem[];
-  isBoundAdmin: boolean;
-  canSwitchToBoundAdmin: boolean;
+  tabs: MobileTabItem[];
+  canEnterCare: boolean;
   busy: boolean;
   onBack: () => void;
-  onToggleRole: () => void;
-  onRedeem: (rewardId: string) => void;
+  onRewards: () => void;
+  onEnterCare: () => void;
   onInviteBinding: (loginName: string) => Promise<boolean>;
   onAcceptBindingInvitation: (bindingId: string) => void;
   onRejectBindingInvitation: (bindingId: string) => void;
@@ -27,17 +23,17 @@ interface RoleScreenProps {
   onLogout: () => void;
 }
 
-// 这个页面展示身份、视角切换、积分和奖品。
+// 个人页集中展示本人身份、积分心意、绑定关系和照顾者模式入口。
 export function RoleScreen({
   context,
   points,
   rewards,
-  isBoundAdmin,
-  canSwitchToBoundAdmin,
+  tabs,
+  canEnterCare,
   busy,
   onBack,
-  onToggleRole,
-  onRedeem,
+  onRewards,
+  onEnterCare,
   onInviteBinding,
   onAcceptBindingInvitation,
   onRejectBindingInvitation,
@@ -48,58 +44,62 @@ export function RoleScreen({
   const binding = context.binding;
   const incoming = binding.incomingInvitations ?? [];
   const outgoing = binding.outgoingInvitations ?? [];
+  const balance = points?.currentUser.balance ?? 0;
+  const previewReward = rewards.find((reward) => reward.status.toLowerCase() === "active") ?? rewards[0];
+  const pointsGap = previewReward ? Math.max(previewReward.costPoints - balance, 0) : 0;
 
   async function submitInvite(event: FormEvent) {
     event.preventDefault();
     const ok = await onInviteBinding(targetLoginName.trim());
-    if (ok) {
-      setTargetLoginName("");
-    }
+    if (ok) setTargetLoginName("");
   }
 
   return (
-    <MobileAppShell>
+    <MobileAppShell activeTab="profile" tabs={tabs}>
       <GlassScreen>
         <ScreenHeader
-          title="Profile"
+          title="我的小世界"
+          subtitle="关系、身份与照顾方式都在这里"
           onBack={onBack}
-          rightSlot={
-            <Pressable className="icon-button" onClick={onLogout} disabled={busy} aria-label="退出登录">
-              <LogOut size={20} />
-            </Pressable>
-          }
+          rightSlot={<Pressable className="icon-button" onClick={onLogout} disabled={busy} aria-label="退出登录"><LogOut size={20} /></Pressable>}
         />
         <section className="identity-card">
           <div className="identity-card__avatar"><UserRound size={30} /></div>
-          <h1>{isBoundAdmin ? "TA 的管理页" : context.person.displayName}</h1>
-          <p>{isBoundAdmin ? "Bound administrator" : "User view"}</p>
-          <div className="segmented-control">
-            <Pressable className={!isBoundAdmin ? "is-selected" : ""} onClick={isBoundAdmin ? onToggleRole : undefined} disabled={busy || !isBoundAdmin}>
-              用户
-            </Pressable>
-            <Pressable
-              className={isBoundAdmin ? "is-selected" : ""}
-              onClick={!isBoundAdmin ? onToggleRole : undefined}
-              disabled={busy || isBoundAdmin || !canSwitchToBoundAdmin}
-            >
-              管理员
-            </Pressable>
-          </div>
-          {!canSwitchToBoundAdmin && <p className="identity-card__hint">绑定用户后可切换管理员视角，评论记录并管理奖品。</p>}
+          <h1>{context.person.displayName}</h1>
+          <p>{binding.active && binding.boundUser ? `已和 ${binding.boundUser.displayName} 互相绑定` : "先邀请对方，建立双向绑定"}</p>
+          <span className={`binding-status${binding.active ? " is-active" : ""}`}>{binding.active ? "双向关系已建立" : "等待绑定"}</span>
         </section>
+
+        <Pressable className="profile-wallet" onClick={onRewards} aria-label="查看积分和心意奖品">
+          <span className="profile-wallet__points">
+            <i><Sparkles size={19} /></i>
+            <span><small>我的积分</small><strong>{balance}<em>积分</em></strong></span>
+          </span>
+          <span className="profile-wallet__reward">
+            <small><Gift size={13} />离你最近的心意</small>
+            {previewReward ? (
+              <><b>{previewReward.title}</b><span className="profile-wallet__copy">{previewReward.description || "打开心意商店查看这份奖品"}</span><em>{previewReward.costPoints} 分 · {previewReward.redeemable ? "现在可兑换" : `还差 ${pointsGap} 分`}</em></>
+            ) : (
+              <><b>心意正在准备中</b><span className="profile-wallet__copy">照顾者添加奖品后会显示在这里。</span></>
+            )}
+          </span>
+          <ChevronRight className="profile-wallet__arrow" size={18} />
+        </Pressable>
+
+        <Pressable className="care-entry" onClick={onEnterCare} disabled={busy || !canEnterCare}>
+          <span className="care-entry__icon"><HeartHandshake size={22} /></span>
+          <span><b>照顾者模式</b><small>{canEnterCare ? "评论 TA 的记录，或为 TA 添加奖品" : "完成双向绑定后开放"}</small></span>
+          <ChevronRight size={18} />
+        </Pressable>
+
         <section className="binding-panel">
-          <div className="binding-panel__title">
-            <UserPlus size={18} />
-            <b>绑定用户</b>
-          </div>
+          <div className="binding-panel__title"><UserPlus size={18} /><b>双向绑定</b></div>
           {binding.active && binding.boundUser ? (
             <p>已绑定：{binding.boundUser.displayName}{binding.boundUser.loginName ? `（${binding.boundUser.loginName}）` : ""}</p>
           ) : (
             <form className="binding-form" onSubmit={submitInvite}>
               <input value={targetLoginName} onChange={(event) => setTargetLoginName(event.target.value)} placeholder="输入对方账号" />
-              <Pressable className="primary-button" type="submit" disabled={busy || !targetLoginName.trim()}>
-                发起邀请
-              </Pressable>
+              <Pressable className="primary-button" type="submit" disabled={busy || !targetLoginName.trim()}>发起邀请</Pressable>
             </form>
           )}
           {incoming.length > 0 && (
@@ -108,10 +108,7 @@ export function RoleScreen({
               {incoming.map((item) => (
                 <div className="binding-list__item" key={item.id}>
                   <span>{item.requester.displayName}{item.requester.loginName ? `（${item.requester.loginName}）` : ""}</span>
-                  <div>
-                    <Pressable className="secondary-button" onClick={() => onRejectBindingInvitation(item.id)} disabled={busy}>拒绝</Pressable>
-                    <Pressable className="primary-button" onClick={() => onAcceptBindingInvitation(item.id)} disabled={busy}>接受</Pressable>
-                  </div>
+                  <div><Pressable className="secondary-button" onClick={() => onRejectBindingInvitation(item.id)} disabled={busy}>拒绝</Pressable><Pressable className="primary-button" onClick={() => onAcceptBindingInvitation(item.id)} disabled={busy}>接受</Pressable></div>
                 </div>
               ))}
             </div>
@@ -128,24 +125,6 @@ export function RoleScreen({
             </div>
           )}
         </section>
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={isBoundAdmin ? "admin" : "user"}
-            className="role-content"
-            initial={{ opacity: 0, x: 16 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -16 }}
-            transition={{ duration: 0.22 }}
-          >
-            <MetricLine label={isBoundAdmin ? "TA 的积分" : "我的积分"} value={points?.viewOwner.balance ?? 0} unit="points" />
-            <section className="reward-list">
-              {rewards.map((reward) => (
-                <RewardCard key={reward.id} reward={reward} canRedeem={!isBoundAdmin} adminMode={isBoundAdmin} busy={busy} onRedeem={onRedeem} />
-              ))}
-              {rewards.length === 0 && <EmptyState title="暂无可兑换奖品" description="奖品会在这里展示。" />}
-            </section>
-          </motion.div>
-        </AnimatePresence>
       </GlassScreen>
     </MobileAppShell>
   );

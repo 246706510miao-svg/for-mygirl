@@ -1,5 +1,5 @@
 import { apiRequest, newClientId, type ClientRole } from "../../shared/api/client";
-import type { ConfirmRecordResult, PageResult, PendingThirdConfirmation, RecordDisplay, RecordSession, RecordSessionDetail, SendMessageResult, ThirdInteractionResponse, UserHome } from "../../shared/types/api";
+import type { ConfirmRecordResult, NewsFocus, PageResult, PendingThirdConfirmation, RecordDisplay, RecordSession, RecordSessionDetail, SendMessageResult, ThirdInteractionResponse, UserHome } from "../../shared/types/api";
 
 // 这个函数读取用户首页和最近记录。
 export async function fetchRecordHome(role: ClientRole) {
@@ -27,6 +27,11 @@ export function createRecordSession(role: ClientRole, recordDate: string, feishu
     role,
     body: JSON.stringify({ recordDate, source: "user_home", feishuTableConfigId })
   });
+}
+
+// 这个函数读取共享每日热门的当天或昨天结果。
+export function fetchNewsFocus(role: ClientRole, date: string) {
+  return apiRequest<NewsFocus>(`/api/user/news-focus?date=${encodeURIComponent(date)}`, { role });
 }
 
 // 这个函数读取记录会话详情，包含 third workflow 最新处理状态。
@@ -66,5 +71,13 @@ export function resumeRecordConfirm(role: ClientRole, sessionId: string, confirm
       content,
       approved: response === "approve"
     })
+  });
+}
+
+// 这个函数取消当前尚未完成的记录会话。
+export function cancelRecordSession(role: ClientRole, sessionId: string) {
+  return apiRequest<RecordSession>(`/api/record-sessions/${sessionId}/cancel`, {
+    method: "POST",
+    role
   });
 }

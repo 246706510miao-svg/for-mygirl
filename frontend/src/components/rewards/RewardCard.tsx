@@ -8,15 +8,24 @@ interface RewardCardProps {
   reward: RewardItem;
   canRedeem: boolean;
   adminMode?: boolean;
+  balance?: number;
   busy?: boolean;
   onRedeem?: (rewardId: string) => void;
 }
 
 // 这个组件展示奖品并用底部抽屉承载详情和兑换动作。
-export function RewardCard({ reward, canRedeem, adminMode = false, busy = false, onRedeem }: RewardCardProps) {
+export function RewardCard({ reward, canRedeem, adminMode = false, balance, busy = false, onRedeem }: RewardCardProps) {
   const [open, setOpen] = useState(false);
   const redeemed = Boolean(reward.redeemedAt) || reward.status === "REDEEMED";
   const disabled = busy || !reward.redeemable || redeemed;
+  const pointsGap = typeof balance === "number" ? Math.max(reward.costPoints - balance, 0) : null;
+  const statusText = redeemed
+    ? "已兑换"
+    : adminMode
+      ? reward.redeemable ? "TA 可兑换" : "积分未满"
+      : reward.redeemable
+        ? "可兑换"
+        : pointsGap && pointsGap > 0 ? `还差 ${pointsGap} 分` : "暂不可兑换";
 
   function redeem() {
     if (disabled || !onRedeem) {
@@ -45,7 +54,7 @@ export function RewardCard({ reward, canRedeem, adminMode = false, busy = false,
         </div>
         <strong>{reward.costPoints} 分</strong>
         <span className="reward-card__status">
-          {adminMode ? reward.status : reward.redeemable ? "可兑换" : "积分不足"}
+          {statusText}
         </span>
       </Pressable>
       <BottomSheet

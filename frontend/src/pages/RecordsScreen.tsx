@@ -6,6 +6,7 @@ import { RecordCard } from "../components/records/RecordCard";
 import type { FieldKey } from "../components/records/recordFields";
 import { GlassScreen } from "../components/layout/GlassScreen";
 import { MobileAppShell } from "../components/layout/MobileAppShell";
+import type { MobileTabItem } from "../components/layout/MobileAppShell";
 import { ScreenHeader } from "../components/layout/ScreenHeader";
 import type { RecordDisplay } from "../shared/types/api";
 
@@ -15,14 +16,15 @@ interface RecordsScreenProps {
   selectedFields: FieldKey[];
   onFieldsChange: (value: FieldKey[]) => void;
   onBack: () => void;
+  tabs: MobileTabItem[];
 }
 
 // 这个页面展示用户最近记录和字段选择。
-export function RecordsScreen({ title, records, selectedFields, onFieldsChange, onBack }: RecordsScreenProps) {
+export function RecordsScreen({ title, records, selectedFields, onFieldsChange, onBack, tabs }: RecordsScreenProps) {
   const [selectedRecord, setSelectedRecord] = useState<RecordDisplay | null>(null);
 
   return (
-    <MobileAppShell>
+    <MobileAppShell activeTab="records" tabs={tabs}>
       <GlassScreen>
         <ScreenHeader title={title} onBack={onBack} />
         <FieldSelector selected={selectedFields} onChange={onFieldsChange} />
@@ -30,7 +32,7 @@ export function RecordsScreen({ title, records, selectedFields, onFieldsChange, 
           {records.map((record) => (
             <RecordCard key={record.recordId} record={record} fields={selectedFields} onOpen={() => setSelectedRecord(record)} />
           ))}
-          {records.length === 0 && <EmptyState title="No records yet" description="写下第一条记录后会在这里出现。" />}
+          {records.length === 0 && <EmptyState title="第一篇记录还在路上" description="去和 CCC 聊聊，把今天轻轻记下来。" />}
         </section>
         <BottomSheet open={Boolean(selectedRecord)} onOpenChange={(open) => !open && setSelectedRecord(null)} title={selectedRecord?.title || "记录详情"}>
           {selectedRecord && (

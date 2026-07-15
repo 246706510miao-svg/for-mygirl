@@ -20,11 +20,11 @@ export function fetchRewards(role: ClientRole) {
 }
 
 // 这个函数给绑定用户添加奖品。
-export function addReward(role: ClientRole, title: string, costPoints: number) {
+export function addReward(role: ClientRole, title: string, description: string, costPoints: number) {
   return apiRequest<RewardItem>("/api/rewards", {
     method: "POST",
     role,
-    body: JSON.stringify({ title, costPoints, description: "绑定用户添加的可兑换奖品" })
+    body: JSON.stringify({ title, costPoints, description })
   });
 }
 

@@ -1,13 +1,15 @@
 import type { FormEvent } from "react";
+import { X } from "lucide-react";
 import { GlassScreen } from "../components/layout/GlassScreen";
 import { MobileAppShell } from "../components/layout/MobileAppShell";
+import type { MobileTabItem } from "../components/layout/MobileAppShell";
 import { ScreenHeader } from "../components/layout/ScreenHeader";
 import { ChatBubble } from "../components/chat/ChatBubble";
 import { Composer } from "../components/chat/Composer";
 import { DraftPanel } from "../components/chat/DraftPanel";
 import { FeishuTablePanel } from "../components/chat/FeishuTablePanel";
 import { ThirdConfirmationPanel } from "../components/chat/ThirdConfirmationPanel";
-import { EmptyState } from "../components/ui/EmptyState";
+import { Pressable } from "../components/ui/Pressable";
 import type { FeishuAccount, FeishuTableConfig, PendingThirdConfirmation, RecordDraft, ThirdInteractionResponse } from "../shared/types/api";
 import type { SaveFeishuAccountPayload, SaveFeishuTablePayload } from "../features/feishu/api";
 
@@ -20,6 +22,8 @@ interface ChatScreenProps {
   feishuTables: FeishuTableConfig[];
   selectedFeishuTableId: string | null;
   feishuLocked: boolean;
+  hasSession: boolean;
+  tabs: MobileTabItem[];
   busy: boolean;
   onBack: () => void;
   onInputChange: (value: string) => void;
@@ -28,6 +32,7 @@ interface ChatScreenProps {
   onRespondConfirmation: (response: ThirdInteractionResponse, content?: string) => void;
   onEditDraft: () => void;
   onVoice: () => void;
+  onCancelSession: () => void;
   onSelectFeishuTable: (tableId: string) => void;
   onSaveFeishuAccount: (payload: SaveFeishuAccountPayload) => Promise<boolean | void>;
   onCreateFeishuTable: (payload: SaveFeishuTablePayload) => Promise<boolean | void>;
@@ -56,6 +61,8 @@ export function ChatScreen({
   feishuTables,
   selectedFeishuTableId,
   feishuLocked,
+  hasSession,
+  tabs,
   busy,
   onBack,
   onInputChange,
@@ -64,6 +71,7 @@ export function ChatScreen({
   onRespondConfirmation,
   onEditDraft,
   onVoice,
+  onCancelSession,
   onSelectFeishuTable,
   onSaveFeishuAccount,
   onCreateFeishuTable,
@@ -72,9 +80,18 @@ export function ChatScreen({
   onTestFeishuTable
 }: ChatScreenProps) {
   return (
-    <MobileAppShell>
+    <MobileAppShell activeTab="chat" tabs={tabs}>
       <GlassScreen className="chat-screen">
-        <ScreenHeader title="Chat" onBack={onBack} />
+        <ScreenHeader
+          title="记录今天"
+          subtitle="CCC 正在这里陪你整理"
+          onBack={onBack}
+          rightSlot={hasSession ? (
+            <Pressable className="icon-button" disabled={busy} onClick={onCancelSession} aria-label="取消本次记录">
+              <X size={19} />
+            </Pressable>
+          ) : undefined}
+        />
         <FeishuTablePanel
           account={feishuAccount}
           tables={feishuTables}
@@ -89,7 +106,13 @@ export function ChatScreen({
           onTestTable={onTestFeishuTable}
         />
         <section className="chat-history">
-          {messages.length === 0 && <EmptyState title="暂无对话" description="写下今天发生的小事。" />}
+          {messages.length === 0 && (
+            <div className="chat-welcome">
+              <span>CCC</span>
+              <h2>今天有什么想留下来的？</h2>
+              <p>开心的小事、没说完的话，或者只是有点累，都可以慢慢告诉我。</p>
+            </div>
+          )}
           {messages.map((item, index) => (
             <ChatBubble key={`${item}-${index}`} type={messageType(item)}>
               {item}

@@ -3,192 +3,241 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>双向绑定记录 App UI 原型</title>
+  <meta name="theme-color" content="#f4efe9" />
+  <title>For My Girl · 整合 UI 原型</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-  <main class="app-frame" aria-label="双向绑定记录 App 原型">
+  <main class="prototype-frame" aria-label="For My Girl 整合 UI 原型">
+    <div class="ambient" aria-hidden="true"></div>
+
     <section class="screen login-screen active" data-screen="login">
-      <div class="login-card">
-        <p class="kicker">For Us</p>
-        <h1>登录</h1>
-        <p class="subtle">两个账号互相绑定后，可以分别作为对方的用户和管理员。</p>
-        <label class="field">
-          <span>账号</span>
-          <input type="text" value="miao" autocomplete="username" />
-        </label>
-        <label class="field">
-          <span>密码</span>
-          <input type="password" value="123456" autocomplete="current-password" />
-        </label>
+      <form class="login-card" data-login-form>
+        <div class="brand-mark">F</div>
+        <header>
+          <p class="eyebrow">FOR MY GIRL · 只属于你们的日常</p>
+          <h1 data-auth-title>欢迎回来</h1>
+          <p data-auth-description>登录后继续收藏那些平凡又重要的小事。</p>
+        </header>
+        <div class="segmented auth-tabs">
+          <button type="button" class="selected" data-auth-mode="login">登录</button>
+          <button type="button" data-auth-mode="register">注册</button>
+        </div>
+        <label class="field"><span>账号</span><input name="loginName" value="miao" autocomplete="username" /></label>
+        <label class="field register-only" hidden><span>显示名</span><input name="displayName" value="杪" /></label>
+        <label class="field"><span>密码</span><input name="password" type="password" value="123456" autocomplete="current-password" /></label>
         <label class="field captcha-field">
           <span>验证码</span>
-          <div>
-            <input type="text" value="4832" />
-            <button type="button" class="captcha" data-refresh-captcha>4832</button>
-          </div>
+          <span><input name="captcha" value="4832" inputmode="numeric" /><button type="button" class="captcha" data-refresh-captcha>4832 ↻</button></span>
         </label>
-        <button type="button" class="primary wide" data-go="home">进入应用</button>
-      </div>
+        <button type="submit" class="primary wide">进入我们的日常</button>
+        <button type="button" class="text-button" data-go="ops">查看运维工作区原型</button>
+      </form>
     </section>
 
     <section class="screen home-screen" data-screen="home">
-      <button type="button" class="avatar-button top-avatar" data-go="profile" aria-label="进入用户界面">
-        <img src="data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20120%20120%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20x2%3D%221%22%20y1%3D%220%22%20y2%3D%221%22%3E%3Cstop%20stop-color%3D%22%23ffe3ca%22/%3E%3Cstop%20offset%3D%22.52%22%20stop-color%3D%22%23cddff8%22/%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23f7c8d0%22/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width%3D%22120%22%20height%3D%22120%22%20rx%3D%2260%22%20fill%3D%22url%28%23g%29%22/%3E%3Ccircle%20cx%3D%2260%22%20cy%3D%2250%22%20r%3D%2222%22%20fill%3D%22rgba%28255%2C255%2C255%2C.65%29%22/%3E%3Cpath%20d%3D%22M24%20106c6-28%2026-42%2036-42s30%2014%2036%2042%22%20fill%3D%22rgba%28255%2C255%2C255%2C.65%29%22/%3E%3Ctext%20x%3D%2260%22%20y%3D%2267%22%20text-anchor%3D%22middle%22%20font-size%3D%2234%22%20font-weight%3D%22800%22%20font-family%3D%22Arial%2C%20sans-serif%22%20fill%3D%22%23171717%22%3E%E6%9D%AA%3C/text%3E%3C/svg%3E" alt="当前用户头像" />
-      </button>
+      <header class="home-header">
+        <div><p>7月15日 · 星期三</p><h1 data-home-greeting>晚上好，杪</h1></div>
+        <button type="button" class="avatar" data-go="profile" aria-label="打开个人与关系设置">杪</button>
+      </header>
+      <span class="role-pill">♡ <span data-role-label>我的视角</span></span>
 
-      <div class="home-role-pill" aria-live="polite">
-        <span data-home-role-text>用户视角</span>
-      </div>
-
-      <section class="checkin-widget" aria-label="签到组件">
-        <p class="date-line">2026.06.18</p>
-        <h2>今天也靠近一点点</h2>
-        <button type="button" class="checkin-button" data-checkin>
-          <span data-checkin-label>签到</span>
-          <b data-home-points>128</b>
-        </button>
-        <p class="checkin-sentence" data-checkin-sentence>点击签到，给今天加一点确定感。</p>
+      <section class="hero-card">
+        <div class="hero-card__eyebrow">✦ <span data-hero-eyebrow>今天也在认真生活</span></div>
+        <h2 data-hero-title>留下今天的心意</h2>
+        <p data-hero-copy>把完成过的小事写下来，慢慢看到自己的节奏。</p>
+        <button type="button" class="light-action hero-checkin" data-checkin>✦ <span data-checkin-label>今日签到 · 积分 +10</span></button>
       </section>
 
-      <nav class="home-dock" aria-label="首页功能入口">
-        <button type="button" class="dock-icon" data-dock-left aria-label="对话">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.8A3.8 3.8 0 0 1 7.8 3h8.4A3.8 3.8 0 0 1 20 6.8v5.9a3.8 3.8 0 0 1-3.8 3.8H10l-4.1 3.1c-.7.5-1.7 0-1.7-.9v-12Z"/></svg>
-        </button>
-        <button type="button" class="dock-icon" data-dock-right aria-label="最近">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10a2 2 0 0 1 2 2v14.1c0 1.1-1.2 1.7-2.1 1.1L12 17l-4.9 3.2A1.35 1.35 0 0 1 5 19.1V5a2 2 0 0 1 2-2Zm2 5h6M9 11h6M9 14h4"/></svg>
-        </button>
-      </nav>
-    </section>
+      <section class="points-card glass-card">
+        <i>◇</i>
+        <span><small>我们的小金库</small><b><em data-points>128</em> 积分</b></span>
+        <button type="button" data-go="rewards">去心意商店 ›</button>
+      </section>
 
-    <section class="screen overlay-screen" data-screen="profile">
-      <div class="glass-layer">
-        <header class="role-header">
-          <span></span>
-          <button type="button" class="identity-switch" data-switch-role aria-label="切换用户或管理员角色">
-            <img src="data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20120%20120%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20x2%3D%221%22%20y1%3D%220%22%20y2%3D%221%22%3E%3Cstop%20stop-color%3D%22%23ffe3ca%22/%3E%3Cstop%20offset%3D%22.52%22%20stop-color%3D%22%23cddff8%22/%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23f7c8d0%22/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width%3D%22120%22%20height%3D%22120%22%20rx%3D%2260%22%20fill%3D%22url%28%23g%29%22/%3E%3Ccircle%20cx%3D%2260%22%20cy%3D%2250%22%20r%3D%2222%22%20fill%3D%22rgba%28255%2C255%2C255%2C.65%29%22/%3E%3Cpath%20d%3D%22M24%20106c6-28%2026-42%2036-42s30%2014%2036%2042%22%20fill%3D%22rgba%28255%2C255%2C255%2C.65%29%22/%3E%3Ctext%20x%3D%2260%22%20y%3D%2267%22%20text-anchor%3D%22middle%22%20font-size%3D%2234%22%20font-weight%3D%22800%22%20font-family%3D%22Arial%2C%20sans-serif%22%20fill%3D%22%23171717%22%3E%E6%9D%AA%3C/text%3E%3C/svg%3E" alt="角色头像" />
-            <span>
-              <b data-profile-name>杪</b>
-              <em data-profile-role>用户视角 · 点击切换</em>
-            </span>
+      <button type="button" class="focus-card glass-card" data-open-sheet="focus">
+        <span class="focus-card__top"><b>♨ 今日热门</b><small>20 条 · AI 整理</small></span>
+        <strong>AI 开源模型与本周科技动态</strong>
+        <span>AI、中国大事、新闻、开源四类内容</span>
+      </button>
+
+      <section class="home-section">
+        <header><p class="eyebrow">今日入口</p><h2 data-section-title>想从哪里开始？</h2></header>
+        <div class="shortcut-list">
+          <button type="button" class="shortcut glass-card" data-primary-records>
+            <i>▤</i><span><b data-records-title>最近记录</b><small data-records-copy>回看最近的片段</small></span><em>›</em>
           </button>
-          <button type="button" class="round-control" data-go="home" aria-label="返回首页">×</button>
-        </header>
-
-        <section class="profile-center">
-          <div class="points-orb">
-            <span data-profile-points-label>我的积分</span>
-            <b data-profile-points>128</b>
-          </div>
-          <div class="reward-panel">
-            <div class="panel-title-row">
-              <h2 data-reward-title>可兑换奖品</h2>
-              <span data-bound-label>绑定管理员：TA</span>
-            </div>
-            <div class="reward-list" data-reward-list></div>
-          </div>
-        </section>
-      </div>
-    </section>
-
-    <section class="screen overlay-screen" data-screen="chat">
-      <div class="glass-layer chat-layout">
-        <header class="page-head">
-          <button type="button" class="round-control" data-go="home" aria-label="返回首页">‹</button>
-          <div>
-            <p class="kicker">记录对话</p>
-            <h1>和 AI 说今天</h1>
-          </div>
-          <button type="button" class="round-control" data-go="userRecent" aria-label="查看最近">⌕</button>
-        </header>
-
-        <section class="chat-history" aria-label="历史记录">
-          <article class="message ai">可以直接说今天发生了什么，我会整理成记录草稿。</article>
-          <article class="message me">今天上午效率不错，下午有点累，但还是把计划完成了。</article>
-          <article class="message ai">我会保留你的原意，也会把内容整理得更适合写入记录。</article>
-        </section>
-
-        <form class="composer" data-chat-form>
-          <button type="button" class="voice-button" aria-label="录音输入">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Zm6-3a6 6 0 0 1-12 0M12 17v4m-4 0h8"/></svg>
+          <button type="button" class="shortcut glass-card" data-primary-action>
+            <i>◌</i><span><b data-action-title>和 CCC 聊聊</b><small data-action-copy>把碎片整理成记录</small></span><em>›</em>
           </button>
-          <input type="text" placeholder="输入或按住录音记录今天" />
-          <button type="submit" class="send-button" aria-label="发送">↑</button>
-        </form>
-      </div>
+        </div>
+      </section>
+
+      <button type="button" class="latest-card glass-card" data-go="records">
+        <i>□</i><span><small>最近收藏</small><b>忙完以后吃到热乎的晚饭</b><p>一个普通却值得记住的傍晚。</p></span><em>›</em>
+      </button>
+      <nav class="bottom-nav" aria-label="主导航" data-bottom-nav></nav>
     </section>
 
-    <section class="screen overlay-screen" data-screen="userRecent">
-      <div class="glass-layer">
-        <header class="page-head">
-          <button type="button" class="round-control" data-go="home" aria-label="返回首页">‹</button>
-          <div>
-            <p class="kicker">用户视角</p>
-            <h1>我的最近记录</h1>
-          </div>
-          <span></span>
-        </header>
+    <section class="screen content-screen chat-screen" data-screen="chat">
+      <header class="page-header">
+        <button type="button" class="icon-button" data-go="home" aria-label="返回">‹</button>
+        <div><h1>记录今天</h1><p>CCC 正在这里陪你整理</p></div>
+        <button type="button" class="icon-button" data-cancel-chat aria-label="取消本次记录">×</button>
+      </header>
+      <details class="feishu-panel glass-card">
+        <summary><span><i>▦</i><b>每日记录 · 默认飞书表</b><small>tblDaily / vewToday</small></span><em>设置</em></summary>
+        <div class="feishu-settings">
+          <label class="field"><span>App ID</span><input value="cli_demo" /></label>
+          <label class="field"><span>当前表 URL</span><input value="https://example.feishu.cn/base/app?table=tblDaily" /></label>
+          <label class="field"><span>字段映射</span><textarea>{"recordDate":"日期","summary":"总结","score":"分数"}</textarea></label>
+          <div class="button-row"><button type="button" class="secondary" data-toast-message="连接正常，识别到 8 个字段">测试连接</button><button type="button" class="primary" data-toast-message="飞书配置已保存">保存配置</button></div>
+        </div>
+      </details>
+      <section class="chat-history" data-chat-history>
+        <article class="chat-welcome"><span>CCC</span><h2>今天有什么想留下来的？</h2><p>开心的小事、没说完的话，或者只是有点累，都可以慢慢告诉我。</p></article>
+        <article class="bubble user">下班以后终于吃到了热乎的晚饭，感觉整个人都松下来了。</article>
+        <article class="bubble ai">听起来，这是忙碌之后一个让人安定的时刻。还想补充和谁一起、或者当时最明显的感受吗？</article>
+      </section>
+      <article class="draft-card glass-card" data-draft hidden>
+        <header><span>记录预览</span><strong>忙完后的热乎晚饭</strong><b>88 分</b></header>
+        <p>忙完一天以后，终于坐下来吃到热乎的晚饭。那一刻没有特别盛大，但整个人都慢慢放松了下来。</p>
+        <div class="button-row"><button type="button" class="secondary" data-edit-draft>再改改</button><button type="button" class="primary" data-confirm-draft>确认收藏</button></div>
+      </article>
+      <form class="composer" data-chat-form>
+        <button type="button" class="icon-button" data-toast-message="语音入口暂未接入">⌁</button>
+        <textarea name="message" rows="1" placeholder="说说今天发生了什么…"></textarea>
+        <button type="submit" class="send-button" aria-label="发送">↑</button>
+      </form>
+      <nav class="bottom-nav" aria-label="主导航" data-bottom-nav></nav>
+    </section>
 
-        <section class="field-picker" aria-label="字段选择">
-          <label><span>字段一</span><select data-field-select="0"><option value="date" selected>日期</option><option value="content">内容</option><option value="score">打分</option><option value="status">状态</option></select></label>
-          <label><span>字段二</span><select data-field-select="1"><option value="date">日期</option><option value="content" selected>内容</option><option value="score">打分</option><option value="status">状态</option></select></label>
-          <label><span>字段三</span><select data-field-select="2"><option value="date">日期</option><option value="content">内容</option><option value="score" selected>打分</option><option value="status">状态</option></select></label>
+    <section class="screen content-screen" data-screen="records">
+      <header class="page-header">
+        <button type="button" class="icon-button" data-go="home">‹</button>
+        <div><h1>我们的日常</h1><p>平凡日子，也会慢慢发光</p></div><span></span>
+      </header>
+      <div class="field-pills" aria-label="记录字段">
+        <button type="button" class="selected" data-field="date">日期</button><button type="button" class="selected" data-field="summary">总结</button><button type="button" class="selected" data-field="score">分数</button><button type="button" data-field="status">状态</button>
+      </div>
+      <section class="record-list" data-record-list></section>
+      <nav class="bottom-nav" aria-label="主导航" data-bottom-nav></nav>
+    </section>
+
+    <section class="screen content-screen" data-screen="profile">
+      <header class="page-header">
+        <button type="button" class="icon-button" data-go="home">‹</button>
+        <div><h1>我的小世界</h1><p>关系、身份与心意都在这里</p></div>
+        <button type="button" class="icon-button" data-go="login">↗</button>
+      </header>
+      <section class="identity-card glass-card">
+        <div class="identity-avatar">杪</div>
+        <h2 data-profile-name>杪</h2>
+        <p data-binding-copy>已和 TA 互相绑定</p>
+        <span class="binding-status">双向关系已建立</span>
+      </section>
+      <button type="button" class="profile-wallet glass-card" data-go="rewards">
+        <span class="profile-wallet__points"><i>✦</i><span><small>我的积分</small><b><span data-profile-points>128</span><em>积分</em></b></span></span>
+        <span class="profile-wallet__reward"><small>◇ 离你最近的心意</small><b data-profile-reward-title>一起看一场电影</b><span data-profile-reward-copy>挑一部收藏很久的电影，认真看完。</span><em data-profile-reward-status>80 分 · 现在可兑换</em></span>
+        <i class="profile-wallet__arrow">›</i>
+      </button>
+      <button type="button" class="care-entry glass-card" data-go="care">
+        <i>♡</i><span><b>照顾者模式</b><small>评论 TA 的记录，或为 TA 添加奖品</small></span><em>›</em>
+      </button>
+      <section class="binding-card glass-card">
+        <header><b>♡ 双向绑定</b><span>已绑定</span></header>
+        <p>双方都能管理自己的记录，也能在照顾者视角为对方留下评论和心意。</p>
+        <form data-binding-form><input name="target" placeholder="输入对方账号" /><button type="submit" class="secondary">发送邀请</button></form>
+      </section>
+      <nav class="bottom-nav" aria-label="主导航" data-bottom-nav></nav>
+    </section>
+
+    <section class="screen content-screen" data-screen="rewards">
+      <header class="page-header">
+        <button type="button" class="icon-button" data-go="home">‹</button>
+        <div><h1>心意商店</h1><p>攒下的每一点，都会变成期待</p></div><span></span>
+      </header>
+      <section class="metric-card glass-card"><span><small>我的可用积分</small><b data-shop-points>128</b><em>积分</em></span><i>✦</i></section>
+      <section class="shop-copy"><i>◇</i><p>这些奖品由你的照顾者准备，打开卡片即可查看并兑换。</p></section>
+      <section class="reward-list" data-shop-reward-list></section>
+      <section class="redemption-card glass-card"><h2>最近兑换</h2><p>奶茶一次 · 35 积分 · 今天 14:20</p><p>认真夸夸 10 分钟 · 20 积分 · 7月12日</p></section>
+      <nav class="bottom-nav" aria-label="主导航" data-bottom-nav></nav>
+    </section>
+
+    <section class="screen content-screen" data-screen="care">
+      <header class="page-header">
+        <button type="button" class="icon-button" data-go="profile">‹</button>
+        <div><h1>照顾者模式</h1><p>把关心放进两件具体的小事里</p></div><span></span>
+      </header>
+      <section class="care-hero"><i>♡</i><span><small>当前仅开放</small><b>记录反馈与奖品管理</b><p>这里不会混入后台运维功能。</p></span></section>
+      <div class="care-tabs"><button type="button" class="selected" data-care-tab="comments">♡ 评论记录</button><button type="button" data-care-tab="rewards">◇ 管理奖品</button></div>
+      <section class="care-view active" data-care-view="comments"><section class="admin-record-list" data-admin-record-list></section></section>
+      <section class="care-view" data-care-view="rewards">
+        <section class="metric-card glass-card"><span><small>TA 的可用积分</small><b data-care-points>128</b><em>积分</em></span><i>✦</i></section>
+        <button type="button" class="care-add-reward" data-open-sheet="addReward">＋ <span><b>添加一份新奖品</b><small>名称、说明和积分会展示给 TA</small></span></button>
+        <section class="reward-list" data-care-reward-list></section>
+        <section class="redemption-card glass-card"><h2>最近兑换</h2><p>奶茶一次 · 35 积分 · 今天 14:20</p></section>
+      </section>
+    </section>
+
+    <section class="screen ops-screen" data-screen="ops">
+      <aside class="ops-sidebar">
+        <div class="ops-brand"><i>♡</i><span><b>For My Girl</b><small>运维工作区</small></span></div>
+        <nav>
+          <button type="button" class="selected" data-ops-tab="records">▤ 记录与异常</button>
+          <button type="button" data-ops-tab="daily">□ 每日内容</button>
+          <button type="button" data-ops-tab="trace">⌁ 链路追踪</button>
+        </nav>
+        <footer><button type="button" class="secondary" data-toast-message="数据已刷新">↻ 刷新数据</button><button type="button" class="secondary" data-go="login">退出原型</button></footer>
+      </aside>
+      <div class="ops-main">
+        <header class="ops-header"><div><p class="eyebrow">CONTROL ROOM</p><h1 data-ops-title>记录与异常</h1><span data-ops-copy>查看记录状态、修正展示并处理飞书同步异常。</span></div><i>⚙</i></header>
+        <section class="ops-view active" data-ops-view="records">
+          <div class="ops-metrics"><article><span>今日记录</span><b>18</b></article><article><span>待反馈</span><b>4</b></article><article><span>异常</span><b>1</b></article></div>
+          <form class="ops-filter" data-ops-filter><input type="date" value="2026-07-15" /><select><option>全部状态</option><option>同步失败</option></select><label><input type="checkbox" />只看异常</label><button class="primary">筛选</button></form>
+          <div class="ops-table">
+            <div class="ops-row"><span>2026-07-15</span><b>忙完以后吃到热乎的晚饭</b><em class="success">confirmed</em><button data-ops-detail>详情</button><button data-ops-trace>追踪</button></div>
+            <div class="ops-row"><span>2026-07-14</span><b>傍晚一起绕着公园散步</b><em class="danger">sync_failed</em><button data-ops-detail>详情</button><button data-ops-trace>追踪</button></div>
+          </div>
+          <article class="ops-detail glass-card" data-ops-detail-panel hidden>
+            <header><span><small>记录详情</small><b>record_20260715_001</b></span><em>sync_failed</em></header>
+            <div class="ops-detail__metrics"><div><span>记录日期</span><b>2026-07-15</b></div><div><span>AI 评分</span><b>88</b></div><div><span>飞书同步</span><b>失败</b></div></div>
+            <form data-ops-display><label>用户端标题<input value="忙完后的热乎晚饭" /></label><label>展示分数<input type="number" value="88" /></label><label class="wide">用户端摘要<textarea>忙完一天以后，终于坐下来吃到热乎的晚饭。</textarea></label><div class="button-row wide"><button type="button" class="secondary" data-toast-message="已提交飞书同步重试">重试飞书同步</button><button class="primary">保存用户端展示</button></div></form>
+          </article>
         </section>
-
-        <section class="recent-list" data-user-recent-list aria-label="最近记录列表"></section>
-      </div>
-    </section>
-
-    <section class="screen overlay-screen" data-screen="adminRewards">
-      <div class="glass-layer">
-        <header class="page-head">
-          <button type="button" class="round-control" data-go="home" aria-label="返回首页">‹</button>
-          <div>
-            <p class="kicker">管理员视角</p>
-            <h1>积分奖品</h1>
-          </div>
-          <button type="button" class="round-control" data-go="profile" aria-label="角色信息">◎</button>
-        </header>
-
-        <section class="admin-reward-hero">
-          <p>给绑定用户添加可兑换奖品</p>
-          <b data-admin-user-points>128 分</b>
+        <section class="ops-view" data-ops-view="daily">
+          <article class="ops-editor glass-card"><header><p class="eyebrow">首页内容</p><h2>按用户和日期配置</h2></header><form data-daily-form><div class="ops-editor__lookup"><label>目标用户 ID<input value="person_user" /></label><label>日期<input type="date" value="2026-07-15" /></label><button type="button" class="secondary" data-toast-message="已读取当前配置">读取当前配置</button></div><label>内容对象数组<textarea spellcheck="false">[
+  {
+    "contentType": "home_copy",
+    "displayArea": "home_hero",
+    "content": {
+      "mainText": "留下今天的心意",
+      "subText": "把完成过的小事写下来。"
+    },
+    "enabled": true
+  }
+]</textarea></label><button class="primary">保存每日内容</button></form></article>
         </section>
-
-        <form class="reward-form" data-reward-form>
-          <label class="field">
-            <span>奖品名称</span>
-            <input name="reward" type="text" placeholder="比如：一起看电影 / 奶茶一次 / 周末小礼物" />
-          </label>
-          <label class="field">
-            <span>所需积分</span>
-            <input name="cost" type="number" placeholder="80" />
-          </label>
-          <button type="submit" class="primary wide">添加奖品</button>
-        </form>
-
-        <section class="reward-list admin-list" data-admin-reward-list></section>
+        <section class="ops-view" data-ops-view="trace">
+          <article class="ops-editor glass-card"><header><p class="eyebrow">TRACE EXPLORER</p><h2>查找一条完整链路</h2></header><form class="trace-form" data-trace-form><label>Session ID<input placeholder="session_..." /></label><label>Record ID<input value="record_20260715_001" /></label><label>Third Session ID<input placeholder="sess_..." /></label><button class="primary">查询链路</button></form><pre data-trace-result>{
+  "recordId": "record_20260715_001",
+  "sessionStatus": "confirmed",
+  "workflowTask": "completed",
+  "feishuSync": "sync_failed"
+}</pre></article>
+        </section>
       </div>
     </section>
 
-    <section class="screen overlay-screen" data-screen="adminRecent">
-      <div class="glass-layer">
-        <header class="page-head">
-          <button type="button" class="round-control" data-go="home" aria-label="返回首页">‹</button>
-          <div>
-            <p class="kicker">管理员视角</p>
-            <h1>绑定用户最近记录</h1>
-          </div>
-          <span></span>
-        </header>
-
-        <section class="admin-record-list" data-admin-record-list aria-label="管理员最近记录"></section>
-      </div>
-    </section>
-
+    <div class="sheet-overlay" data-sheet-overlay hidden>
+      <section class="sheet" role="dialog" aria-modal="true">
+        <div class="sheet-handle"></div>
+        <button type="button" class="sheet-close" data-close-sheet aria-label="关闭">×</button>
+        <div data-sheet-content></div>
+      </section>
+    </div>
     <div class="toast" data-toast role="status" aria-live="polite"></div>
   </main>
-
   <script src="./app.js"></script>
 </body>
 </html>

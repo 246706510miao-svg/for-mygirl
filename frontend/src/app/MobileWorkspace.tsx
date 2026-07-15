@@ -2,10 +2,10 @@ import { FormEvent, useEffect, useState } from "react";
 import { saveRecordComment } from "../features/comment/api";
 import { createFeishuTable, fetchFeishuAccount, fetchFeishuTables, saveFeishuAccount, setDefaultFeishuTable, testFeishuTable, updateFeishuTable, type SaveFeishuAccountPayload, type SaveFeishuTablePayload } from "../features/feishu/api";
 import { addReward, checkIn, fetchPointSummary, fetchRedemptions, fetchRewards, redeemReward } from "../features/points/api";
-import { confirmRecordDraft, createRecordSession, fetchBoundUserRecentRecords, fetchRecordHome, fetchRecordSession, resumeRecordConfirm, sendRecordMessage } from "../features/record/api";
+import { cancelRecordSession, confirmRecordDraft, createRecordSession, fetchBoundUserRecentRecords, fetchRecordHome, fetchRecordSession, resumeRecordConfirm, sendRecordMessage } from "../features/record/api";
 import { acceptBindingInvitation, cancelBindingInvitation, fetchIdentityContext, inviteBindingUser, rejectBindingInvitation, switchViewRole } from "../features/relationship/api";
 import { GlassScreen } from "../components/layout/GlassScreen";
-import { MobileAppShell } from "../components/layout/MobileAppShell";
+import { MobileAppShell, type MobileTabItem } from "../components/layout/MobileAppShell";
 import { EmptyState } from "../components/ui/EmptyState";
 import { useToast } from "../components/ui/useToast";
 import { celebrate } from "../components/motion/confetti";
@@ -13,14 +13,14 @@ import { HomeScreen } from "../pages/HomeScreen";
 import { RoleScreen } from "../pages/RoleScreen";
 import { ChatScreen } from "../pages/ChatScreen";
 import { RecordsScreen } from "../pages/RecordsScreen";
-import { AdminRewardsScreen } from "../pages/AdminRewardsScreen";
-import { AdminRecordsScreen } from "../pages/AdminRecordsScreen";
+import { RewardsScreen } from "../pages/RewardsScreen";
+import { CareScreen } from "../pages/CareScreen";
 import type { ClientRole } from "../shared/api/client";
-import type { ConfirmRecordResult, FeishuAccount, FeishuTableConfig, IdentityContext, PendingThirdConfirmation, PointSummary, RecordDisplay, RecordDraft, RecordMessage, RecordSession, RecordSessionDetail, RecordWorkflowTask, RewardItem, RewardRedemption, ThirdInteractionResponse, UserHome, ViewRole } from "../shared/types/api";
+import type { ConfirmRecordResult, FeishuAccount, FeishuTableConfig, IdentityContext, PendingThirdConfirmation, PointSummary, RecordDisplay, RecordDraft, RecordMessage, RecordSession, RecordSessionDetail, RecordWorkflowTask, RewardItem, RewardRedemption, ThirdInteractionResponse, UserHome } from "../shared/types/api";
 import type { FieldKey } from "../components/records/recordFields";
 import { recordConversationState } from "./recordSessionState";
 
-type Screen = "home" | "profile" | "chat" | "userRecent" | "adminRewards" | "adminRecent";
+type Screen = "home" | "profile" | "chat" | "userRecent" | "rewards" | "care";
 
 interface MobileSnapshot {
   context: IdentityContext;
@@ -105,7 +105,7 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
   const [status, setStatus] = useState("");
 
   const isBoundAdmin = context?.currentViewRole === "BOUND_ADMIN";
-  const canSwitchToBoundAdmin = Boolean(context?.binding.active);
+  const canEnterCare = Boolean(context?.binding.active);
 
   useEffect(() => {
     let ignored = false;
@@ -118,7 +118,7 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
         const snapshot = await readMobileSnapshot(role);
         if (!ignored) {
           applyMobileSnapshot(snapshot);
-          setScreen("home");
+          setScreen(snapshot.context.currentViewRole === "BOUND_ADMIN" ? "care" : "home");
         }
       } catch (error) {
         if (!ignored) {
@@ -203,17 +203,24 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
     }
   }
 
-  // 这个函数切换用户视角和绑定管理员视角。
-  function toggleViewRole() {
-    void runAction("切换视角中", async () => {
-      if (!isBoundAdmin && !canSwitchToBoundAdmin) {
-        throw new Error("当前账号没有绑定对象");
-      }
-      const nextView: ViewRole = isBoundAdmin ? "USER" : "BOUND_ADMIN";
-      await switchViewRole(role, nextView);
+  // 进入照顾者模式时才切换 BOUND_ADMIN 权限，普通首页始终属于本人。
+  function enterCareMode() {
+    void runAction("进入照顾者模式中", async () => {
+      if (!canEnterCare) throw new Error("完成双向绑定后才能进入照顾者模式");
+      if (!isBoundAdmin) await switchViewRole(role, "BOUND_ADMIN");
       await loadMobileData(role);
-      setScreen("home");
-      toast.success(nextView === "BOUND_ADMIN" ? "已切换为绑定管理员视角" : "已切换为用户视角");
+      setScreen("care");
+      toast.success("已进入照顾者模式");
+    });
+  }
+
+  // 离开照顾者模式时恢复用户视角和用户自己的数据。
+  function leaveCareMode() {
+    void runAction("返回我的视角中", async () => {
+      if (isBoundAdmin) await switchViewRole(role, "USER");
+      await loadMobileData(role);
+      setScreen("profile");
+      toast.success("已回到我的视角");
     });
   }
 
@@ -399,9 +406,9 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
   }
 
   // 这个函数添加绑定用户可兑换奖品。
-  function submitReward(title: string, cost: number) {
+  function submitReward(title: string, description: string, cost: number) {
     return runAction("添加奖品中", async () => {
-      await addReward(role, title, cost);
+      await addReward(role, title, description, cost);
       await loadMobileData(role);
       celebrate();
       toast.success("奖品添加成功");
@@ -435,6 +442,21 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
     setPendingConfirmation(null);
     setChatInput(draft.draft.summary || draft.previewText);
     toast.info("可以继续发送补充说明");
+  }
+
+  // 这个函数显式取消当前会话并清空本地对话状态。
+  function cancelChatSession() {
+    void runAction("取消会话中", async () => {
+      if (session) {
+        await cancelRecordSession(role, session.id);
+      }
+      setSession(null);
+      setDraft(null);
+      setPendingConfirmation(null);
+      setChatMessages([]);
+      setChatInput("");
+      toast.info("本次记录已取消");
+    });
   }
 
   function inviteBinding(loginName: string) {
@@ -545,6 +567,13 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
   }
 
   const busy = Boolean(busyLabel);
+  const userTabs: MobileTabItem[] = [
+    { key: "chat", label: "记录", onSelect: () => setScreen("chat") },
+    { key: "records", label: "日常", onSelect: () => setScreen("userRecent") },
+    { key: "home", label: "首页", onSelect: () => setScreen("home") },
+    { key: "rewards", label: "心意", onSelect: () => setScreen("rewards") },
+    { key: "profile", label: "我的", onSelect: () => setScreen("profile") }
+  ];
 
   return (
     <>
@@ -553,15 +582,14 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
           context={context}
           home={home}
           points={points}
-          isBoundAdmin={Boolean(isBoundAdmin)}
           busy={busy}
           role={role}
+          tabs={userTabs}
           onProfile={() => setScreen("profile")}
           onCheckIn={doCheckIn}
           onChat={() => setScreen("chat")}
           onUserRecent={() => setScreen("userRecent")}
-          onAdminRewards={() => setScreen("adminRewards")}
-          onAdminRecent={() => setScreen("adminRecent")}
+          onRewards={() => setScreen("rewards")}
         />
       )}
       {screen === "profile" && (
@@ -569,12 +597,12 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
           context={context}
           points={points}
           rewards={rewards}
-          isBoundAdmin={Boolean(isBoundAdmin)}
-          canSwitchToBoundAdmin={canSwitchToBoundAdmin}
+          tabs={userTabs}
+          canEnterCare={canEnterCare}
           busy={busy}
           onBack={() => setScreen("home")}
-          onToggleRole={toggleViewRole}
-          onRedeem={redeem}
+          onRewards={() => setScreen("rewards")}
+          onEnterCare={enterCareMode}
           onInviteBinding={inviteBinding}
           onAcceptBindingInvitation={acceptBinding}
           onRejectBindingInvitation={rejectBinding}
@@ -592,6 +620,8 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
           feishuTables={feishuTables}
           selectedFeishuTableId={selectedFeishuTableId}
           feishuLocked={Boolean(session || draft || pendingConfirmation)}
+          hasSession={Boolean(session)}
+          tabs={userTabs}
           busy={busy}
           onBack={() => setScreen("home")}
           onInputChange={setChatInput}
@@ -600,6 +630,7 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
           onRespondConfirmation={resolvePendingConfirmation}
           onEditDraft={editDraft}
           onVoice={() => toast.info("语音入口暂未接入")}
+          onCancelSession={cancelChatSession}
           onSelectFeishuTable={selectFeishuTable}
           onSaveFeishuAccount={submitFeishuAccount}
           onCreateFeishuTable={submitFeishuTable}
@@ -609,13 +640,13 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
         />
       )}
       {screen === "userRecent" && (
-        <RecordsScreen title="Records" records={userRecords} selectedFields={selectedFields} onFieldsChange={setSelectedFields} onBack={() => setScreen("home")} />
+        <RecordsScreen title="我们的日常" records={userRecords} selectedFields={selectedFields} onFieldsChange={setSelectedFields} onBack={() => setScreen("home")} tabs={userTabs} />
       )}
-      {screen === "adminRewards" && (
-        <AdminRewardsScreen points={points} rewards={rewards} redemptions={redemptions} busy={busy} onBack={() => setScreen("home")} onAddReward={submitReward} />
+      {screen === "rewards" && (
+        <RewardsScreen points={points} rewards={rewards} redemptions={redemptions} tabs={userTabs} busy={busy} onBack={() => setScreen("home")} onRedeem={redeem} />
       )}
-      {screen === "adminRecent" && (
-        <AdminRecordsScreen records={adminRecords} busy={busy} onBack={() => setScreen("home")} onSaveComment={submitComment} />
+      {screen === "care" && (
+        <CareScreen points={points} records={adminRecords} rewards={rewards} redemptions={redemptions} busy={busy} onBack={leaveCareMode} onAddReward={submitReward} onSaveComment={submitComment} />
       )}
       {busyLabel && <div className="action-status">{busyLabel}</div>}
     </>

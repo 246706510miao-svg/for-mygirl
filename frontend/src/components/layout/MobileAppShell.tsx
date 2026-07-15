@@ -4,7 +4,7 @@ import { Pressable } from "../ui/Pressable";
 
 export type MobileTabKey = "home" | "chat" | "records" | "rewards" | "profile";
 
-interface MobileTabItem {
+export interface MobileTabItem {
   key: MobileTabKey;
   label: string;
   onSelect: () => void;
@@ -25,7 +25,7 @@ const tabIcons: Record<MobileTabKey, ReactNode> = {
   profile: <UserRound size={22} />
 };
 
-// 这个组件承载手机端深色背景、安全区和底部导航。
+// 这个组件承载手机端暖色玻璃背景、安全区和底部导航。
 export function MobileAppShell({ children, activeTab, tabs = [], className = "" }: MobileAppShellProps) {
   return (
     <section className={`mobile-shell ${className}`}>
@@ -39,10 +39,11 @@ export function MobileAppShell({ children, activeTab, tabs = [], className = "" 
               key={tab.key}
               className={`mobile-tabbar__item${activeTab === tab.key ? " is-active" : ""}`}
               aria-label={tab.label}
+              aria-current={activeTab === tab.key ? "page" : undefined}
               onClick={tab.onSelect}
             >
               {tabIcons[tab.key]}
-              <span />
+              <span>{tab.label}</span>
             </Pressable>
           ))}
         </nav>
