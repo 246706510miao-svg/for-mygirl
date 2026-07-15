@@ -7,6 +7,7 @@ const state = {
   screen: 'login',
   authMode: 'login',
   role: 'user',
+  boundName: 'TA',
   points: 128,
   checkedIn: false,
   selectedFields: new Set(['date', 'summary', 'score']),
@@ -67,7 +68,7 @@ function renderHome() {
   home.querySelector('[data-home-greeting]').textContent = '晚上好，杪';
   home.querySelector('[data-role-label]').textContent = '我的视角';
   home.querySelector('[data-hero-eyebrow]').textContent = '今天也在认真生活';
-  home.querySelector('[data-hero-title]').textContent = '留下今天的心意';
+  home.querySelector('[data-hero-title]').textContent = `今天有没有想${state.boundName}`;
   home.querySelector('[data-hero-copy]').textContent = '把完成过的小事写下来，慢慢看到自己的节奏。';
   home.querySelector('[data-points]').textContent = state.points;
   const action = home.querySelector('[data-checkin]');

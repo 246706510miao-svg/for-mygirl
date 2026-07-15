@@ -3,8 +3,8 @@
   "short_name": "ForMyGirl",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0c1424",
-  "theme_color": "#0c1424",
+  "background_color": "#f4efe9",
+  "theme_color": "#f4efe9",
   "orientation": "portrait-primary",
   "icons": []
 }

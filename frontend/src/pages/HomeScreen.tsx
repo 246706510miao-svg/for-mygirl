@@ -43,6 +43,12 @@ export function HomeScreen({
     timeZone: "Asia/Shanghai"
   }).format(new Date());
   const latest = home?.latestRecord;
+  const boundName = context.binding.active && context.binding.boundUser?.displayName
+    ? context.binding.boundUser.displayName
+    : "TA";
+  const configuredTitle = home?.homeContent.mainText?.trim();
+  const usesDefaultTitle = !configuredTitle || ["今天也认真照顾自己", "留下今天的心意"].includes(configuredTitle);
+  const heroTitle = usesDefaultTitle ? `今天有没有想${boundName}` : configuredTitle;
 
   return (
     <MobileAppShell activeTab="home" tabs={tabs}>
@@ -60,7 +66,7 @@ export function HomeScreen({
 
         <section className="home-card">
           <div className="home-card__eyebrow"><Sparkles size={18} /><span>今天也在认真生活</span></div>
-          <h2>{home?.homeContent.mainText || "留下今天的心意"}</h2>
+          <h2>{heroTitle}</h2>
           <p>{home?.homeContent.subText || "把完成过的小事写下来，慢慢看到自己的节奏。"}</p>
           <Pressable className="checkin-button home-card__checkin" onClick={onCheckIn} disabled={busy || checkedIn}>
             <Sparkles size={18} />

@@ -7,7 +7,7 @@
 | 页面 | 页面内容 | 对应接口 |
 | --- | --- | --- |
 | 登录 / 注册 | 登录、注册、本地验证码、会话恢复 | `POST /api/auth/login`、`POST /api/auth/register`、`GET /api/auth/me`、`POST /api/auth/logout` |
-| 首页 | 问候、签到、独立积分卡、每日热门、记录入口、最近记录 | `GET /api/user/home`、`GET /api/user/news-focus`、`POST /api/points/checkins`、`GET /api/points/summary` |
+| 首页 | 问候、绑定对象动态标题、签到、独立积分卡、每日热门、记录入口、最近记录 | `GET /api/user/home`、`GET /api/user/news-focus`、`POST /api/points/checkins`、`GET /api/points/summary` |
 | 记录对话 | 飞书表选择与设置、文本对话、草稿、third 确认、取消会话 | `/api/user/feishu/**`、`/api/record-sessions/**` |
 | 最近记录 | 字段筛选、记录列表、记录详情、对方评论 | `GET /api/records/recent` |
 | 我的小世界 | 身份、积分入口、最近奖品预览、双向绑定、邀请处理、照顾者模式入口 | `GET /api/points/summary`、`GET /api/rewards`、`/api/relationship/**`、`POST /api/identity/view-role` |
