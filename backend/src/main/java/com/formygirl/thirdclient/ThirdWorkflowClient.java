@@ -8,6 +8,7 @@ import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 @Component
 public class ThirdWorkflowClient {
@@ -26,17 +27,28 @@ public class ThirdWorkflowClient {
 
     // 这个函数提交明确的交互类型，支持追问回答和确认修改。
     public Map<String, Object> resume(String thirdSessionId, String confirmationId, String text, String response, boolean approved) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("confirmation_id", confirmationId);
-        body.put("approved", approved);
-        body.put("response", response);
-        body.put("content", List.of(Map.of("text", text)));
-        restClient.post()
-                .uri(properties.getThirdBaseUrl() + "/workflows/{sessionId}/resume", thirdSessionId)
-                .body(body)
-                .retrieve()
-                .body(Map.class);
-        return get(thirdSessionId);
+        try {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("confirmation_id", confirmationId);
+            body.put("approved", approved);
+            body.put("response", response);
+            body.put("content", List.of(Map.of("text", text)));
+            restClient.post()
+                    .uri(properties.getThirdBaseUrl() + "/workflows/{sessionId}/resume", thirdSessionId)
+                    .body(body)
+                    .retrieve()
+                    .body(Map.class);
+            return get(thirdSessionId);
+        } catch (RestClientResponseException exception) {
+            if (exception.getStatusCode().value() == 400 || exception.getStatusCode().value() == 409) {
+                throw new ApiException(HttpStatus.CONFLICT, "STALE_INTERACTION", "刚才的问题已经更新，请刷新后继续");
+            }
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "AI_SERVICE_ERROR", "third workflow 暂时无法继续，请稍后重试");
+        } catch (ApiException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "AI_SERVICE_ERROR", "third workflow 暂时无法继续，请稍后重试");
+        }
     }
 
     // 这个函数查询 workflow artifact 明细。

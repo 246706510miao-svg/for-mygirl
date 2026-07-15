@@ -1577,6 +1577,11 @@ summary:focus-visible {
   gap: 11px;
 }
 
+.chat-history__end {
+  width: 1px;
+  height: 1px;
+}
+
 .chat-welcome {
   max-width: 86%;
   padding: 17px;
@@ -1612,6 +1617,7 @@ summary:focus-visible {
   border-radius: 20px;
   font-size: 12px;
   line-height: 1.65;
+  white-space: pre-wrap;
 }
 
 .chat-bubble--user {
@@ -1632,6 +1638,18 @@ summary:focus-visible {
 .chat-bubble--system {
   color: var(--muted);
   background: var(--accent);
+}
+
+.chat-bubble--pending {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: italic;
+  letter-spacing: 0.02em;
+}
+
+.chat-bubble--error {
+  color: var(--danger);
+  background: rgba(255, 244, 240, 0.9);
 }
 
 .feishu-table-panel {
@@ -1771,43 +1789,17 @@ summary:focus-visible {
 }
 
 .third-confirm-panel {
+  width: min(84%, 340px);
+  margin: -5px 0 0;
+  padding: 0 4px;
+  align-self: flex-start;
   display: grid;
-  gap: 13px;
-}
-
-.third-confirm-panel__heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.third-confirm-panel__heading > span {
-  color: var(--primary);
-  font-size: 11px;
-  font-weight: 800;
-}
-
-.third-confirm-panel__heading small,
-.third-confirm-panel__reply small {
-  color: var(--faint);
-  font-size: 9px;
-}
-
-.third-confirm-panel__options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.third-confirm-panel__options button {
-  min-height: 34px;
-  padding: 0 10px;
-  border: 1px solid rgba(184, 106, 76, 0.16);
-  border-radius: 12px;
-  color: var(--primary-deep);
-  background: var(--accent);
-  font-size: 10px;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .third-confirm-panel__preview {
@@ -1831,24 +1823,16 @@ summary:focus-visible {
   font-size: 9px;
 }
 
-.third-confirm-panel__reply {
-  display: grid;
-  gap: 7px;
-}
-
-.third-confirm-panel__reply label {
-  font-size: 11px;
-  font-weight: 700;
-}
-
 .third-confirm-panel__actions {
   display: flex;
-  flex-wrap: wrap;
   gap: 7px;
 }
 
 .third-confirm-panel__actions button {
-  flex: 1 1 120px;
+  min-height: 38px;
+  padding: 0 12px;
+  flex: 1;
+  font-size: 10px;
 }
 
 .composer {

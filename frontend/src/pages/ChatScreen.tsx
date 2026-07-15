@@ -1,4 +1,4 @@
-import type { FormEvent } from "react";
+import { useEffect, useRef, type FormEvent } from "react";
 import { X } from "lucide-react";
 import { GlassScreen } from "../components/layout/GlassScreen";
 import { MobileAppShell } from "../components/layout/MobileAppShell";
@@ -12,9 +12,10 @@ import { ThirdConfirmationPanel } from "../components/chat/ThirdConfirmationPane
 import { Pressable } from "../components/ui/Pressable";
 import type { FeishuAccount, FeishuTableConfig, PendingThirdConfirmation, RecordDraft, ThirdInteractionResponse } from "../shared/types/api";
 import type { SaveFeishuAccountPayload, SaveFeishuTablePayload } from "../features/feishu/api";
+import type { ChatMessageItem } from "../app/chatConversation";
 
 interface ChatScreenProps {
-  messages: string[];
+  messages: ChatMessageItem[];
   input: string;
   draft: RecordDraft | null;
   pendingConfirmation: PendingThirdConfirmation | null;
@@ -41,14 +42,17 @@ interface ChatScreenProps {
   onTestFeishuTable: (tableId: string) => Promise<boolean | void>;
 }
 
-function messageType(item: string) {
-  if (item.startsWith("我：")) {
-    return "user" as const;
+function composerPlaceholder(confirmation: PendingThirdConfirmation | null) {
+  if (confirmation?.interactionKind === "confirm") {
+    return "需要调整就直接告诉我";
   }
-  if (item.startsWith("系统：")) {
-    return "system" as const;
+  if (confirmation?.interactionKind === "choose_candidate") {
+    return "直接告诉我你的选择";
   }
-  return "ai" as const;
+  if (confirmation) {
+    return "直接回答我";
+  }
+  return "写下今天的记录";
 }
 
 // 这个页面承载记录对话、草稿和确认写入。
@@ -79,6 +83,15 @@ export function ChatScreen({
   onSetDefaultFeishuTable,
   onTestFeishuTable
 }: ChatScreenProps) {
+  const conversationEndRef = useRef<HTMLDivElement>(null);
+  const interactionPrompt = pendingConfirmation?.requestText?.trim();
+  const promptAlreadyShown = Boolean(interactionPrompt && messages[messages.length - 1]?.content.trim() === interactionPrompt);
+  const needsExplicitConfirmation = pendingConfirmation?.interactionKind === "confirm";
+
+  useEffect(() => {
+    conversationEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [messages.length, interactionPrompt, needsExplicitConfirmation]);
+
   return (
     <MobileAppShell activeTab="chat" tabs={tabs}>
       <GlassScreen className="chat-screen">
@@ -113,15 +126,21 @@ export function ChatScreen({
               <p>开心的小事、没说完的话，或者只是有点累，都可以慢慢告诉我。</p>
             </div>
           )}
-          {messages.map((item, index) => (
-            <ChatBubble key={`${item}-${index}`} type={messageType(item)}>
-              {item}
+          {messages.map((message) => (
+            <ChatBubble key={message.id} type={message.type} pending={message.pending} error={message.error}>
+              {message.content}
             </ChatBubble>
           ))}
+          {interactionPrompt && !promptAlreadyShown && (
+            <ChatBubble key={`interaction-${pendingConfirmation?.confirmationId}`} type="ai">
+              {interactionPrompt}
+            </ChatBubble>
+          )}
+          {pendingConfirmation && needsExplicitConfirmation && <ThirdConfirmationPanel confirmation={pendingConfirmation} busy={busy} onRespond={onRespondConfirmation} />}
+          <div ref={conversationEndRef} className="chat-history__end" aria-hidden="true" />
         </section>
-        {pendingConfirmation && <ThirdConfirmationPanel confirmation={pendingConfirmation} busy={busy} onRespond={onRespondConfirmation} />}
         {draft && !pendingConfirmation && <DraftPanel draft={draft} busy={busy} onConfirm={onConfirmDraft} onEdit={onEditDraft} />}
-        {!pendingConfirmation && <Composer value={input} busy={busy} onChange={onInputChange} onSubmit={onSend} onVoice={onVoice} />}
+        <Composer value={input} busy={busy} placeholder={composerPlaceholder(pendingConfirmation)} onChange={onInputChange} onSubmit={onSend} onVoice={onVoice} />
       </GlassScreen>
     </MobileAppShell>
   );

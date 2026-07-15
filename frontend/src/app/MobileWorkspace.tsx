@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { saveRecordComment } from "../features/comment/api";
 import { createFeishuTable, fetchFeishuAccount, fetchFeishuTables, saveFeishuAccount, setDefaultFeishuTable, testFeishuTable, updateFeishuTable, type SaveFeishuAccountPayload, type SaveFeishuTablePayload } from "../features/feishu/api";
 import { addReward, checkIn, fetchPointSummary, fetchRedemptions, fetchRewards, redeemReward } from "../features/points/api";
@@ -15,10 +15,11 @@ import { ChatScreen } from "../pages/ChatScreen";
 import { RecordsScreen } from "../pages/RecordsScreen";
 import { RewardsScreen } from "../pages/RewardsScreen";
 import { CareScreen } from "../pages/CareScreen";
-import type { ClientRole } from "../shared/api/client";
-import type { ConfirmRecordResult, FeishuAccount, FeishuTableConfig, IdentityContext, PendingThirdConfirmation, PointSummary, RecordDisplay, RecordDraft, RecordMessage, RecordSession, RecordSessionDetail, RecordWorkflowTask, RewardItem, RewardRedemption, ThirdInteractionResponse, UserHome } from "../shared/types/api";
+import { ApiRequestError, newClientId, type ClientRole } from "../shared/api/client";
+import type { ConfirmRecordResult, FeishuAccount, FeishuTableConfig, IdentityContext, PendingThirdConfirmation, PointSummary, RecordDisplay, RecordDraft, RecordSession, RecordSessionDetail, RecordWorkflowTask, RewardItem, RewardRedemption, ThirdInteractionResponse, UserHome } from "../shared/types/api";
 import type { FieldKey } from "../components/records/recordFields";
 import { recordConversationState } from "./recordSessionState";
+import { appendOptimisticTurn, conversationMessagesFromDetail, replacePendingWithError, replacePendingWithMessage, type ChatMessageItem } from "./chatConversation";
 
 type Screen = "home" | "profile" | "chat" | "userRecent" | "rewards" | "care";
 
@@ -60,18 +61,6 @@ function isProcessingTask(task?: RecordWorkflowTask | null) {
   return Boolean(task && ["submitted", "running"].includes(task.status));
 }
 
-// 这个函数把后端消息转换成聊天窗口文本。
-function formatChatMessage(message: RecordMessage) {
-  const content = message.content || "";
-  if (message.sender === "user") {
-    return `我：${content}`;
-  }
-  if (message.sender === "system") {
-    return `系统：${content}`;
-  }
-  return `AI：${content}`;
-}
-
 // 这个函数在刷新飞书配置后保持当前选择稳定。
 function resolveSelectedFeishuTable(current: string | null | undefined, tables: FeishuTableConfig[]) {
   if (current && tables.some((table) => table.id === current)) {
@@ -98,11 +87,12 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
   const [session, setSession] = useState<RecordSession | null>(null);
   const [draft, setDraft] = useState<RecordDraft | null>(null);
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingThirdConfirmation | null>(null);
-  const [chatMessages, setChatMessages] = useState<string[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessageItem[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [busyLabel, setBusyLabel] = useState("");
   const [status, setStatus] = useState("");
+  const chatActionInFlight = useRef(false);
 
   const isBoundAdmin = context?.currentViewRole === "BOUND_ADMIN";
   const canEnterCare = Boolean(context?.binding.active);
@@ -214,6 +204,59 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
     });
   }
 
+  // 对话请求使用同步锁避免重复提交；异常只在消息流中给出简短反馈。
+  async function runChatAction(label: string, pendingId: string, sessionId: () => string | null, action: () => Promise<void>) {
+    if (chatActionInFlight.current) {
+      return false;
+    }
+    chatActionInFlight.current = true;
+    setBusyLabel(label);
+    setStatus("");
+    try {
+      await action();
+      return true;
+    } catch (error) {
+      await recoverChatAction(error, pendingId, sessionId());
+      return false;
+    } finally {
+      chatActionInFlight.current = false;
+      setBusyLabel("");
+    }
+  }
+
+  // 确认状态过期时刷新真实会话，其他异常则替换当前思考气泡。
+  async function recoverChatAction(error: unknown, pendingId: string, sessionId: string | null) {
+    const staleInteraction = error instanceof ApiRequestError
+      && (error.status === 409 || error.code === "CONFLICT" || error.message.includes("confirmation_id") || error.message.includes("交互已发生变化"));
+    if (sessionId) {
+      try {
+        const detail = await fetchRecordSession(role, sessionId);
+        applyRecordSessionDetail(detail);
+        if (detail.pendingConfirmation || isProcessingTask(detail.latestWorkflowTask)) {
+          return;
+        }
+        const refreshedMessages = conversationMessagesFromDetail(detail);
+        if (detail.record || detail.currentDraft || refreshedMessages[refreshedMessages.length - 1]?.type === "ai") {
+          setChatMessages(refreshedMessages);
+          return;
+        }
+        setChatMessages(replacePendingWithError(
+          refreshedMessages,
+          pendingId,
+          staleInteraction ? "刚才的问题已经更新了，请继续看最新一条。" : "刚才没有顺利完成，请再试一次。"
+        ));
+        return;
+      } catch {
+        // 刷新也失败时，保留当前本地对话并给出可重试提示。
+      }
+    }
+    setChatMessages((items) => replacePendingWithError(
+      items,
+      pendingId,
+      staleInteraction ? "刚才的问题已经更新了，请再试一次。" : "刚才没有顺利完成，请再试一次。"
+    ));
+  }
+
   // 离开照顾者模式时恢复用户视角和用户自己的数据。
   function leaveCareMode() {
     void runAction("返回我的视角中", async () => {
@@ -244,7 +287,7 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
     setSession(state.session);
     setDraft(state.draft);
     setPendingConfirmation(state.pendingConfirmation);
-    setChatMessages(detail.messages.map(formatChatMessage));
+    setChatMessages(conversationMessagesFromDetail(detail));
   }
 
   // 这个函数轮询会话，直到 third workflow 不再处于 submitted/running。
@@ -263,14 +306,12 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
   }
 
   // 这个函数根据轮询结果给出最终反馈。
-  async function handleWorkflowOutcome(detail: RecordSessionDetail | null, options?: { confirmationText?: string }) {
+  async function handleWorkflowOutcome(detail: RecordSessionDetail | null) {
     if (!detail) {
-      toast.info("third 仍在处理");
       return;
     }
     const task = detail.latestWorkflowTask;
     if (isProcessingTask(task)) {
-      toast.info("third 仍在处理，可以稍后回来查看");
       return;
     }
     if (detail.session.status === "confirmed" || detail.record) {
@@ -279,48 +320,49 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
       setSession(null);
       await loadMobileData(role);
       celebrate();
-      toast.success("记录已保存");
       return;
     }
     if (detail.pendingConfirmation) {
-      toast.info(options?.confirmationText || "请确认 third 操作");
       return;
     }
     if (detail.currentDraft) {
-      toast.success("草稿已生成");
       return;
     }
     if (task?.status === "failed") {
-      toast.error(task.errorText || "third workflow 执行失败");
       return;
     }
     if (task?.status === "cancelled") {
-      toast.info("已取消写入");
       return;
     }
-    toast.success("third workflow 已完成");
   }
 
   // 这个函数发送对话输入，并按 third 决策展示草稿、确认卡或普通回复。
   function sendChat(event: FormEvent) {
     event.preventDefault();
     const content = chatInput.trim();
-    if (!content) {
+    if (!content || chatActionInFlight.current) {
       return;
     }
-    void runAction("发送中", async () => {
+    if (pendingConfirmation) {
+      resolvePendingConfirmation(pendingConfirmation.interactionKind === "confirm" ? "modify" : "answer", content);
+      return;
+    }
+    const turnId = newClientId("turn");
+    let activeSessionId = session?.id ?? null;
+    setChatInput("");
+    setChatMessages((items) => appendOptimisticTurn(items, content, turnId));
+    void runChatAction("发送中", turnId, () => activeSessionId, async () => {
       let current = session;
       if (!current) {
         current = await createRecordSession(role, new Date().toISOString().slice(0, 10), selectedFeishuTableId);
         setSession(current);
       }
+      activeSessionId = current.id;
       const result = await sendRecordMessage(role, current.id, content);
       setSession(result.session);
-      setChatInput("");
       if (result.workflowStatus === "processing") {
         setDraft(null);
         setPendingConfirmation(null);
-        setChatMessages((items) => [...items, `我：${content}`, "系统：third 正在处理，完成后会自动更新。"]);
         const detail = await waitForWorkflow(result.session.id, result.pollAfterMs);
         await handleWorkflowOutcome(detail);
         return;
@@ -328,80 +370,86 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
       setDraft(result.draft ?? null);
       setPendingConfirmation(result.pendingConfirmation ?? null);
       const reply = result.pendingConfirmation
-        ? "系统：third 已生成需要确认的操作，请核对后决定是否执行。"
-        : `AI：${messageContent(result.aiMessage, result.draft ? "我整理了一版草稿，你可以确认或继续修改。" : "third workflow 已完成。")}`;
-      setChatMessages((items) => [...items, `我：${content}`, reply]);
-      if (result.pendingConfirmation) {
-        toast.info("请确认 third 操作");
-      } else if (result.draft) {
-        toast.success("草稿已生成");
-      } else {
-        toast.success("third workflow 已完成");
-      }
+        ? result.pendingConfirmation.requestText || "请确认下一步操作。"
+        : messageContent(result.aiMessage, result.draft ? "我整理了一版草稿，你可以确认或继续修改。" : "已经处理好了。");
+      setChatMessages((items) => replacePendingWithMessage(items, turnId, reply));
     });
   }
 
   // 这个函数处理确认成功后的本地状态刷新。
-  async function finishConfirm(result: ConfirmRecordResult) {
+  async function finishConfirm(result: ConfirmRecordResult, pendingId: string) {
     setDraft(null);
     setSession(null);
     setPendingConfirmation(null);
-    setChatMessages((items) => [...items, `系统：${messageContent(result.replyMessage, result.record ? "记录已保存。" : "third workflow 已完成。")}`]);
+    setChatMessages((items) => replacePendingWithMessage(items, pendingId, messageContent(result.replyMessage, result.record ? "记录已保存。" : "已经处理好了。")));
     await loadMobileData(role);
     if (result.record) {
       celebrate();
-      toast.success("记录已保存");
-    } else {
-      toast.success("third workflow 已完成");
     }
   }
 
   // 这个函数确认当前草稿并请求 third 生成最终写入确认。
   function confirmDraft() {
-    void runAction("确认中", async () => {
-      if (!session || !draft) {
-        return;
-      }
-      const result = await confirmRecordDraft(role, session.id, draft.id);
+    if (!session || !draft || chatActionInFlight.current) {
+      return;
+    }
+    const currentSession = session;
+    const currentDraft = draft;
+    const turnId = newClientId("turn");
+    setChatMessages((items) => appendOptimisticTurn(items, "确认这份草稿", turnId));
+    void runChatAction("确认中", turnId, () => currentSession.id, async () => {
+      const result = await confirmRecordDraft(role, currentSession.id, currentDraft.id);
       setSession(result.session);
       if (result.workflowStatus === "processing") {
         const detail = await waitForWorkflow(result.session.id, result.pollAfterMs);
-        await handleWorkflowOutcome(detail, { confirmationText: "请确认写入内容" });
+        await handleWorkflowOutcome(detail);
         return;
       }
       if (result.pendingConfirmation) {
         setPendingConfirmation(result.pendingConfirmation);
-        setChatMessages((items) => [...items, "系统：请确认即将写入飞书的内容。"]);
-        toast.info("请确认写入内容");
+        setChatMessages((items) => replacePendingWithMessage(items, turnId, result.pendingConfirmation?.requestText || "请确认即将执行的内容。"));
         return;
       }
-      await finishConfirm(result);
+      await finishConfirm(result, turnId);
     });
   }
 
   // 这个函数回答或处理 third 当前等待中的交互。
   function resolvePendingConfirmation(response: ThirdInteractionResponse, content = "") {
-    const actionText = response === "approve" ? "写入中" : response === "cancel" ? "取消中" : "继续思考中";
-    void runAction(actionText, async () => {
-      if (!session || !pendingConfirmation) {
-        return;
-      }
-      const result = await resumeRecordConfirm(role, session.id, pendingConfirmation, response, content);
+    if (!session || !pendingConfirmation || chatActionInFlight.current) {
+      return;
+    }
+    const currentSession = session;
+    const currentConfirmation = pendingConfirmation;
+    const userContent = content.trim() || (response === "approve" ? "确认执行" : response === "cancel" ? "暂不执行" : "");
+    if (!userContent) {
+      return;
+    }
+    const turnId = newClientId("turn");
+    setChatInput("");
+    setChatMessages((items) => appendOptimisticTurn(items, userContent, turnId));
+    const actionText = response === "approve" ? "写入中" : response === "cancel" ? "取消中" : "思考中";
+    void runChatAction(actionText, turnId, () => currentSession.id, async () => {
+      const result = await resumeRecordConfirm(role, currentSession.id, currentConfirmation, response, content);
       setSession(result.session);
       if (response === "cancel") {
         setPendingConfirmation(null);
         setDraft(result.draft || draft);
-        setChatMessages((items) => [...items, "系统：已取消本次操作，可以继续修改。"]);
-        toast.info("已取消本次操作");
+        setChatMessages((items) => replacePendingWithMessage(items, turnId, messageContent(result.replyMessage, "已取消本次操作，可以继续修改。")));
         return;
       }
       if (result.workflowStatus === "processing") {
         setPendingConfirmation(null);
         const detail = await waitForWorkflow(result.session.id, result.pollAfterMs);
-        await handleWorkflowOutcome(detail, { confirmationText: response === "approve" ? "请确认写入内容" : "信息已收到，请继续确认下一步" });
+        await handleWorkflowOutcome(detail);
         return;
       }
-      await finishConfirm(result);
+      if (result.pendingConfirmation) {
+        setPendingConfirmation(result.pendingConfirmation);
+        setChatMessages((items) => replacePendingWithMessage(items, turnId, result.pendingConfirmation?.requestText || "还需要你确认下一步。"));
+        return;
+      }
+      await finishConfirm(result, turnId);
     });
   }
 
@@ -441,7 +489,6 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
     }
     setPendingConfirmation(null);
     setChatInput(draft.draft.summary || draft.previewText);
-    toast.info("可以继续发送补充说明");
   }
 
   // 这个函数显式取消当前会话并清空本地对话状态。
@@ -648,7 +695,7 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
       {screen === "care" && (
         <CareScreen points={points} records={adminRecords} rewards={rewards} redemptions={redemptions} busy={busy} onBack={leaveCareMode} onAddReward={submitReward} onSaveComment={submitComment} />
       )}
-      {busyLabel && <div className="action-status">{busyLabel}</div>}
+      {busyLabel && screen !== "chat" && <div className="action-status">{busyLabel}</div>}
     </>
   );
 }

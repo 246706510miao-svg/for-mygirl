@@ -5,13 +5,14 @@ import { Pressable } from "../ui/Pressable";
 interface ComposerProps {
   value: string;
   busy: boolean;
+  placeholder?: string;
   onChange: (value: string) => void;
   onSubmit: (event: FormEvent) => void;
   onVoice: () => void;
 }
 
 // 这个组件承载底部输入栏和未来语音入口。
-export function Composer({ value, busy, onChange, onSubmit, onVoice }: ComposerProps) {
+export function Composer({ value, busy, placeholder = "写下今天的记录", onChange, onSubmit, onVoice }: ComposerProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useLayoutEffect(() => {
@@ -34,7 +35,7 @@ export function Composer({ value, busy, onChange, onSubmit, onVoice }: ComposerP
         value={value}
         disabled={busy}
         onChange={(event) => onChange(event.target.value)}
-        placeholder="写下今天的记录"
+        placeholder={placeholder}
       />
       <Pressable className="composer__send" type="submit" disabled={busy || !value.trim()} aria-label="发送">
         <Send size={18} />
