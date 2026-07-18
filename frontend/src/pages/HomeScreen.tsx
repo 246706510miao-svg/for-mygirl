@@ -1,4 +1,4 @@
-import { ArrowRight, CalendarDays, Gift, Heart, MessageCircle, NotebookText, Sparkles } from "lucide-react";
+import { ArrowRight, Gift, Heart, MessageCircle, NotebookText, Sparkles } from "lucide-react";
 import { MobileAppShell, type MobileTabItem } from "../components/layout/MobileAppShell";
 import { PageTransition } from "../components/motion/PageTransition";
 import { Pressable } from "../components/ui/Pressable";
@@ -42,7 +42,6 @@ export function HomeScreen({
     weekday: "long",
     timeZone: "Asia/Shanghai"
   }).format(new Date());
-  const latest = home?.latestRecord;
   const boundName = context.binding.active && context.binding.boundUser?.displayName
     ? context.binding.boundUser.displayName
     : "TA";
@@ -87,7 +86,7 @@ export function HomeScreen({
           <div className="home-shortcuts">
             <Pressable className="shortcut-card" onClick={onUserRecent}>
               <span className="shortcut-card__icon"><NotebookText size={19} /></span>
-              <span><b>最近记录</b><small>回看最近收藏的片段</small></span>
+              <span><b>最近记录</b><small>回看我们最近的日常</small></span>
               <ArrowRight size={17} />
             </Pressable>
             <Pressable className="shortcut-card" onClick={onChat}>
@@ -97,14 +96,6 @@ export function HomeScreen({
             </Pressable>
           </div>
         </section>
-
-        {latest?.recordId && (
-          <Pressable className="latest-record-card" onClick={onUserRecent}>
-            <span className="latest-record-card__icon"><CalendarDays size={18} /></span>
-            <span><small>最近收藏</small><b>{latest.title || "一篇新的日常"}</b><p>{latest.summary || "打开看看最近记录"}</p></span>
-            <ArrowRight size={17} />
-          </Pressable>
-        )}
       </PageTransition>
     </MobileAppShell>
   );

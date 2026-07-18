@@ -29,16 +29,21 @@ except ImportError:
 FIELD_TYPE_ALIASES = {
     "text": 1,
     "文本": 1,
+    "文本类型": 1,
     "number": 2,
     "数字": 2,
+    "数字类型": 2,
     "single_select": 3,
     "single": 3,
     "单选": 3,
+    "单选类型": 3,
     "multi_select": 4,
     "multiple_select": 4,
     "多选": 4,
+    "多选类型": 4,
     "date": 5,
     "日期": 5,
+    "日期类型": 5,
     "checkbox": 7,
     "复选框": 7,
     "phone": 13,
@@ -47,6 +52,15 @@ FIELD_TYPE_ALIASES = {
     "链接": 15,
 }
 SUPPORTED_SCHEMA_FIELD_TYPES = {1, 2, 3, 4, 5, 7, 13, 15}
+SCHEMA_ACTION_ALIASES = {
+    "add_field": "create_field",
+    "create_field": "create_field",
+    "rename_field": "update_field",
+    "modify_field": "update_field",
+    "update_field": "update_field",
+    "remove_field": "delete_field",
+    "delete_field": "delete_field",
+}
 
 
 # 这个函数校验写入 payload，并生成后续 Tool 可直接使用的结构化输入。
@@ -214,15 +228,17 @@ def _normalize_schema_actions(
         if not isinstance(raw_action, dict):
             errors.append(f"第 {index} 个字段变更 action 必须是 JSON 对象。")
             continue
-        action = str(raw_action.get("action") or "").strip()
+        raw_action_name = str(raw_action.get("action") or "").strip()
+        action = SCHEMA_ACTION_ALIASES.get(raw_action_name, raw_action_name)
+        canonical_action = {**raw_action, "action": action}
         if action == "create_field":
-            normalized_action, action_errors = _normalize_create_field_action(raw_action, planned_names)
+            normalized_action, action_errors = _normalize_create_field_action(canonical_action, planned_names)
         elif action == "update_field":
-            normalized_action, action_errors = _normalize_update_field_action(raw_action, fields_by_name, fields_by_id, planned_names)
+            normalized_action, action_errors = _normalize_update_field_action(canonical_action, fields_by_name, fields_by_id, planned_names)
         elif action == "delete_field":
-            normalized_action, action_errors = _normalize_delete_field_action(raw_action, original_input, fields_by_name, fields_by_id, planned_names)
+            normalized_action, action_errors = _normalize_delete_field_action(canonical_action, original_input, fields_by_name, fields_by_id, planned_names)
         else:
-            normalized_action, action_errors = None, [f"第 {index} 个字段变更 action 不受支持：{action}"]
+            normalized_action, action_errors = None, [f"第 {index} 个字段变更 action 不受支持：{raw_action_name}"]
         if action_errors:
             errors.extend([f"第 {index} 个字段变更：{error}" for error in action_errors])
         if normalized_action:

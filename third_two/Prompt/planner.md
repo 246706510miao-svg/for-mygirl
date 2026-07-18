@@ -21,7 +21,10 @@
 - `prepare_create_record.arguments`：提供 `fields`，或在信息不足时先 `ask_user`。
 - `prepare_update_record.arguments`：提供 `fields`，以及 `record_id` 或 `lookup` 粗定位条件。
 - `prepare_delete_record.arguments`：提供 `record_id` 或 `lookup`。
-- `prepare_schema_change.arguments`：提供非空 `actions`。
+- `prepare_schema_change.arguments`：提供非空 `actions`。每个 action 的 `action` 只能是
+  `create_field`、`update_field`、`delete_field`；新增字段必须使用 `create_field`，
+  不要生成 `add_field`。`create_field` 同时提供 `field_name`、`field_type`、
+  `property`、`reason`。
 - `match_record.arguments.record_id`：必须来自 `candidate_records`；不确定时使用 `ask_user` 并给出候选 options。
 
 只输出符合 `output_schema` 的 JSON，不要输出 Markdown 代码块以外的说明文字。

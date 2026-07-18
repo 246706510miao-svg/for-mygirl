@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { RecordSessionDetail } from "../src/shared/types/api.ts";
-import { appendOptimisticTurn, conversationMessagesFromDetail, replacePendingWithMessage } from "../src/app/chatConversation.ts";
+import { appendOptimisticTurn, conversationMessagesFromDetail, replacePendingWithMessage, shouldShowInteractionPrompt } from "../src/app/chatConversation.ts";
 
 test("shows the user message and thinking reply before the request finishes", () => {
   const messages = appendOptimisticTurn([], "今天完成了两件事", "turn_1");
@@ -41,6 +41,24 @@ test("replaces the thinking reply with the real AI response", () => {
     { id: "user-turn_2", type: "user", content: "是" },
     { id: "pending-turn_2", type: "ai", content: "好的，我继续整理。" }
   ]);
+});
+
+test("does not repeat the resolved interaction prompt after the thinking reply", () => {
+  const prompt = "新增的“抽象程度”字段需要指定字段类型和属性。";
+  const messages = appendOptimisticTurn(
+    [{ id: "message_1", type: "ai", content: prompt }],
+    "文本",
+    "turn_3"
+  );
+
+  assert.equal(shouldShowInteractionPrompt(messages, prompt), false);
+  assert.equal(
+    shouldShowInteractionPrompt(
+      messages.filter((message) => !message.pending),
+      prompt
+    ),
+    true
+  );
 });
 
 test("shows a short in-conversation error instead of the raw backend exception", () => {

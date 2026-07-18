@@ -37,7 +37,7 @@ def run_tool_ChangeFeishuBitableFields(payload: dict[str, Any]) -> dict[str, lis
         return content(json.dumps(result, ensure_ascii=False))
 
     original_input = str(parsed.get("original_input") or tool_input_text)
-    request = parsed[REQUEST_KEY]
+    request = _normalize_request(parsed[REQUEST_KEY], config)
     actions = request.get("actions") or []
     executed: list[dict[str, Any]] = []
     error: str | None = None
@@ -72,6 +72,20 @@ def run_tool_ChangeFeishuBitableFields(payload: dict[str, Any]) -> dict[str, lis
     if error:
         result["error"] = error
     return content(json.dumps(result, ensure_ascii=False, default=str))
+
+
+def _normalize_request(request: dict[str, Any], config: Any) -> dict[str, Any]:
+    normalized = dict(request)
+    table_context = config.table_context
+    normalized.setdefault("operation", "change_fields")
+    normalized.setdefault("service", "feishu_bitable")
+    normalized.setdefault("app_token", table_context["app_token"])
+    normalized.setdefault("table_id", table_context["table_id"])
+    normalized.setdefault("table_name", table_context["table_name"])
+    normalized.setdefault("view_id", table_context["view_id"] or None)
+    normalized.setdefault("user_id_type", table_context["user_id_type"])
+    normalized.setdefault("mock", not config.feishu_use_real)
+    return normalized
 
 
 def _execute_action(action: dict[str, Any], request: dict[str, Any], config: Any) -> dict[str, Any]:

@@ -158,6 +158,7 @@ class FeishuBitableClient:
         body = _clean_body(
             {
                 "field_name": request.get("field_name"),
+                "type": request.get("type"),
                 "property": request.get("property") or {},
             }
         )

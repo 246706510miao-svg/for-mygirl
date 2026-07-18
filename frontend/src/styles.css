@@ -273,7 +273,6 @@ summary:focus-visible {
 .third-confirm-panel,
 .redemption-list,
 .shortcut-card,
-.latest-record-card,
 .bottom-sheet,
 .toast-root {
   border: 1px solid var(--glass-line);
@@ -295,7 +294,6 @@ summary:focus-visible {
 .login-brand span,
 .home-card__eyebrow,
 .home-section__heading span,
-.latest-record-card small,
 .record-card__comment span,
 .draft-panel > div > span,
 .metric-line span,
@@ -616,8 +614,7 @@ summary:focus-visible {
   gap: 9px;
 }
 
-.shortcut-card,
-.latest-record-card {
+.shortcut-card {
   width: 100%;
   min-height: 76px;
   padding: 13px 14px;
@@ -628,16 +625,14 @@ summary:focus-visible {
   text-align: left;
 }
 
-.shortcut-card > span:nth-child(2),
-.latest-record-card > span:nth-child(2) {
+.shortcut-card > span:nth-child(2) {
   min-width: 0;
   flex: 1;
   display: grid;
   gap: 3px;
 }
 
-.shortcut-card__icon,
-.latest-record-card__icon {
+.shortcut-card__icon {
   width: 44px;
   height: 44px;
   display: grid;
@@ -648,13 +643,11 @@ summary:focus-visible {
   background: var(--accent);
 }
 
-.shortcut-card b,
-.latest-record-card b {
+.shortcut-card b {
   font-size: 14px;
 }
 
-.shortcut-card small,
-.latest-record-card p {
+.shortcut-card small {
   margin: 0;
   overflow: hidden;
   color: var(--muted);
@@ -662,14 +655,6 @@ summary:focus-visible {
   line-height: 1.45;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.latest-record-card {
-  margin-top: -2px;
-}
-
-.latest-record-card small {
-  font-size: 9px;
 }
 
 /* 底部导航与页头 */

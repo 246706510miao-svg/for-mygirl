@@ -61,7 +61,12 @@ _DEFINITIONS = [
         "prepare_schema_change",
         "prepare",
         "整理字段新增、重命名或删除 actions；信息不足时返回 needs_input。",
-        {"actions": "字段变更 action 数组"},
+        {
+            "actions": (
+                "非空字段变更数组。action 只能是 create_field、update_field、delete_field；"
+                "新增字段使用 create_field，并提供 field_name、field_type、property、reason。"
+            )
+        },
         "prepared_operation",
     ),
     ActionDefinition(

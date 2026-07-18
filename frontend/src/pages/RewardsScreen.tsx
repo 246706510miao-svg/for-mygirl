@@ -5,6 +5,7 @@ import { ScreenHeader } from "../components/layout/ScreenHeader";
 import { RewardCard } from "../components/rewards/RewardCard";
 import { EmptyState } from "../components/ui/EmptyState";
 import { MetricLine } from "../components/ui/MetricLine";
+import { sortRedemptionsNewestFirst } from "../app/mobileViewState";
 import type { PointSummary, RewardItem, RewardRedemption } from "../shared/types/api";
 
 interface RewardsScreenProps {
@@ -17,15 +18,24 @@ interface RewardsScreenProps {
   onRedeem: (rewardId: string) => void;
 }
 
-function redemptionDate(value?: string) {
+function redemptionDateTime(value?: string) {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", timeZone: "Asia/Shanghai" }).format(date);
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Shanghai"
+  }).format(date);
 }
 
 // 这个页面是用户自己的心意商店，只负责查看积分和兑换奖品。
 export function RewardsScreen({ points, rewards, redemptions, tabs, busy, onBack, onRedeem }: RewardsScreenProps) {
+  const orderedRedemptions = sortRedemptionsNewestFirst(redemptions);
+
   return (
     <MobileAppShell activeTab="rewards" tabs={tabs}>
       <GlassScreen>
@@ -42,14 +52,17 @@ export function RewardsScreen({ points, rewards, redemptions, tabs, busy, onBack
           {rewards.length === 0 && <EmptyState title="心意正在准备中" description="照顾者添加奖品后会出现在这里。" />}
         </section>
         <section className="redemption-list redemption-list--shop">
-          <h2>最近兑换</h2>
-          {redemptions.slice(0, 3).map((item) => (
-            <div className="redemption-list__item" key={item.id}>
-              <span><b>{item.title}</b><small>{item.costPoints} 积分{redemptionDate(item.createdAt) ? ` · ${redemptionDate(item.createdAt)}` : ""}</small></span>
-              <em>已兑换</em>
-            </div>
-          ))}
-          {redemptions.length === 0 && <p>还没有兑换记录，慢慢攒下喜欢的心意。</p>}
+          <h2>已兑换</h2>
+          {orderedRedemptions.map((item) => {
+            const redeemedAt = redemptionDateTime(item.createdAt);
+            return (
+              <div className="redemption-list__item" key={item.id}>
+                <span><b>{item.title}</b><small>{item.costPoints} 积分{redeemedAt ? ` · ${redeemedAt}` : ""}</small></span>
+                <em>已兑换</em>
+              </div>
+            );
+          })}
+          {orderedRedemptions.length === 0 && <p>还没有兑换记录，慢慢攒下喜欢的心意。</p>}
         </section>
       </GlassScreen>
     </MobileAppShell>

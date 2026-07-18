@@ -7,11 +7,14 @@ import { fieldLabels, type FieldKey } from "./recordFields";
 interface RecordCardProps {
   record: RecordDisplay;
   fields: FieldKey[];
+  commentAuthorName?: string;
   children?: ReactNode;
   onOpen?: () => void;
 }
 
-function RecordContent({ record, fields, children }: RecordCardProps) {
+function RecordContent({ record, fields, commentAuthorName, children }: RecordCardProps) {
+  const authorName = record.boundComment?.authorDisplayName?.trim() || commentAuthorName?.trim() || "TA";
+
   return (
     <>
       <div className="record-card__fields">
@@ -23,7 +26,7 @@ function RecordContent({ record, fields, children }: RecordCardProps) {
         ))}
       </div>
       <div className="record-card__comment">
-        <span>管理员评论</span>
+        <span>{authorName}评论</span>
         <p>{record.managerComment || record.boundComment?.content || "暂无评论"}</p>
       </div>
       {children}

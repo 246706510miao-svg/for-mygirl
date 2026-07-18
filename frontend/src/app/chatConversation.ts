@@ -84,6 +84,28 @@ export function replacePendingWithMessage(messages: ChatMessageItem[], pendingId
   return next;
 }
 
+// 当前交互问题可能已经作为历史消息展示；提交回答后的“正在思考”不应让旧问题再次出现。
+export function shouldShowInteractionPrompt(messages: ChatMessageItem[], prompt?: string | null) {
+  const normalizedPrompt = prompt?.trim();
+  if (!normalizedPrompt) {
+    return false;
+  }
+  if (messages[messages.length - 1]?.content.trim() === normalizedPrompt) {
+    return false;
+  }
+
+  let latestPromptIndex = -1;
+  messages.forEach((message, index) => {
+    if (message.type === "ai" && message.content.trim() === normalizedPrompt) {
+      latestPromptIndex = index;
+    }
+  });
+  if (latestPromptIndex < 0) {
+    return true;
+  }
+  return !messages.slice(latestPromptIndex + 1).some((message) => message.pending);
+}
+
 // 请求失败时用对话内的简短回复替换思考状态，避免展示原始接口异常。
 export function replacePendingWithError(messages: ChatMessageItem[], pendingId: string, content: string) {
   const expectedId = `pending-${pendingId}`;

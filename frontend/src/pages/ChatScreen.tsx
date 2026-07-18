@@ -12,7 +12,7 @@ import { ThirdConfirmationPanel } from "../components/chat/ThirdConfirmationPane
 import { Pressable } from "../components/ui/Pressable";
 import type { FeishuAccount, FeishuTableConfig, PendingThirdConfirmation, RecordDraft, ThirdInteractionResponse } from "../shared/types/api";
 import type { SaveFeishuAccountPayload, SaveFeishuTablePayload } from "../features/feishu/api";
-import type { ChatMessageItem } from "../app/chatConversation";
+import { shouldShowInteractionPrompt, type ChatMessageItem } from "../app/chatConversation";
 
 interface ChatScreenProps {
   messages: ChatMessageItem[];
@@ -85,7 +85,7 @@ export function ChatScreen({
 }: ChatScreenProps) {
   const conversationEndRef = useRef<HTMLDivElement>(null);
   const interactionPrompt = pendingConfirmation?.requestText?.trim();
-  const promptAlreadyShown = Boolean(interactionPrompt && messages[messages.length - 1]?.content.trim() === interactionPrompt);
+  const showInteractionPrompt = shouldShowInteractionPrompt(messages, interactionPrompt);
   const needsExplicitConfirmation = pendingConfirmation?.interactionKind === "confirm";
 
   useEffect(() => {
@@ -131,7 +131,7 @@ export function ChatScreen({
               {message.content}
             </ChatBubble>
           ))}
-          {interactionPrompt && !promptAlreadyShown && (
+          {showInteractionPrompt && (
             <ChatBubble key={`interaction-${pendingConfirmation?.confirmationId}`} type="ai">
               {interactionPrompt}
             </ChatBubble>

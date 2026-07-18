@@ -13,6 +13,7 @@ import type { RecordDisplay } from "../shared/types/api";
 interface RecordsScreenProps {
   title: string;
   records: RecordDisplay[];
+  commentAuthorName?: string;
   selectedFields: FieldKey[];
   onFieldsChange: (value: FieldKey[]) => void;
   onBack: () => void;
@@ -20,7 +21,7 @@ interface RecordsScreenProps {
 }
 
 // 这个页面展示用户最近记录和字段选择。
-export function RecordsScreen({ title, records, selectedFields, onFieldsChange, onBack, tabs }: RecordsScreenProps) {
+export function RecordsScreen({ title, records, commentAuthorName, selectedFields, onFieldsChange, onBack, tabs }: RecordsScreenProps) {
   const [selectedRecord, setSelectedRecord] = useState<RecordDisplay | null>(null);
 
   return (
@@ -30,7 +31,7 @@ export function RecordsScreen({ title, records, selectedFields, onFieldsChange, 
         <FieldSelector selected={selectedFields} onChange={onFieldsChange} />
         <section className="record-list">
           {records.map((record) => (
-            <RecordCard key={record.recordId} record={record} fields={selectedFields} onOpen={() => setSelectedRecord(record)} />
+            <RecordCard key={record.recordId} record={record} fields={selectedFields} commentAuthorName={commentAuthorName} onOpen={() => setSelectedRecord(record)} />
           ))}
           {records.length === 0 && <EmptyState title="第一篇记录还在路上" description="去和 CCC 聊聊，把今天轻轻记下来。" />}
         </section>
@@ -42,7 +43,7 @@ export function RecordsScreen({ title, records, selectedFields, onFieldsChange, 
               <p>{selectedRecord.summary}</p>
               <strong>{selectedRecord.managerScore ?? selectedRecord.score ?? "-"} 分</strong>
               <div>
-                <b>管理员评论</b>
+                <b>{selectedRecord.boundComment?.authorDisplayName?.trim() || commentAuthorName?.trim() || "TA"}评论</b>
                 <p>{selectedRecord.managerComment || selectedRecord.boundComment?.content || "暂无评论"}</p>
               </div>
             </article>

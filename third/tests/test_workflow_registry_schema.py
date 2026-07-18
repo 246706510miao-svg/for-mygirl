@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from third.Tool import mock_repository
 from third.Tool import tool_ChangeFeishuBitableFields as schema_tool
+from third.Tool.feishu_client import FeishuBitableClient
 from third.agents.workflowagent import agent as workflowagent
 from third.workflow import agent_runner, validation
 from third.workflow.plan_validator import PlanValidationError, validate_workflow_plan
@@ -138,6 +139,20 @@ class WorkflowRegistrySchemaTests(unittest.TestCase):
         self.assertEqual(request["actions"][0]["type"], 1)
         self.assertEqual(output["data_json"]["preview"]["actions"][0]["field_name"], "情绪")
 
+    def test_schema_validation_normalizes_planner_add_field_alias(self) -> None:
+        context = _schema_validation_context(
+            [{"action": "add_field", "field_name": "任务等级", "field_type": "文本类型", "property": {}, "reason": "记录任务等级"}],
+            "新增文本字段 任务等级",
+        )
+
+        with patch.object(validation, "load_config", return_value=FakeConfig()):
+            output = validation.run_validation_node(context)
+
+        action = output["data_json"]["tool_input_payload"]["schema_change_request"]["actions"][0]
+        self.assertEqual(action["action"], "create_field")
+        self.assertEqual(action["field_name"], "任务等级")
+        self.assertEqual(action["type"], 1)
+
     def test_schema_validation_rejects_bad_actions(self) -> None:
         duplicate = _schema_validation_context([{"action": "create_field", "field_name": "标题", "field_type": "text"}], "新增字段 标题")
         type_change = _schema_validation_context([{"action": "update_field", "field_name": "标题", "field_type": "number"}], "把字段标题改成数字")
@@ -167,6 +182,81 @@ class WorkflowRegistrySchemaTests(unittest.TestCase):
         field_names = [field["field_name"] for field in mock_repository.list_mock_field_definitions()]
         self.assertEqual(data["action_count"], 1)
         self.assertIn("情绪", field_names)
+
+    def test_schema_tool_injects_private_table_context_for_real_write(self) -> None:
+        config = FakeConfig()
+        config.feishu_use_real = True
+        payload = {
+            "content": [
+                {
+                    "text": json.dumps(
+                        {
+                            "original_input": "新增字段 任务等级",
+                            "schema_change_request": {
+                                "actions": [
+                                    {
+                                        "action": "create_field",
+                                        "field_name": "任务等级",
+                                        "type": 1,
+                                        "property": {},
+                                    }
+                                ]
+                            },
+                        },
+                        ensure_ascii=False,
+                    )
+                }
+            ]
+        }
+
+        with (
+            patch.object(schema_tool, "load_config", return_value=config),
+            patch.object(
+                schema_tool,
+                "_execute_real_action",
+                return_value={
+                    "action": "create_field",
+                    "field": {"field_id": "fld_test", "field_name": "任务等级", "type": 1, "property": {}},
+                    "reason": "",
+                },
+            ) as execute,
+            patch.object(schema_tool, "_refresh_real_field_cache"),
+        ):
+            result = schema_tool.run_tool_ChangeFeishuBitableFields(payload)
+
+        data = json.loads(result["content"][0]["text"])
+        request = execute.call_args.args[2]
+        self.assertEqual(data["backend"], "feishu")
+        self.assertEqual(request["app_token"], "app_test")
+        self.assertEqual(request["table_id"], "tbl_test")
+
+    def test_real_field_update_keeps_required_field_type(self) -> None:
+        client = FeishuBitableClient(FakeConfig())
+        response = {
+            "data": {
+                "field": {
+                    "field_id": "fld_test",
+                    "field_name": "任务等级",
+                    "type": 1,
+                    "property": {},
+                }
+            }
+        }
+
+        with patch.object(client, "_put_json", return_value=response) as put_json:
+            result = client.update_field(
+                {
+                    "app_token": "app_test",
+                    "table_id": "tbl_test",
+                    "field_id": "fld_test",
+                    "field_name": "任务等级",
+                    "type": 1,
+                    "property": {},
+                }
+            )
+
+        self.assertEqual(result["field_name"], "任务等级")
+        self.assertEqual(put_json.call_args.args[1]["type"], 1)
 
     def test_schema_plan_validator_rejects_missing_refresh_and_delete_risk(self) -> None:
         missing_refresh = build_plan_from_template("change_schema_then_create_record", "新增字段 情绪，然后写一条记录")

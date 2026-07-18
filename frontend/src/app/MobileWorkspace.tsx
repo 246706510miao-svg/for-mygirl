@@ -427,6 +427,8 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
     }
     const turnId = newClientId("turn");
     setChatInput("");
+    // 请求变量已经保存当前交互；立即移除旧追问，避免它在“正在思考…”后再次被渲染。
+    setPendingConfirmation(null);
     setChatMessages((items) => appendOptimisticTurn(items, userContent, turnId));
     const actionText = response === "approve" ? "写入中" : response === "cancel" ? "取消中" : "思考中";
     void runChatAction(actionText, turnId, () => currentSession.id, async () => {
@@ -687,7 +689,7 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
         />
       )}
       {screen === "userRecent" && (
-        <RecordsScreen title="我们的日常" records={userRecords} selectedFields={selectedFields} onFieldsChange={setSelectedFields} onBack={() => setScreen("home")} tabs={userTabs} />
+        <RecordsScreen title="我们的日常" records={userRecords} commentAuthorName={context.binding.boundUser?.displayName} selectedFields={selectedFields} onFieldsChange={setSelectedFields} onBack={() => setScreen("home")} tabs={userTabs} />
       )}
       {screen === "rewards" && (
         <RewardsScreen points={points} rewards={rewards} redemptions={redemptions} tabs={userTabs} busy={busy} onBack={() => setScreen("home")} onRedeem={redeem} />

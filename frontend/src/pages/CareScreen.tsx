@@ -10,6 +10,7 @@ import { BottomSheet } from "../components/ui/BottomSheet";
 import { EmptyState } from "../components/ui/EmptyState";
 import { MetricLine } from "../components/ui/MetricLine";
 import { Pressable } from "../components/ui/Pressable";
+import { pendingCareRecords } from "../app/mobileViewState";
 import type { PointSummary, RecordDisplay, RewardItem, RewardRedemption } from "../shared/types/api";
 
 interface CareScreenProps {
@@ -33,6 +34,7 @@ export function CareScreen({ points, records, rewards, redemptions, busy, onBack
   const [rewardCost, setRewardCost] = useState("20");
   const [rewardDescription, setRewardDescription] = useState("");
   const [error, setError] = useState("");
+  const commentRecords = pendingCareRecords(records);
 
   async function submitReward(event: FormEvent) {
     event.preventDefault();
@@ -65,7 +67,7 @@ export function CareScreen({ points, records, rewards, redemptions, busy, onBack
 
         {tab === "comments" && (
           <section className="record-list care-record-list" role="tabpanel">
-            {records.map((record) => (
+            {commentRecords.map((record) => (
               <RecordCard key={record.recordId} record={record} fields={[...careFields]}>
                 <InlineCommentForm
                   initialComment={record.managerComment || ""}
@@ -75,7 +77,7 @@ export function CareScreen({ points, records, rewards, redemptions, busy, onBack
                 />
               </RecordCard>
             ))}
-            {records.length === 0 && <EmptyState title="TA 还没有最近记录" description="有记录后，就可以在这里评论和打分。" />}
+            {commentRecords.length === 0 && <EmptyState title="暂无待评论记录" description="新的记录出现后，就可以在这里评论和打分。" />}
           </section>
         )}
 
