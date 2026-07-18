@@ -4,6 +4,8 @@ import com.formygirl.common.ApiException;
 import com.formygirl.common.JsonSupport;
 import com.formygirl.feishu.FeishuConfigService;
 import com.formygirl.persistence.BusinessRepository;
+import com.formygirl.thirdclient.ThirdWorkflowContracts.WorkflowMetadata;
+import com.formygirl.thirdclient.ThirdWorkflowContracts.WorkflowResponse;
 import com.formygirl.thirdclient.ThirdWorkflowClient;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
@@ -87,21 +89,22 @@ public class OpsService {
             throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "记录会话不存在");
         }
         FeishuConfigService.WorkflowFeishuContext feishuContext = feishuConfigService.workflowContext(String.valueOf(record.get("user_id")), stringOrNull(session.get("feishu_table_config_id")));
-        Map<String, Object> metadata = dto(
-                "businessRecordId", recordId,
-                "operation", "retry_sync",
-                "mode", mode,
-                "idempotencyKey", requestId
+        WorkflowMetadata metadata = new WorkflowMetadata(
+                null,
+                recordId,
+                "retry_sync",
+                mode,
+                requestId,
+                feishuContext.publicMetadata()
         );
-        metadata.putAll(feishuContext.publicMetadata());
-        Map<String, Object> third = thirdClient.invoke("新增一条记录，重试同步：" + record.getOrDefault("final_text", ""), metadata, feishuContext.privateMetadata());
-        String thirdSessionId = stringOrNull(third.get("session_id"));
+        WorkflowResponse third = thirdClient.invoke("新增一条记录，重试同步：" + record.getOrDefault("final_text", ""), metadata, feishuContext.privateMetadata());
+        String thirdSessionId = third.sessionId();
         if (thirdSessionId == null) {
-            throw new ApiException(HttpStatus.BAD_GATEWAY, "AI_SERVICE_ERROR", "third workflow 未返回 session_id");
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "THIRD_CONTRACT_MISMATCH", "third workflow 未返回 sessionId");
         }
         int retryCount = intValue(latest.get("retry_count"), 0) + 1;
         Map<String, Object> display = repository.display(recordId);
-        Map<String, Object> sync = repository.insertFeishuSync(recordId, feishuContext.tableConfigId(), thirdSessionId, requestId, "syncing", null, retryCount, dto("retryMode", mode, "thirdStatus", third.get("status"), "thirdSessionId", thirdSessionId));
+        Map<String, Object> sync = repository.insertFeishuSync(recordId, feishuContext.tableConfigId(), thirdSessionId, requestId, "syncing", null, retryCount, dto("retryMode", mode, "thirdStatus", third.status().value(), "thirdSessionId", thirdSessionId));
         Map<String, Object> task = repository.createWorkflowTask(String.valueOf(session.get("id")), "retry_sync", requestId, null, null, recordId, String.valueOf(sync.get("id")), thirdSessionId, null, true, "submitted", requestId);
         return dto(
                 "recordId", recordId,

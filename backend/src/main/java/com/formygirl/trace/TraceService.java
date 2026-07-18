@@ -33,7 +33,7 @@ public class TraceService {
         }
         List<Map<String, Object>> syncs = resolvedRecordId == null || resolvedRecordId.isBlank() ? List.of() : repository.feishuSyncs(resolvedRecordId);
         String resolvedThirdSessionId = firstNonBlank(thirdSessionId, firstThirdId(messages), firstThirdId(drafts), firstThirdId(syncs));
-        Map<String, Object> third = Map.of();
+        Object third = Map.of();
         if (resolvedThirdSessionId != null) {
             try {
                 third = thirdClient.timeline(resolvedThirdSessionId);

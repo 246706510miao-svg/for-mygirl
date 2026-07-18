@@ -18,19 +18,29 @@ import com.formygirl.common.ApiException;
 import com.formygirl.feishu.FeishuConfigService;
 import com.formygirl.identity.CurrentPerson;
 import com.formygirl.persistence.BusinessRepository;
+import com.formygirl.thirdclient.ThirdWorkflowContracts.ContentPart;
+import com.formygirl.thirdclient.ThirdWorkflowContracts.InteractionKind;
+import com.formygirl.thirdclient.ThirdWorkflowContracts.SnapshotSession;
+import com.formygirl.thirdclient.ThirdWorkflowContracts.WorkflowConfirmation;
+import com.formygirl.thirdclient.ThirdWorkflowContracts.WorkflowOutputs;
+import com.formygirl.thirdclient.ThirdWorkflowContracts.WorkflowResponse;
+import com.formygirl.thirdclient.ThirdWorkflowContracts.WorkflowSnapshot;
+import com.formygirl.thirdclient.ThirdWorkflowContracts.WorkflowStatus;
 import com.formygirl.thirdclient.ThirdWorkflowClient;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class RecordServiceTest {
+    private final ObjectMapper objectMapper = new ObjectMapper();
     private final BusinessRepository repository = mock(BusinessRepository.class);
     private final ThirdWorkflowClient thirdClient = mock(ThirdWorkflowClient.class);
     private final RecordService service = new RecordService(
             repository,
             thirdClient,
             mock(FeishuConfigService.class),
-            new JsonSupport(new ObjectMapper()),
+            new JsonSupport(objectMapper),
             mock(CommentRepository.class),
             mock(CommentService.class)
     );
@@ -62,8 +72,9 @@ class RecordServiceTest {
 
         when(repository.requireSession("session_1")).thenReturn(session);
         when(repository.draft("draft_1")).thenReturn(draft);
-        when(thirdClient.get("third_1")).thenReturn(Map.of("status", "success"));
-        when(repository.insertDailyRecord(session, draft, "confirm_1", null, "request_1", "success"))
+        when(thirdClient.get("third_1")).thenReturn(workflowResponse("third_1", WorkflowStatus.SUCCESS));
+        when(thirdClient.snapshot("third_1")).thenReturn(terminalSnapshot("third_1", WorkflowStatus.SUCCESS));
+        when(repository.insertDailyRecord(session, draft, "confirm_1", "third_1", "request_1", "success"))
                 .thenReturn(Map.of("id", "record_1"));
         when(repository.insertFeishuSync(any(), any(), any(), any(), any(), any(), anyInt(), anyMap())).thenReturn(Map.of());
         when(repository.upsertDisplay(any(), any(), any(), anyInt(), any(), anyMap(), anyMap())).thenReturn(Map.of());
@@ -131,9 +142,7 @@ class RecordServiceTest {
                 "status", "active"
         ));
         when(repository.latestWorkflowTask("session_1")).thenReturn(sourceTask);
-        when(thirdClient.snapshot("third_1")).thenReturn(Map.of(
-                "confirmation", Map.of("confirmationId", "confirmation_new")
-        ));
+        when(thirdClient.snapshot("third_1")).thenReturn(waitingSnapshot("third_1", "confirmation_new", "请确认", InteractionKind.CONFIRM));
         when(repository.markWorkflowTaskWaitingUser("task_1", "confirmation_new", null)).thenReturn(repairedTask);
 
         ApiException exception = assertThrows(ApiException.class, () -> service.resumeConfirm(
@@ -173,18 +182,93 @@ class RecordServiceTest {
 
         when(repository.requireSession("session_1")).thenReturn(session);
         when(repository.message("message_1")).thenReturn(Map.of("content", "记录两件事"));
-        when(thirdClient.get("third_1")).thenReturn(Map.of(
-                "status", "waiting_user",
-                "confirmation", Map.of("confirmation_id", "confirmation_1", "request_text", question)
-        ));
-        when(thirdClient.snapshot("third_1")).thenReturn(Map.of(
-                "confirmation", Map.of("confirmationId", "confirmation_1", "requestText", question),
-                "outputs", Map.of()
-        ));
+        when(thirdClient.get("third_1")).thenReturn(workflowResponse("third_1", WorkflowStatus.WAITING_USER));
+        when(thirdClient.snapshot("third_1")).thenReturn(waitingSnapshot("third_1", "confirmation_1", question, InteractionKind.CLARIFY));
 
         service.processWorkflowTask(task);
 
         verify(repository).insertMessage("session_1", "ai", "text", question, null, null, "third_1", "request_1");
         verify(repository).markWorkflowTaskWaitingUser("task_1", "confirmation_1", null);
+    }
+
+    @Test
+    void waitingSnapshotWithoutConfirmationFailsExplicitly() {
+        CurrentPerson person = new CurrentPerson("person_1", "USER", "用户");
+        when(repository.requireSession("session_1")).thenReturn(Map.of(
+                "id", "session_1",
+                "user_id", "person_1",
+                "status", "active"
+        ));
+        when(repository.latestWorkflowTask("session_1")).thenReturn(Map.of(
+                "id", "task_1",
+                "session_id", "session_1",
+                "third_session_id", "third_1",
+                "confirmation_id", "confirmation_1",
+                "status", "waiting_user"
+        ));
+        when(thirdClient.snapshot("third_1")).thenReturn(terminalSnapshot("third_1", WorkflowStatus.WAITING_USER));
+
+        ApiException exception = assertThrows(ApiException.class, () -> service.resumeConfirm(
+                person,
+                "session_1",
+                null,
+                null,
+                "third_1",
+                "confirmation_1",
+                "answer",
+                "补充内容",
+                false,
+                "request_1"
+        ));
+
+        assertEquals("THIRD_CONTRACT_MISMATCH", exception.getCode());
+    }
+
+    private WorkflowResponse workflowResponse(String sessionId, WorkflowStatus status) {
+        return new WorkflowResponse(sessionId, status, List.of(new ContentPart("")), null);
+    }
+
+    private WorkflowSnapshot waitingSnapshot(String sessionId, String confirmationId, String question, InteractionKind kind) {
+        return new WorkflowSnapshot(
+                new SnapshotSession(
+                        sessionId,
+                        WorkflowStatus.WAITING_USER,
+                        null,
+                        "测试输入",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null
+                ),
+                null,
+                new WorkflowConfirmation(
+                        confirmationId,
+                        "pending",
+                        question,
+                        objectMapper.createObjectNode(),
+                        null,
+                        null,
+                        kind,
+                        List.of(),
+                        null,
+                        null,
+                        null
+                ),
+                new WorkflowOutputs(null, null, null, null, null, null),
+                Map.of(),
+                List.of()
+        );
+    }
+
+    private WorkflowSnapshot terminalSnapshot(String sessionId, WorkflowStatus status) {
+        return new WorkflowSnapshot(
+                new SnapshotSession(sessionId, status, null, "测试输入", null, null, null, null, null),
+                null,
+                null,
+                new WorkflowOutputs(null, null, null, null, null, null),
+                Map.of(),
+                List.of()
+        );
     }
 }

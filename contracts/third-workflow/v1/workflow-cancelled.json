@@ -1,0 +1,10 @@
+{
+  "sessionId": "session_cancelled",
+  "status": "cancelled",
+  "content": [
+    {
+      "text": "已取消"
+    }
+  ],
+  "errorText": null
+}

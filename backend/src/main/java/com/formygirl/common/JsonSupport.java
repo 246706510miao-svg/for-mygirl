@@ -2,6 +2,7 @@ package com.formygirl.common;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Component;
@@ -34,6 +35,19 @@ public class JsonSupport {
         } catch (Exception exception) {
             return Map.of("raw", json);
         }
+    }
+
+    // 这个函数把开放 JSON 叶子转换成业务层使用的 Map。
+    public Map<String, Object> map(JsonNode value) {
+        if (value == null || value.isNull() || !value.isObject()) {
+            return Map.of();
+        }
+        return objectMapper.convertValue(value, new TypeReference<Map<String, Object>>() {});
+    }
+
+    // 这个函数把动态飞书字段等开放结构限制在 JsonNode 叶子。
+    public JsonNode node(Object value) {
+        return objectMapper.valueToTree(value == null ? Map.of() : value);
     }
 
     // 这个函数把数据库 JSON 字符串解析成 List。

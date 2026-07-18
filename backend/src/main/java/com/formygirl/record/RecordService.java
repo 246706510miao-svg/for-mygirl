@@ -1,5 +1,6 @@
 package com.formygirl.record;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.formygirl.common.ApiException;
 import com.formygirl.common.JsonSupport;
 import com.formygirl.comment.CommentRepository;
@@ -7,6 +8,12 @@ import com.formygirl.comment.CommentService;
 import com.formygirl.feishu.FeishuConfigService;
 import com.formygirl.identity.CurrentPerson;
 import com.formygirl.persistence.BusinessRepository;
+import com.formygirl.thirdclient.ThirdWorkflowContracts.WorkflowConfirmation;
+import com.formygirl.thirdclient.ThirdWorkflowContracts.WorkflowMetadata;
+import com.formygirl.thirdclient.ThirdWorkflowContracts.WorkflowOutputs;
+import com.formygirl.thirdclient.ThirdWorkflowContracts.WorkflowResponse;
+import com.formygirl.thirdclient.ThirdWorkflowContracts.WorkflowSnapshot;
+import com.formygirl.thirdclient.ThirdWorkflowContracts.WorkflowStatus;
 import com.formygirl.thirdclient.ThirdWorkflowClient;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -93,11 +100,12 @@ public class RecordService {
         }
         Map<String, Object> userMessage = repository.insertMessage(sessionId, "user", "text", content, null, clientMessageId, null, requestId);
         FeishuConfigService.WorkflowFeishuContext feishuContext = feishuContext(person.id(), session);
-        Map<String, Object> third = thirdClient.invoke(content, workflowMetadata(feishuContext, Map.of(
-                "businessSessionId", sessionId,
-                "idempotencyKey", clientMessageId
-        )), feishuContext.privateMetadata());
-        String thirdSessionId = stringOrNull(third.get("session_id"));
+        WorkflowResponse third = thirdClient.invoke(
+                content,
+                workflowMetadata(feishuContext, sessionId, null, null, clientMessageId),
+                feishuContext.privateMetadata()
+        );
+        String thirdSessionId = third.sessionId();
         userMessage = repository.updateMessageThirdSession(String.valueOf(userMessage.get("id")), thirdSessionId);
         Map<String, Object> task = repository.createWorkflowTask(sessionId, "message", clientMessageId, String.valueOf(userMessage.get("id")), null, thirdSessionId, null, null, "submitted", requestId);
         return processingResult(sessionId, userMessage, task);
@@ -142,8 +150,8 @@ public class RecordService {
             throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "草稿不存在");
         }
         repository.confirmDraft(sessionId, draftId);
-        Map<String, Object> third = invokeConfirmWorkflow(session, draft, clientConfirmId);
-        String thirdSessionId = stringOrNull(third.get("session_id"));
+        WorkflowResponse third = invokeConfirmWorkflow(session, draft, clientConfirmId);
+        String thirdSessionId = third.sessionId();
         Map<String, Object> task = repository.createWorkflowTask(sessionId, "confirm", clientConfirmId, null, draftId, thirdSessionId, null, true, "submitted", requestId);
         return processingConfirmResult(sessionId, draft, task);
     }
@@ -234,19 +242,18 @@ public class RecordService {
     }
 
     // 这个函数把 third 终态落成本地正式记录、同步记录和展示记录。
-    private Map<String, Object> completeConfirm(Map<String, Object> session, Map<String, Object> draft, String clientConfirmId, Map<String, Object> third, String requestId) {
+    private Map<String, Object> completeConfirm(Map<String, Object> session, Map<String, Object> draft, String clientConfirmId, WorkflowResponse third, String requestId) {
         String sessionId = String.valueOf(session.get("id"));
         repository.confirmDraft(sessionId, String.valueOf(draft.get("id")));
-        String thirdStatus = String.valueOf(third.get("status"));
-        Object thirdSessionValue = third.get("session_id");
-        String thirdSessionId = thirdSessionValue == null ? null : String.valueOf(thirdSessionValue);
+        String thirdStatus = third.status().value();
+        String thirdSessionId = third.sessionId();
         String recordStatus = "success".equals(thirdStatus) ? "success" : "sync_failed";
-        String errorMessage = "success".equals(thirdStatus) ? null : String.valueOf(third.getOrDefault("error_text", "third workflow 未成功完成"));
+        String errorMessage = "success".equals(thirdStatus) ? null : textOrDefault(third.errorText(), "third workflow 未成功完成");
         Map<String, Object> record = repository.insertDailyRecord(session, draft, clientConfirmId, thirdSessionId, requestId, recordStatus);
         Map<String, Object> draftJson = json.map(String.valueOf(draft.get("draft_json")));
         Map<String, Object> syncPayload = dto("thirdStatus", thirdStatus, "thirdSessionId", thirdSessionId);
         if (thirdSessionId != null && !thirdSessionId.isBlank()) {
-            syncPayload.put("thirdSnapshot", safeSnapshot(thirdSessionId));
+            syncPayload.put("thirdSnapshot", requiredSnapshot(thirdSessionId));
         }
         String configId = stringOrNull(session.get("feishu_table_config_id"));
         Map<String, Object> sync = repository.insertFeishuSync(String.valueOf(record.get("id")), configId, thirdSessionId, requestId, "success".equals(recordStatus) ? "success" : "failed", errorMessage, "success".equals(recordStatus) ? 0 : 1, syncPayload);
@@ -302,9 +309,9 @@ public class RecordService {
             return;
         }
         try {
-            Map<String, Object> third = thirdClient.get(thirdSessionId);
-            String status = String.valueOf(third.get("status"));
-            if ("queued".equals(status) || "running".equals(status)) {
+            WorkflowResponse third = thirdClient.get(thirdSessionId);
+            WorkflowStatus status = third.status();
+            if (status == WorkflowStatus.QUEUED || status == WorkflowStatus.RUNNING) {
                 repository.updateWorkflowTaskStatus(taskId, "running", null);
                 return;
             }
@@ -362,16 +369,16 @@ public class RecordService {
             return null;
         }
         String thirdSessionId = stringOrNull(task.get("third_session_id"));
-        Map<String, Object> snapshot = safeSnapshot(thirdSessionId);
-        Map<String, Object> confirmation = mapValue(snapshot.get("confirmation"));
-        Object preview = selectedConfirmationPreview(snapshot, confirmation.get("previewJson"));
+        WorkflowSnapshot snapshot = requiredSnapshot(thirdSessionId);
+        WorkflowConfirmation confirmation = requiredConfirmation(snapshot);
+        Object preview = selectedConfirmationPreview(snapshot, confirmation.preview());
         return dto(
                 "status", "waiting_user",
                 "thirdSessionId", thirdSessionId,
-                "confirmationId", firstMappedValue(confirmation, task.get("confirmation_id"), "confirmationId", "confirmation_id"),
-                "requestText", firstMappedValue(confirmation, null, "requestText", "request_text"),
-                "interactionKind", firstMappedValue(confirmation, "confirm", "interactionKind", "interaction_kind"),
-                "options", firstMappedValue(confirmation, List.of(), "options"),
+                "confirmationId", confirmation.confirmationId(),
+                "requestText", confirmation.requestText(),
+                "interactionKind", confirmation.interactionKind().value(),
+                "options", confirmation.options(),
                 "preview", preview instanceof Map<?, ?> map ? castMap(map) : Map.of(),
                 "clientConfirmId", task.get("client_action_id"),
                 "draftId", stringOrNull(task.get("draft_id"))
@@ -381,8 +388,7 @@ public class RecordService {
     // third 已推进但业务事务回滚时，以当前快照修复 confirmation_id 漂移。
     private String currentConfirmationId(Map<String, Object> task) {
         String thirdSessionId = stringOrNull(task.get("third_session_id"));
-        Map<String, Object> confirmation = mapValue(safeSnapshot(thirdSessionId).get("confirmation"));
-        return stringOrNull(firstMappedValue(confirmation, task.get("confirmation_id"), "confirmationId", "confirmation_id"));
+        return requiredConfirmation(requiredSnapshot(thirdSessionId)).confirmationId();
     }
 
     // 这个函数把 workflow task 转成前端可轮询的状态对象。
@@ -412,7 +418,7 @@ public class RecordService {
         if (thirdSessionId == null || thirdSessionId.isBlank()) {
             return Map.of();
         }
-        Map<String, Object> draft = snapshotOutput(safeSnapshot(thirdSessionId), "draft");
+        Map<String, Object> draft = snapshotOutput(requiredSnapshot(thirdSessionId), "draft");
         if (!draft.isEmpty()) {
             return normalizeDraft(draft, session);
         }
@@ -420,28 +426,28 @@ public class RecordService {
     }
 
     // 这个函数提交确认写入 workflow，不等待 third 执行完成。
-    private Map<String, Object> invokeConfirmWorkflow(Map<String, Object> session, Map<String, Object> draft, String clientConfirmId) {
+    private WorkflowResponse invokeConfirmWorkflow(Map<String, Object> session, Map<String, Object> draft, String clientConfirmId) {
         String sessionId = String.valueOf(session.get("id"));
         Map<String, Object> draftJson = json.map(String.valueOf(draft.get("draft_json")));
         String title = String.valueOf(draftJson.getOrDefault("title", "今日自律记录"));
         String summary = String.valueOf(draftJson.getOrDefault("summary", draft.get("preview_text")));
         FeishuConfigService.WorkflowFeishuContext feishuContext = feishuContext(String.valueOf(session.get("user_id")), session);
-        return thirdClient.invoke("新增一条记录，事项名称为" + title + "，总结为" + summary, workflowMetadata(feishuContext, Map.of(
-                "businessSessionId", sessionId,
-                "operation", "confirm_sync",
-                "idempotencyKey", clientConfirmId
-        )), feishuContext.privateMetadata());
+        return thirdClient.invoke(
+                "新增一条记录，事项名称为" + title + "，总结为" + summary,
+                workflowMetadata(feishuContext, sessionId, null, "confirm_sync", clientConfirmId),
+                feishuContext.privateMetadata()
+        );
     }
 
     // 这个函数把 waiting_user 的 third 状态转换成本地草稿或待确认任务。
-    private void applyWaitingUserTask(Map<String, Object> task, Map<String, Object> third) {
+    private void applyWaitingUserTask(Map<String, Object> task, WorkflowResponse third) {
         String triggerType = String.valueOf(task.get("trigger_type"));
         String sessionId = String.valueOf(task.get("session_id"));
         String thirdSessionId = stringOrNull(task.get("third_session_id"));
-        Map<String, Object> snapshot = safeSnapshot(thirdSessionId);
-        Map<String, Object> confirmation = mapValue(snapshot.get("confirmation"));
-        String confirmationId = stringOrNull(firstMappedValue(confirmation, confirmationValue(third, "confirmation_id"), "confirmationId", "confirmation_id"));
-        String requestText = stringOrNull(firstMappedValue(confirmation, confirmationValue(third, "request_text"), "requestText", "request_text"));
+        WorkflowSnapshot snapshot = requiredSnapshot(thirdSessionId);
+        WorkflowConfirmation confirmation = requiredConfirmation(snapshot);
+        String confirmationId = confirmation.confirmationId();
+        String requestText = confirmation.requestText();
         String draftId = stringOrNull(task.get("draft_id"));
         if ("retry_sync".equals(triggerType)) {
             if (thirdSessionId == null || confirmationId == null) {
@@ -472,9 +478,9 @@ public class RecordService {
     }
 
     // 这个函数把 third 终态转换成业务草稿、正式记录或错误消息。
-    private void applyTerminalTask(Map<String, Object> task, Map<String, Object> third) {
+    private void applyTerminalTask(Map<String, Object> task, WorkflowResponse third) {
         String triggerType = String.valueOf(task.get("trigger_type"));
-        String thirdStatus = String.valueOf(third.get("status"));
+        String thirdStatus = third.status().value();
         if ("message".equals(triggerType)) {
             applyTerminalMessageTask(task, third, thirdStatus);
             return;
@@ -487,7 +493,7 @@ public class RecordService {
     }
 
     // 这个函数处理消息阶段 workflow 的终态。
-    private void applyTerminalMessageTask(Map<String, Object> task, Map<String, Object> third, String thirdStatus) {
+    private void applyTerminalMessageTask(Map<String, Object> task, WorkflowResponse third, String thirdStatus) {
         String sessionId = String.valueOf(task.get("session_id"));
         String thirdSessionId = stringOrNull(task.get("third_session_id"));
         String requestId = String.valueOf(task.get("request_id"));
@@ -504,13 +510,13 @@ public class RecordService {
             repository.updateWorkflowTaskStatus(String.valueOf(task.get("id")), "completed", null);
             return;
         }
-        String errorText = String.valueOf(third.getOrDefault("error_text", thirdStatus));
+        String errorText = textOrDefault(third.errorText(), thirdStatus);
         repository.insertMessage(sessionId, "ai", "text", "这次没有顺利完成，请再试一次。", null, null, thirdSessionId, requestId);
         repository.updateWorkflowTaskStatus(String.valueOf(task.get("id")), "failed", errorText);
     }
 
     // 这个函数处理后台重试飞书同步的终态。
-    private void applyTerminalRetrySyncTask(Map<String, Object> task, Map<String, Object> third, String thirdStatus) {
+    private void applyTerminalRetrySyncTask(Map<String, Object> task, WorkflowResponse third, String thirdStatus) {
         String taskId = String.valueOf(task.get("id"));
         String recordId = stringOrNull(task.get("record_id"));
         String syncId = stringOrNull(task.get("sync_id"));
@@ -524,10 +530,10 @@ public class RecordService {
         payload.put("thirdStatus", thirdStatus);
         payload.put("thirdSessionId", thirdSessionId);
         if (thirdSessionId != null && !thirdSessionId.isBlank()) {
-            payload.put("thirdSnapshot", safeSnapshot(thirdSessionId));
+            payload.put("thirdSnapshot", requiredSnapshot(thirdSessionId));
         }
         boolean success = "success".equals(thirdStatus);
-        String errorText = success ? null : String.valueOf(third.getOrDefault("error_text", thirdAnswer(third)));
+        String errorText = success ? null : textOrDefault(third.errorText(), thirdAnswer(third));
         repository.updateFeishuSync(syncId, success ? "success" : "failed", errorText, payload);
         Map<String, Object> display = repository.display(recordId);
         if (success) {
@@ -546,7 +552,7 @@ public class RecordService {
     }
 
     // 这个函数处理确认或继续确认 workflow 的终态。
-    private void applyTerminalConfirmTask(Map<String, Object> task, Map<String, Object> third) {
+    private void applyTerminalConfirmTask(Map<String, Object> task, WorkflowResponse third) {
         String sessionId = String.valueOf(task.get("session_id"));
         String draftId = stringOrNull(task.get("draft_id"));
         String thirdSessionId = stringOrNull(task.get("third_session_id"));
@@ -562,18 +568,13 @@ public class RecordService {
     }
 
     // 这个函数判断 third 是否正在等待用户确认。
-    private boolean isWaitingUser(Map<String, Object> third) {
-        return "waiting_user".equals(String.valueOf(third.get("status")));
+    private boolean isWaitingUser(WorkflowResponse third) {
+        return third.status() == WorkflowStatus.WAITING_USER;
     }
 
     // 这个函数判断 third workflow 是否已经到终态。
-    private boolean isWorkflowTerminal(Map<String, Object> third) {
-        return List.of("success", "failed", "cancelled").contains(String.valueOf(third.get("status")));
-    }
-
-    // 这个函数读取 third response.confirmation 里的兼容字段。
-    private Object confirmationValue(Map<String, Object> third, String key) {
-        return mapValue(third.get("confirmation")).get(key);
+    private boolean isWorkflowTerminal(WorkflowResponse third) {
+        return List.of(WorkflowStatus.SUCCESS, WorkflowStatus.FAILED, WorkflowStatus.CANCELLED).contains(third.status());
     }
 
     // 这个函数判断当前 waiting_user 是否可以落成本地记录草稿。
@@ -637,43 +638,49 @@ public class RecordService {
         return fields instanceof Map<?, ?> map ? castMap(map) : Map.of();
     }
 
-    // 这个函数安全读取 third snapshot；失败时返回空 Map，不影响前端确认展示。
-    private Map<String, Object> safeSnapshot(String thirdSessionId) {
+    // 这个函数读取强类型 snapshot；网络或契约错误必须显式上抛。
+    private WorkflowSnapshot requiredSnapshot(String thirdSessionId) {
         if (thirdSessionId == null || thirdSessionId.isBlank()) {
-            return Map.of();
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "THIRD_CONTRACT_MISMATCH", "third workflow 缺少 sessionId");
         }
-        try {
-            Map<String, Object> snapshot = thirdClient.snapshot(thirdSessionId);
-            return snapshot == null ? Map.of() : snapshot;
-        } catch (Exception ignored) {
-            return Map.of();
-        }
+        return thirdClient.snapshot(thirdSessionId);
     }
 
-    // 这个函数从 snapshot.outputs 里读取指定输出对象。
-    private Map<String, Object> snapshotOutput(Map<String, Object> snapshot, String outputKey) {
-        Map<String, Object> outputs = mapValue(snapshot.get("outputs"));
-        return mapValue(outputs.get(outputKey));
+    // 这个函数要求 waiting_user snapshot 提供完整确认对象。
+    private WorkflowConfirmation requiredConfirmation(WorkflowSnapshot snapshot) {
+        if (snapshot == null || snapshot.confirmation() == null) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "THIRD_CONTRACT_MISMATCH", "third waiting_user snapshot 缺少 confirmation");
+        }
+        return snapshot.confirmation();
+    }
+
+    // 这个函数从强类型 snapshot.outputs 里读取指定开放 JSON 叶子。
+    private Map<String, Object> snapshotOutput(WorkflowSnapshot snapshot, String outputKey) {
+        WorkflowOutputs outputs = snapshot.outputs();
+        JsonNode value = switch (outputKey) {
+            case "draft" -> outputs.draft();
+            case "writePayload" -> outputs.writePayload();
+            case "writeResult" -> outputs.writeResult();
+            case "tableSchema" -> outputs.tableSchema();
+            case "records" -> outputs.records();
+            case "finalAnswer" -> outputs.finalAnswer();
+            default -> null;
+        };
+        return json.map(value);
     }
 
     // 这个函数选择给前端展示的确认预览，优先用后端可控的 writePayload.preview。
-    private Object selectedConfirmationPreview(Map<String, Object> snapshot, Object fallback) {
+    private Object selectedConfirmationPreview(WorkflowSnapshot snapshot, JsonNode fallback) {
         Map<String, Object> writePayload = snapshotOutput(snapshot, "writePayload");
         Object preview = writePayload.get("preview");
         if (preview instanceof Map<?, ?> map && !map.isEmpty()) {
             return castMap(map);
         }
-        Map<String, Object> confirmation = mapValue(snapshot.get("confirmation"));
-        Object previewJson = confirmation.get("previewJson");
-        if (previewJson instanceof Map<?, ?> map && !map.isEmpty()) {
-            return castMap(map);
+        Map<String, Object> confirmationPreview = json.map(fallback);
+        if (!confirmationPreview.isEmpty()) {
+            return confirmationPreview;
         }
-        return fallback;
-    }
-
-    // 这个函数把任意对象安全转换成字符串键 Map。
-    private Map<String, Object> mapValue(Object value) {
-        return value instanceof Map<?, ?> map ? castMap(map) : Map.of();
+        return Map.of();
     }
 
     // 这个函数读取多个候选字段中的第一段非空文本。
@@ -715,12 +722,6 @@ public class RecordService {
         return null;
     }
 
-    // 这个函数读取多个候选字段中的第一个值，找不到时返回 fallback。
-    private Object firstMappedValue(Map<String, Object> source, Object fallback, String... keys) {
-        Object value = firstValue(source, keys);
-        return value == null ? fallback : value;
-    }
-
     // 这个函数把字段值拼成一句兜底摘要。
     private String joinFieldValues(Map<String, Object> source) {
         List<String> values = new ArrayList<>();
@@ -734,15 +735,14 @@ public class RecordService {
     }
 
     // 这个函数提取 third response 中的最终文本。
-    private String thirdAnswer(Map<String, Object> third) {
-        Object content = third.get("content");
-        if (content instanceof List<?> list && !list.isEmpty() && list.get(0) instanceof Map<?, ?> first) {
-            String text = textOrDefault(first.get("text"), "");
+    private String thirdAnswer(WorkflowResponse third) {
+        if (third.content() != null && !third.content().isEmpty()) {
+            String text = textOrDefault(third.content().get(0).text(), "");
             if (!text.isBlank()) {
                 return text;
             }
         }
-        String error = textOrDefault(third.get("error_text"), "");
+        String error = textOrDefault(third.errorText(), "");
         if (!error.isBlank()) {
             return "这次没有顺利完成，请再试一次。";
         }
@@ -754,11 +754,22 @@ public class RecordService {
         return feishuConfigService.workflowContext(userId, stringOrNull(session.get("feishu_table_config_id")));
     }
 
-    // 这个函数合并业务 metadata 和可公开的飞书表信息；密钥不会进入这里。
-    private Map<String, Object> workflowMetadata(FeishuConfigService.WorkflowFeishuContext feishuContext, Map<String, Object> base) {
-        Map<String, Object> metadata = new LinkedHashMap<>(base);
-        metadata.putAll(feishuContext.publicMetadata());
-        return metadata;
+    // 这个函数创建强类型公开 metadata；密钥只进入 privateMetadata。
+    private WorkflowMetadata workflowMetadata(
+            FeishuConfigService.WorkflowFeishuContext feishuContext,
+            String businessSessionId,
+            String businessRecordId,
+            String operation,
+            String idempotencyKey
+    ) {
+        return new WorkflowMetadata(
+                businessSessionId,
+                businessRecordId,
+                operation,
+                null,
+                idempotencyKey,
+                feishuContext.publicMetadata()
+        );
     }
 
     // 这个函数根据已有正式记录返回确认结果。

@@ -586,7 +586,7 @@ def debug_page_html() -> str:
       }
       $("submit-workflow").disabled = true;
       try {
-        const response = await fetch("/workflows/invoke", {
+        const response = await fetch("/v1/workflows/invoke", {
           method: "POST",
           headers: {"Content-Type": "application/json"},
           body: JSON.stringify({content: [{text}]})
@@ -595,7 +595,7 @@ def debug_page_html() -> str:
           throw new Error(await response.text());
         }
         const payload = await response.json();
-        state.sessionId = payload.session_id;
+        state.sessionId = payload.sessionId;
         await loadSessions();
         await refreshCurrent(true);
       } catch (error) {
@@ -645,12 +645,13 @@ def debug_page_html() -> str:
       if (!confirmation || !confirmation.confirmation_id) {
         return;
       }
-      const response = await fetch(`/workflows/${encodeURIComponent(state.sessionId)}/resume`, {
+      const response = await fetch(`/v1/workflows/${encodeURIComponent(state.sessionId)}/resume`, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({
-          confirmation_id: confirmation.confirmation_id,
+          confirmationId: confirmation.confirmation_id,
           approved,
+          response: approved ? "approve" : "cancel",
           content: [{text: approved ? "确认执行" : "拒绝执行"}]
         })
       });

@@ -113,6 +113,61 @@ class CompatibilityApiTests(unittest.TestCase):
         state = repository.get_task(invoked["session_id"])
         self.assertEqual(state.user_events[-1]["content"], "C 是评分，总结写练背两小时。")
 
+    def test_v1_uses_one_camel_case_confirmation_contract(self) -> None:
+        repository = InMemoryTaskRepository()
+        planner = ScriptedPlanner(
+            [
+                ActionDecision(action_name="ask_user", arguments={"question": "总结内容是什么？"}),
+                ActionDecision(action_name="finish", arguments={"content": "信息已经补充完整。"}),
+            ]
+        )
+        executor = RollingTaskExecutor(repository=repository, planner=planner)
+        client = TestClient(create_app(executor=executor, repository=repository))
+
+        invoked = client.post(
+            "/v1/workflows/invoke",
+            json={
+                "content": [{"text": "新增一条记录"}],
+                "metadata": {"businessSessionId": "session_1", "idempotencyKey": "message_1"},
+                "privateMetadata": {},
+            },
+        )
+
+        self.assertEqual(invoked.status_code, 200)
+        body = invoked.json()
+        self.assertEqual(body["status"], "waiting_user")
+        self.assertNotIn("confirmation", body)
+        self.assertIn("sessionId", body)
+        self.assertNotIn("session_id", body)
+
+        snapshot = client.get(f"/v1/workflows/{body['sessionId']}/snapshot").json()
+        self.assertEqual(snapshot["confirmation"]["interactionKind"], "clarify")
+        self.assertIn("confirmationId", snapshot["confirmation"])
+        self.assertNotIn("confirmation_id", snapshot["confirmation"])
+
+        rejected = client.post(
+            f"/v1/workflows/{body['sessionId']}/resume",
+            json={
+                "confirmation_id": snapshot["confirmation"]["confirmationId"],
+                "approved": False,
+                "response": "answer",
+                "content": [{"text": "旧字段不应继续被接受"}],
+            },
+        )
+        self.assertEqual(rejected.status_code, 422)
+
+        resumed = client.post(
+            f"/v1/workflows/{body['sessionId']}/resume",
+            json={
+                "confirmationId": snapshot["confirmation"]["confirmationId"],
+                "approved": False,
+                "response": "answer",
+                "content": [{"text": "今天完成了契约测试。"}],
+            },
+        )
+        self.assertEqual(resumed.status_code, 200)
+        self.assertEqual(resumed.json()["status"], "success")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -113,7 +113,7 @@ class RecordSessionInteractionIntegrationTest {
     @Test
     void questionFlowUsesRealControllerTransactionAndThirdHttp() throws Exception {
         String question = "两条记录分别要写什么总结？";
-        third.waiting("confirmation_question_1", question, "ask_user");
+        third.waiting("confirmation_question_1", question, "clarify");
         String sessionId = createSessionAndSendMessage("记录两件事");
         Map<String, Object> waitingTask = processLatestTask(sessionId);
 
@@ -189,7 +189,7 @@ class RecordSessionInteractionIntegrationTest {
 
     @Test
     void acceptedResumeRollbackCanRepairDriftOnRetry() throws Exception {
-        third.waiting("confirmation_old", "请补充今天的总结", "ask_user");
+        third.waiting("confirmation_old", "请补充今天的总结", "clarify");
         String sessionId = createSessionAndSendMessage("今天完成了计划");
         Map<String, Object> waitingTask = processLatestTask(sessionId);
         third.advanceConfirmationOnResumeTo = "confirmation_new";
@@ -230,7 +230,7 @@ class RecordSessionInteractionIntegrationTest {
 
     @Test
     void nonWaitingLatestTaskIsRejectedWithoutCallingThird() throws Exception {
-        third.waiting("confirmation_1", "请回答", "ask_user");
+        third.waiting("confirmation_1", "请回答", "clarify");
         String sessionId = createSessionAndSendMessage("等待处理");
         int snapshotCalls = third.snapshotCalls.get();
 
@@ -247,7 +247,7 @@ class RecordSessionInteractionIntegrationTest {
 
     @Test
     void staleConfirmationIsRejectedBeforeResume() throws Exception {
-        third.waiting("confirmation_current", "请回答", "ask_user");
+        third.waiting("confirmation_current", "请回答", "clarify");
         String sessionId = createSessionAndSendMessage("等待追问");
         Map<String, Object> waitingTask = processLatestTask(sessionId);
 
@@ -264,7 +264,7 @@ class RecordSessionInteractionIntegrationTest {
 
     @Test
     void thirdConflictRollsBackWithoutCreatingLocalTaskOrMessage() throws Exception {
-        third.waiting("confirmation_conflict", "请回答", "ask_user");
+        third.waiting("confirmation_conflict", "请回答", "clarify");
         String sessionId = createSessionAndSendMessage("等待追问");
         Map<String, Object> waitingTask = processLatestTask(sessionId);
         third.resumeResponseCode = 409;
@@ -351,7 +351,7 @@ class RecordSessionInteractionIntegrationTest {
 
     private void assertResume(String body, String confirmationId, String response, boolean approved, String content) throws IOException {
         JsonNode json = objectMapper.readTree(body);
-        assertEquals(confirmationId, json.path("confirmation_id").asText());
+        assertEquals(confirmationId, json.path("confirmationId").asText());
         assertEquals(response, json.path("response").asText());
         assertEquals(approved, json.path("approved").asBoolean());
         assertEquals(content, json.path("content").path(0).path("text").asText());
@@ -373,7 +373,7 @@ class RecordSessionInteractionIntegrationTest {
         private final AtomicInteger snapshotCalls = new AtomicInteger();
         private String confirmationId = "confirmation_1";
         private String requestText = "请回答";
-        private String interactionKind = "ask_user";
+        private String interactionKind = "clarify";
         private String advanceConfirmationOnResumeTo;
         private boolean resumeAccepted;
         private boolean failNextGetAfterResume;
@@ -394,50 +394,41 @@ class RecordSessionInteractionIntegrationTest {
         public MockResponse dispatch(RecordedRequest request) {
             String path = request.getPath();
             String method = request.getMethod();
-            if ("POST".equals(method) && "/workflows/invoke".equals(path)) {
-                return jsonResponse(200, Map.of(
-                        "session_id", THIRD_SESSION_ID,
-                        "status", "queued"
-                ));
+            if ("POST".equals(method) && "/v1/workflows/invoke".equals(path)) {
+                return workflowResponse("queued");
             }
-            if ("GET".equals(method) && ("/workflows/" + THIRD_SESSION_ID).equals(path)) {
+            if ("GET".equals(method) && ("/v1/workflows/" + THIRD_SESSION_ID).equals(path)) {
                 if (resumeAccepted && failNextGetAfterResume && !failedGetConsumed) {
                     failedGetConsumed = true;
                     return jsonResponse(500, Map.of("detail", "temporary failure"));
                 }
                 if (resumeAccepted) {
-                    return jsonResponse(200, Map.of(
-                            "session_id", THIRD_SESSION_ID,
-                            "status", "running"
-                    ));
+                    return workflowResponse("running");
                 }
-                return jsonResponse(200, Map.of(
-                        "session_id", THIRD_SESSION_ID,
-                        "status", "waiting_user",
-                        "confirmation", Map.of(
-                                "confirmation_id", confirmationId,
-                                "request_text", requestText,
-                                "interaction_kind", interactionKind
-                        )
-                ));
+                return workflowResponse("waiting_user");
             }
-            if ("GET".equals(method) && ("/internal/workflows/" + THIRD_SESSION_ID + "/snapshot").equals(path)) {
+            if ("GET".equals(method) && ("/v1/workflows/" + THIRD_SESSION_ID + "/snapshot").equals(path)) {
                 snapshotCalls.incrementAndGet();
                 return jsonResponse(200, Map.of(
                         "session", Map.of(
                                 "sessionId", THIRD_SESSION_ID,
-                                "status", "waiting_user"
+                                "status", "waiting_user",
+                                "originalInput", "集成测试"
                         ),
                         "confirmation", Map.of(
                                 "confirmationId", confirmationId,
+                                "status", "pending",
                                 "requestText", requestText,
+                                "preview", Map.of(),
                                 "interactionKind", interactionKind,
                                 "options", List.of()
                         ),
-                        "outputs", Map.of()
+                        "outputs", Map.of(),
+                        "artifactsByKey", Map.of(),
+                        "artifacts", List.of()
                 ));
             }
-            if ("POST".equals(method) && ("/workflows/" + THIRD_SESSION_ID + "/resume").equals(path)) {
+            if ("POST".equals(method) && ("/v1/workflows/" + THIRD_SESSION_ID + "/resume").equals(path)) {
                 String body = request.getBody().readUtf8();
                 resumeBodies.add(body);
                 if (resumeResponseCode != 200) {
@@ -447,15 +438,24 @@ class RecordSessionInteractionIntegrationTest {
                 if (advanceConfirmationOnResumeTo != null) {
                     confirmationId = advanceConfirmationOnResumeTo;
                 }
-                return jsonResponse(200, Map.of(
-                        "session_id", THIRD_SESSION_ID,
-                        "status", "queued"
-                ));
+                if (failNextGetAfterResume && !failedGetConsumed) {
+                    failedGetConsumed = true;
+                    return jsonResponse(500, Map.of("detail", "temporary failure"));
+                }
+                return workflowResponse("queued");
             }
             return jsonResponse(404, Map.of(
                     "detail", "unexpected request",
                     "method", method == null ? "" : method,
                     "path", path == null ? "" : path
+            ));
+        }
+
+        private MockResponse workflowResponse(String status) {
+            return jsonResponse(200, Map.of(
+                    "sessionId", THIRD_SESSION_ID,
+                    "status", status,
+                    "content", List.of()
             ));
         }
 

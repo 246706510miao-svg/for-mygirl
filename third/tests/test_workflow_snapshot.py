@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from third.api import build_workflow_snapshot
+from third.api import build_workflow_snapshot, build_workflow_snapshot_v1
 from third.storage.repository import InMemoryWorkflowRepository
 from third.workflow.registry import build_plan_from_template
 
@@ -30,6 +30,11 @@ class WorkflowSnapshotTests(unittest.TestCase):
         self.assertEqual(snapshot["confirmation"]["requestText"], "确认执行以下飞书写入操作吗？")
         self.assertEqual(snapshot["outputs"]["writePayload"]["operation"], "create_record")
         self.assertIn("validation.write_payload", snapshot["artifactsByKey"])
+
+        snapshot_v1 = build_workflow_snapshot_v1(repository, session["session_id"])
+        self.assertEqual(snapshot_v1.confirmation.confirmation_id, snapshot["confirmation"]["confirmationId"])
+        self.assertEqual(snapshot_v1.confirmation.interaction_kind.value, "confirm")
+        self.assertEqual(snapshot_v1.outputs.write_payload["operation"], "create_record")
 
     def test_snapshot_includes_draft_output(self) -> None:
         repository = InMemoryWorkflowRepository()

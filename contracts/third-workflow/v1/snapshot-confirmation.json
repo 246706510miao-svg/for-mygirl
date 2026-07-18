@@ -1,0 +1,52 @@
+{
+  "session": {
+    "sessionId": "session_waiting",
+    "status": "waiting_user",
+    "currentStepId": "step_write",
+    "originalInput": "写入记录",
+    "finalAnswer": null,
+    "errorText": null,
+    "metadata": {
+      "businessSessionId": "business_1",
+      "idempotencyKey": "message_1"
+    },
+    "createdAt": "2026-07-18T08:00:00Z",
+    "updatedAt": "2026-07-18T08:00:01Z"
+  },
+  "decision": {
+    "planId": "plan_1",
+    "planVersion": 1,
+    "templateKey": "third_two.rolling",
+    "intent": "create_record",
+    "riskLevel": "write",
+    "requiresConfirmation": true,
+    "final": {}
+  },
+  "confirmation": {
+    "confirmationId": "confirmation_1",
+    "status": "pending",
+    "requestText": "确认写入吗？",
+    "preview": {
+      "fields": {
+        "事项名称": "学习"
+      }
+    },
+    "stepId": "step_write",
+    "userResponse": null,
+    "interactionKind": "confirm",
+    "options": [],
+    "createdAt": "2026-07-18T08:00:01Z",
+    "decidedAt": null,
+    "expiresAt": null
+  },
+  "outputs": {
+    "draft": null,
+    "writePayload": null,
+    "writeResult": null,
+    "tableSchema": null,
+    "records": null,
+    "finalAnswer": null
+  },
+  "artifactsByKey": {},
+  "artifacts": []
+}

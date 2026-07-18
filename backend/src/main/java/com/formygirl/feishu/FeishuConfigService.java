@@ -2,6 +2,12 @@ package com.formygirl.feishu;
 
 import com.formygirl.common.ApiException;
 import com.formygirl.common.JsonSupport;
+import com.formygirl.thirdclient.ThirdWorkflowContracts.FeishuAccountMetadata;
+import com.formygirl.thirdclient.ThirdWorkflowContracts.FeishuPrivateMetadata;
+import com.formygirl.thirdclient.ThirdWorkflowContracts.FeishuPublicMetadata;
+import com.formygirl.thirdclient.ThirdWorkflowContracts.FeishuTableCheckResponse;
+import com.formygirl.thirdclient.ThirdWorkflowContracts.FeishuTableMetadata;
+import com.formygirl.thirdclient.ThirdWorkflowContracts.WorkflowPrivateMetadata;
 import com.formygirl.thirdclient.ThirdWorkflowClient;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -86,11 +92,17 @@ public class FeishuConfigService {
     public Map<String, Object> testTable(String userId, String tableId) {
         requireTable(userId, tableId);
         WorkflowFeishuContext context = workflowContext(userId, tableId);
-        Map<String, Object> result = thirdClient.checkFeishuTable(context.privateMetadata());
-        String status = "ok".equals(String.valueOf(result.get("status"))) ? "ok" : "error";
-        String message = String.valueOf(result.getOrDefault("message", result.getOrDefault("error", "")));
+        FeishuTableCheckResponse result = thirdClient.checkFeishuTable(context.privateMetadata());
+        String status = "ok".equals(result.status()) ? "ok" : "error";
+        String message = result.message();
         repository.updateTestStatus(userId, tableId, status, message);
-        Map<String, Object> dto = new LinkedHashMap<>(result);
+        Map<String, Object> dto = dto(
+                "status", result.status(),
+                "message", result.message(),
+                "tableName", result.tableName(),
+                "fieldCount", result.fieldCount(),
+                "fieldNames", result.fieldNames()
+        );
         dto.put("table", tableDto(repository.table(userId, tableId)));
         return dto;
     }
@@ -109,39 +121,37 @@ public class FeishuConfigService {
 
     public WorkflowFeishuContext workflowContext(String userId, String tableConfigId) {
         if (tableConfigId == null || tableConfigId.isBlank()) {
-            return new WorkflowFeishuContext(null, Map.of(), Map.of());
+            return new WorkflowFeishuContext(null, null, WorkflowPrivateMetadata.empty());
         }
         Map<String, Object> table = requireTable(userId, tableConfigId);
         Map<String, Object> account = repository.account(userId);
-        Map<String, Object> safe = dto(
-                "feishu", dto(
-                        "configId", table.get("id"),
-                        "displayName", table.get("display_name"),
-                        "tableId", table.get("table_id"),
-                        "viewId", table.get("view_id")
-                )
+        FeishuPublicMetadata safe = new FeishuPublicMetadata(
+                stringValue(table.get("id")),
+                stringValue(table.get("display_name")),
+                stringValue(table.get("table_id")),
+                stringValue(table.get("view_id"))
         );
         if (account.isEmpty()) {
-            return new WorkflowFeishuContext(tableConfigId, safe, Map.of());
+            return new WorkflowFeishuContext(tableConfigId, safe, WorkflowPrivateMetadata.empty());
         }
-        Map<String, Object> privateMetadata = dto(
-                "feishu", dto(
-                        "config_id", table.get("id"),
-                        "account", dto(
-                                "enabled", account.get("enabled"),
-                                "app_id", account.get("app_id"),
-                                "app_secret", secretCodec.decrypt(stringValue(account.get("app_secret_cipher"))),
-                                "tenant_access_token", secretCodec.decrypt(stringValue(account.get("tenant_access_token_cipher"))),
-                                "user_id_type", account.get("user_id_type")
+        WorkflowPrivateMetadata privateMetadata = new WorkflowPrivateMetadata(
+                new FeishuPrivateMetadata(
+                        stringValue(table.get("id")),
+                        new FeishuAccountMetadata(
+                                boolValue(account.get("enabled"), true),
+                                stringValue(account.get("app_id")),
+                                secretCodec.decrypt(stringValue(account.get("app_secret_cipher"))),
+                                secretCodec.decrypt(stringValue(account.get("tenant_access_token_cipher"))),
+                                stringValue(account.get("user_id_type"))
                         ),
-                        "table", dto(
-                                "enabled", table.get("enabled"),
-                                "display_name", table.get("display_name"),
-                                "app_token", table.get("app_token"),
-                                "table_id", table.get("table_id"),
-                                "table_name", table.get("table_name"),
-                                "view_id", table.get("view_id"),
-                                "field_name_map", jsonMap(table.get("field_name_map_json"))
+                        new FeishuTableMetadata(
+                                boolValue(table.get("enabled"), true),
+                                stringValue(table.get("display_name")),
+                                stringValue(table.get("app_token")),
+                                stringValue(table.get("table_id")),
+                                stringValue(table.get("table_name")),
+                                stringValue(table.get("view_id")),
+                                json.node(jsonMap(table.get("field_name_map_json")))
                         )
                 )
         );
@@ -256,6 +266,10 @@ public class FeishuConfigService {
     public record TableInput(String displayName, String tableUrl, boolean enabled, Map<String, Object> fieldNameMap) {
     }
 
-    public record WorkflowFeishuContext(String tableConfigId, Map<String, Object> publicMetadata, Map<String, Object> privateMetadata) {
+    public record WorkflowFeishuContext(
+            String tableConfigId,
+            FeishuPublicMetadata publicMetadata,
+            WorkflowPrivateMetadata privateMetadata
+    ) {
     }
 }

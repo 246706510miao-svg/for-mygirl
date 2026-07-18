@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from copy import deepcopy
 from typing import Any
 
@@ -10,11 +11,26 @@ from fastapi import APIRouter, HTTPException
 
 from third.Tool.field_context import load_table_fields_context
 from third.agents.shared.config import load_config, private_metadata_context
+from third.workflow.v1_contract import (
+    FeishuTableCheckV1Request,
+    FeishuTableCheckV1Response,
+    InvokeWorkflowV1Request,
+    ResumeWorkflowV1Request,
+    WorkflowArtifactV1,
+    WorkflowArtifactsV1,
+    WorkflowConfirmationV1,
+    WorkflowResponseV1,
+    WorkflowSnapshotV1,
+    WorkflowTimelineV1,
+)
 
 from ..contracts import TaskState
 from ..executor import RollingTaskExecutor
 from ..repository import InMemoryTaskRepository
 from .schemas import FeishuTableCheckRequest, InvokeWorkflowRequest, ResumeWorkflowRequest
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 def create_compat_router(
@@ -25,6 +41,7 @@ def create_compat_router(
 
     @router.post("/workflows/invoke")
     def invoke_workflow(request: InvokeWorkflowRequest) -> dict[str, Any]:
+        _log_deprecated("POST /workflows/invoke")
         text = _content_text(request.content)
         if not text:
             raise HTTPException(status_code=400, detail="content[0].text 不能为空。")
@@ -37,10 +54,12 @@ def create_compat_router(
 
     @router.get("/workflows/{task_id}")
     def get_workflow(task_id: str) -> dict[str, Any]:
+        _log_deprecated("GET /workflows/{taskId}")
         return _workflow_response(_require_task(repository, task_id))
 
     @router.post("/workflows/{task_id}/resume")
     def resume_workflow(task_id: str, request: ResumeWorkflowRequest) -> dict[str, Any]:
+        _log_deprecated("POST /workflows/{taskId}/resume")
         state = _require_task(repository, task_id)
         interaction = state.pending_interaction or {}
         if interaction.get("interaction_id") != request.confirmation_id:
@@ -60,6 +79,7 @@ def create_compat_router(
 
     @router.post("/internal/feishu/table-check")
     def check_feishu_table(request: FeishuTableCheckRequest) -> dict[str, Any]:
+        _log_deprecated("POST /internal/feishu/table-check")
         with private_metadata_context(request.private_metadata):
             config = load_config()
             table_fields = load_table_fields_context()
@@ -79,14 +99,95 @@ def create_compat_router(
             "fieldNames": names,
         }
 
+    @router.post("/v1/workflows/invoke", response_model=WorkflowResponseV1)
+    def invoke_workflow_v1(request: InvokeWorkflowV1Request) -> WorkflowResponseV1:
+        text = _content_text(request.content)
+        if not text:
+            raise HTTPException(status_code=400, detail="content[0].text 不能为空。")
+        metadata = request.metadata.model_dump(by_alias=True, exclude_none=True)
+        state = executor.create_task(
+            text,
+            goal=_goal(text, metadata),
+            private_metadata=request.private_metadata.to_internal_dict(),
+        )
+        return _workflow_response_v1(executor.run_until_boundary(state.task_id))
+
+    @router.get("/v1/workflows/{task_id}", response_model=WorkflowResponseV1)
+    def get_workflow_v1(task_id: str) -> WorkflowResponseV1:
+        return _workflow_response_v1(_require_task(repository, task_id))
+
+    @router.post("/v1/workflows/{task_id}/resume", response_model=WorkflowResponseV1)
+    def resume_workflow_v1(task_id: str, request: ResumeWorkflowV1Request) -> WorkflowResponseV1:
+        state = _require_task(repository, task_id)
+        interaction = state.pending_interaction or {}
+        if interaction.get("interaction_id") != request.confirmation_id:
+            raise HTTPException(status_code=400, detail="confirmationId 不属于当前 task。")
+        try:
+            resumed = executor.resume(
+                task_id,
+                request.confirmation_id,
+                request.response.value,
+                _content_text(request.content),
+            )
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return _workflow_response_v1(resumed)
+
+    @router.post("/v1/feishu/table-check", response_model=FeishuTableCheckV1Response)
+    def check_feishu_table_v1(request: FeishuTableCheckV1Request) -> FeishuTableCheckV1Response:
+        with private_metadata_context(request.private_metadata.to_internal_dict()):
+            config = load_config()
+            table_fields = load_table_fields_context()
+        names = [str(name) for name in (table_fields.get("field_names") or [])]
+        if table_fields.get("error"):
+            return FeishuTableCheckV1Response.from_internal(
+                status="error",
+                message=str(table_fields.get("error") or ""),
+                table_name=config.feishu_table_name,
+                field_count=0,
+            )
+        return FeishuTableCheckV1Response.from_internal(
+            status="ok",
+            message=f"已读取字段 {len(names)} 个。",
+            table_name=str(table_fields.get("table_name") or config.feishu_table_name),
+            field_count=len(names),
+            field_names=names,
+        )
+
+    @router.get("/v1/workflows/{task_id}/artifacts", response_model=WorkflowArtifactsV1)
+    def workflow_artifacts_v1(task_id: str) -> WorkflowArtifactsV1:
+        _require_task(repository, task_id)
+        return WorkflowArtifactsV1.from_internal(
+            session_id=task_id,
+            artifacts=[_artifact_v1(item) for item in repository.list_artifacts(task_id)],
+        )
+
+    @router.get("/v1/workflows/{task_id}/timeline", response_model=WorkflowTimelineV1)
+    def workflow_timeline_v1(task_id: str) -> WorkflowTimelineV1:
+        state = _require_task(repository, task_id)
+        confirmation = _confirmation_v1(state)
+        return WorkflowTimelineV1.from_internal(
+            session=_snapshot_session(state),
+            decision=_snapshot_decision(state),
+            steps=[{"step": index, **deepcopy(item)} for index, item in enumerate(state.completed_actions, 1)],
+            confirmations=[confirmation] if confirmation else [],
+            artifacts=[_artifact_v1(item) for item in repository.list_artifacts(task_id)],
+        )
+
+    @router.get("/v1/workflows/{task_id}/snapshot", response_model=WorkflowSnapshotV1)
+    def workflow_snapshot_v1(task_id: str) -> WorkflowSnapshotV1:
+        return _workflow_snapshot_v1(_require_task(repository, task_id), repository)
+
     @router.get("/internal/workflows/{task_id}/artifacts")
     def workflow_artifacts(task_id: str) -> dict[str, Any]:
+        _log_deprecated("GET /internal/workflows/{taskId}/artifacts")
         _require_task(repository, task_id)
         artifacts = repository.list_artifacts(task_id)
         return {"session_id": task_id, "artifacts": [_artifact_record(item) for item in artifacts]}
 
     @router.get("/internal/workflows/{task_id}/timeline")
     def workflow_timeline(task_id: str) -> dict[str, Any]:
+        _log_deprecated("GET /internal/workflows/{taskId}/timeline")
         state = _require_task(repository, task_id)
         return {
             "session": _snapshot_session(state),
@@ -98,6 +199,7 @@ def create_compat_router(
 
     @router.get("/internal/workflows/{task_id}/snapshot")
     def workflow_snapshot(task_id: str) -> dict[str, Any]:
+        _log_deprecated("GET /internal/workflows/{taskId}/snapshot")
         state = _require_task(repository, task_id)
         artifacts = repository.list_artifacts(task_id)
         by_key = {str(item["artifact_key"]): item for item in artifacts}
@@ -130,6 +232,48 @@ def _workflow_response(state: TaskState) -> dict[str, Any]:
         "content": [{"text": state.final_answer or ""}],
         "error_text": state.error_text,
     }
+
+
+def _workflow_response_v1(state: TaskState) -> WorkflowResponseV1:
+    return WorkflowResponseV1.from_internal(
+        session_id=state.task_id,
+        status=_legacy_status(state.status),
+        content=[{"text": state.final_answer or ""}],
+        error_text=state.error_text,
+    )
+
+
+def _workflow_snapshot_v1(
+    state: TaskState,
+    repository: InMemoryTaskRepository,
+) -> WorkflowSnapshotV1:
+    artifacts = repository.list_artifacts(state.task_id)
+    by_key = {str(item["artifact_key"]): item for item in artifacts}
+    public_by_key = {key: _artifact_v1(item) for key, item in by_key.items()}
+    return WorkflowSnapshotV1.from_internal(
+        session=_snapshot_session(state),
+        decision=_snapshot_decision(state),
+        confirmation=_confirmation_v1(state),
+        outputs=_snapshot_outputs(by_key),
+        artifacts_by_key=public_by_key,
+        artifacts=list(public_by_key.values()),
+    )
+
+
+def _confirmation_v1(state: TaskState) -> WorkflowConfirmationV1 | None:
+    interaction = state.pending_interaction
+    if not interaction:
+        return None
+    return WorkflowConfirmationV1.from_internal(
+        confirmation_id=str(interaction.get("interaction_id") or ""),
+        status="pending",
+        request_text=str(interaction.get("question") or ""),
+        preview=deepcopy(interaction.get("preview") or {}),
+        step_id=(interaction.get("pending_decision") or {}).get("action_id"),
+        interaction_kind=str(interaction.get("kind") or ""),
+        options=deepcopy(interaction.get("options") or []),
+        created_at=interaction.get("created_at"),
+    )
 
 
 def _legacy_status(status: str) -> str:
@@ -262,11 +406,28 @@ def _snapshot_artifact(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _artifact_v1(item: dict[str, Any]) -> WorkflowArtifactV1:
+    data = deepcopy(item.get("data") or {})
+    return WorkflowArtifactV1.from_internal(
+        artifact_id=str(item.get("artifact_id") or ""),
+        session_id=str(item.get("task_id") or ""),
+        artifact_key=str(item.get("artifact_key") or ""),
+        content_text=json.dumps(data, ensure_ascii=False, default=str),
+        data=data,
+        schema_data={},
+        created_at=item.get("created_at"),
+    )
+
+
 def _require_task(repository: InMemoryTaskRepository, task_id: str) -> TaskState:
     state = repository.get_task(task_id)
     if not state:
         raise HTTPException(status_code=404, detail=f"third_two task 不存在：{task_id}")
     return state
+
+
+def _log_deprecated(route: str) -> None:
+    LOGGER.warning("deprecated third workflow route used: %s; migrate caller to /v1", route)
 
 
 def _content_text(content: list[Any]) -> str:

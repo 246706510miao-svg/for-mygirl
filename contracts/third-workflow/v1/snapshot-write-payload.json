@@ -1,0 +1,34 @@
+{
+  "session": {
+    "sessionId": "session_write",
+    "status": "waiting_user",
+    "originalInput": "新增一条记录",
+    "metadata": {}
+  },
+  "decision": null,
+  "confirmation": {
+    "confirmationId": "confirmation_write",
+    "status": "pending",
+    "requestText": "确认执行写入吗？",
+    "preview": {},
+    "interactionKind": "confirm",
+    "options": []
+  },
+  "outputs": {
+    "writePayload": {
+      "operation": "create_record",
+      "preview": {
+        "fields": {
+          "事项名称": "契约测试"
+        }
+      },
+      "tool_input_payload": {
+        "fields": {
+          "事项名称": "契约测试"
+        }
+      }
+    }
+  },
+  "artifactsByKey": {},
+  "artifacts": []
+}

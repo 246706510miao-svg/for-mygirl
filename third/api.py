@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
@@ -14,6 +15,18 @@ try:
     from .agents.shared.config import load_config, private_metadata_context
     from .Tool.field_context import load_table_fields_context
     from .workflow.api_schema import FeishuTableCheckRequest, InvokeWorkflowRequest, ResumeWorkflowRequest, WorkflowResponse
+    from .workflow.v1_contract import (
+        FeishuTableCheckV1Request,
+        FeishuTableCheckV1Response,
+        InvokeWorkflowV1Request,
+        ResumeWorkflowV1Request,
+        WorkflowArtifactV1,
+        WorkflowArtifactsV1,
+        WorkflowConfirmationV1,
+        WorkflowResponseV1,
+        WorkflowSnapshotV1,
+        WorkflowTimelineV1,
+    )
 except ImportError:
     from debug.router import router as debug_router
     from runtime.factory import get_workflow_runtime_store
@@ -22,10 +35,23 @@ except ImportError:
     from agents.shared.config import load_config, private_metadata_context
     from Tool.field_context import load_table_fields_context
     from workflow.api_schema import FeishuTableCheckRequest, InvokeWorkflowRequest, ResumeWorkflowRequest, WorkflowResponse
+    from workflow.v1_contract import (
+        FeishuTableCheckV1Request,
+        FeishuTableCheckV1Response,
+        InvokeWorkflowV1Request,
+        ResumeWorkflowV1Request,
+        WorkflowArtifactV1,
+        WorkflowArtifactsV1,
+        WorkflowConfirmationV1,
+        WorkflowResponseV1,
+        WorkflowSnapshotV1,
+        WorkflowTimelineV1,
+    )
 
 
 # 这一段创建 FastAPI 应用，SpringBoot 后续通过 HTTP 调用这里。
 app = FastAPI(title="third workflow service", version="0.1.0")
+LOGGER = logging.getLogger(__name__)
 
 
 # 这一段挂载本地调试台，是否可访问由 THIRD_DEBUG_ENABLED 控制。
@@ -35,6 +61,7 @@ app.include_router(debug_router)
 # 这个接口创建 workflow session 并投递异步任务。
 @app.post("/workflows/invoke", response_model=WorkflowResponse)
 def invoke_workflow(request: InvokeWorkflowRequest) -> WorkflowResponse:
+    _log_deprecated("POST /workflows/invoke")
     original_input = _request_text(request.content)
     if not original_input:
         raise HTTPException(status_code=400, detail="content[0].text 不能为空。")
@@ -52,6 +79,7 @@ def invoke_workflow(request: InvokeWorkflowRequest) -> WorkflowResponse:
 # 这个接口查询 workflow 当前状态、确认信息和最终答案。
 @app.get("/workflows/{session_id}", response_model=WorkflowResponse)
 def get_workflow(session_id: str) -> WorkflowResponse:
+    _log_deprecated("GET /workflows/{sessionId}")
     repository = get_workflow_repository()
     session = repository.get_session(session_id)
     if not session:
@@ -69,6 +97,7 @@ def get_workflow(session_id: str) -> WorkflowResponse:
 # 这个接口接收用户确认或拒绝，并在确认后重新投递 workflow。
 @app.post("/workflows/{session_id}/resume", response_model=WorkflowResponse)
 def resume_workflow(session_id: str, request: ResumeWorkflowRequest) -> WorkflowResponse:
+    _log_deprecated("POST /workflows/{sessionId}/resume")
     repository = get_workflow_repository()
     runtime_store = get_workflow_runtime_store()
     session = repository.get_session(session_id)
@@ -101,6 +130,7 @@ def health() -> dict[str, str]:
 # 这个接口使用后端下发的私有飞书配置检查目标表字段。
 @app.post("/internal/feishu/table-check")
 def internal_feishu_table_check(request: FeishuTableCheckRequest) -> dict[str, Any]:
+    _log_deprecated("POST /internal/feishu/table-check")
     with private_metadata_context(request.private_metadata):
         config = load_config()
         table_fields = load_table_fields_context()
@@ -120,9 +150,138 @@ def internal_feishu_table_check(request: FeishuTableCheckRequest) -> dict[str, A
     }
 
 
+@app.post("/v1/workflows/invoke", response_model=WorkflowResponseV1)
+def invoke_workflow_v1(request: InvokeWorkflowV1Request) -> WorkflowResponseV1:
+    original_input = _request_text(request.content)
+    if not original_input:
+        raise HTTPException(status_code=400, detail="content[0].text 不能为空。")
+    repository = get_workflow_repository()
+    runtime_store = get_workflow_runtime_store()
+    session = repository.create_session(
+        original_input,
+        status="queued",
+        metadata_json=request.metadata.model_dump(by_alias=True, exclude_none=True),
+        private_metadata_json=request.private_metadata.to_internal_dict(),
+    )
+    runtime_store.enqueue_session(session["session_id"])
+    return WorkflowResponseV1.from_internal(
+        session_id=session["session_id"],
+        status="queued",
+        content=[{"text": ""}],
+    )
+
+
+@app.get("/v1/workflows/{session_id}", response_model=WorkflowResponseV1)
+def get_workflow_v1(session_id: str) -> WorkflowResponseV1:
+    repository = get_workflow_repository()
+    session = repository.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail=f"workflow session 不存在：{session_id}")
+    return _workflow_response_v1(session)
+
+
+@app.post("/v1/workflows/{session_id}/resume", response_model=WorkflowResponseV1)
+def resume_workflow_v1(session_id: str, request: ResumeWorkflowV1Request) -> WorkflowResponseV1:
+    repository = get_workflow_repository()
+    runtime_store = get_workflow_runtime_store()
+    session = repository.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail=f"workflow session 不存在：{session_id}")
+    try:
+        confirmation = repository.resolve_confirmation(
+            request.confirmation_id,
+            request.approved,
+            _request_text(request.content),
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if confirmation["session_id"] != session_id:
+        raise HTTPException(status_code=400, detail="confirmationId 不属于当前 session。")
+    if request.approved:
+        repository.update_step(confirmation["step_id"], status="success", finished_at=now(), error_text=None)
+        repository.update_session(session_id, status="queued", current_step_id=None, error_text=None)
+        runtime_store.enqueue_session(session_id)
+        return WorkflowResponseV1.from_internal(
+            session_id=session_id,
+            status="queued",
+            content=[{"text": "已确认，workflow 将继续执行。"}],
+        )
+    repository.update_step(confirmation["step_id"], status="failed", finished_at=now(), error_text="用户拒绝确认。")
+    repository.update_session(session_id, status="cancelled", final_answer="已取消本次写入操作。", error_text=None)
+    return WorkflowResponseV1.from_internal(
+        session_id=session_id,
+        status="cancelled",
+        content=[{"text": "已取消本次写入操作。"}],
+    )
+
+
+@app.post("/v1/feishu/table-check", response_model=FeishuTableCheckV1Response)
+def internal_feishu_table_check_v1(request: FeishuTableCheckV1Request) -> FeishuTableCheckV1Response:
+    with private_metadata_context(request.private_metadata.to_internal_dict()):
+        config = load_config()
+        table_fields = load_table_fields_context()
+    names = [str(name) for name in (table_fields.get("field_names") or [])]
+    if table_fields.get("error"):
+        return FeishuTableCheckV1Response.from_internal(
+            status="error",
+            message=str(table_fields.get("error") or ""),
+            table_name=config.feishu_table_name,
+            field_count=0,
+        )
+    return FeishuTableCheckV1Response.from_internal(
+        status="ok",
+        message=f"已读取字段 {len(names)} 个。",
+        table_name=str(table_fields.get("table_name") or config.feishu_table_name),
+        field_count=len(names),
+        field_names=names,
+    )
+
+
+@app.get("/v1/workflows/{session_id}/timeline", response_model=WorkflowTimelineV1)
+def internal_workflow_timeline_v1(session_id: str) -> WorkflowTimelineV1:
+    repository = get_workflow_repository()
+    session = repository.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail=f"workflow session 不存在：{session_id}")
+    plan = repository.get_plan(session_id)
+    steps = repository.list_steps(plan["plan_id"]) if plan else []
+    artifacts = repository.list_artifacts(session_id)
+    confirmation = repository.get_waiting_confirmation(session_id) if session.get("status") == "waiting_user" else None
+    public_confirmation = _confirmation_v1(confirmation)
+    return WorkflowTimelineV1.from_internal(
+        session=_snapshot_session(session),
+        decision=_snapshot_decision(plan),
+        steps=steps,
+        confirmations=[public_confirmation] if public_confirmation else [],
+        artifacts=[_artifact_v1(artifact) for artifact in artifacts],
+    )
+
+
+@app.get("/v1/workflows/{session_id}/artifacts", response_model=WorkflowArtifactsV1)
+def internal_workflow_artifacts_v1(session_id: str) -> WorkflowArtifactsV1:
+    repository = get_workflow_repository()
+    session = repository.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail=f"workflow session 不存在：{session_id}")
+    return WorkflowArtifactsV1.from_internal(
+        session_id=session_id,
+        artifacts=[_artifact_v1(artifact) for artifact in repository.list_artifacts(session_id)],
+    )
+
+
+@app.get("/v1/workflows/{session_id}/snapshot", response_model=WorkflowSnapshotV1)
+def internal_workflow_snapshot_v1(session_id: str) -> WorkflowSnapshotV1:
+    repository = get_workflow_repository()
+    try:
+        return build_workflow_snapshot_v1(repository, session_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 # 这个接口返回 workflow 追踪摘要，供业务后端关联记录追踪。
 @app.get("/internal/workflows/{session_id}/timeline")
 def internal_workflow_timeline(session_id: str) -> dict[str, Any]:
+    _log_deprecated("GET /internal/workflows/{sessionId}/timeline")
     repository = get_workflow_repository()
     session = repository.get_session(session_id)
     if not session:
@@ -143,6 +302,7 @@ def internal_workflow_timeline(session_id: str) -> dict[str, Any]:
 # 这个接口返回 workflow artifact 明细，供后端提取草稿或同步结果。
 @app.get("/internal/workflows/{session_id}/artifacts")
 def internal_workflow_artifacts(session_id: str) -> dict[str, Any]:
+    _log_deprecated("GET /internal/workflows/{sessionId}/artifacts")
     repository = get_workflow_repository()
     session = repository.get_session(session_id)
     if not session:
@@ -153,6 +313,7 @@ def internal_workflow_artifacts(session_id: str) -> dict[str, Any]:
 # 这个接口返回后端接入 third 所需的统一全量快照。
 @app.get("/internal/workflows/{session_id}/snapshot")
 def internal_workflow_snapshot(session_id: str) -> dict[str, Any]:
+    _log_deprecated("GET /internal/workflows/{sessionId}/snapshot")
     repository = get_workflow_repository()
     try:
         return build_workflow_snapshot(repository, session_id)
@@ -177,6 +338,53 @@ def build_workflow_snapshot(repository: Any, session_id: str) -> dict[str, Any]:
         "artifactsByKey": artifacts_by_key,
         "artifacts": [_artifact_full(artifact) for artifact in artifacts],
     }
+
+
+def build_workflow_snapshot_v1(repository: Any, session_id: str) -> WorkflowSnapshotV1:
+    session = repository.get_session(session_id)
+    if not session:
+        raise KeyError(f"workflow session 不存在：{session_id}")
+    plan = repository.get_plan(session_id)
+    artifacts = repository.list_artifacts(session_id)
+    public_artifacts = [_artifact_v1(artifact) for artifact in artifacts]
+    artifacts_by_key = {artifact.artifact_key: artifact for artifact in public_artifacts}
+    legacy_artifacts_by_key = {str(artifact.get("artifact_key")): _artifact_full(artifact) for artifact in artifacts}
+    confirmation = repository.get_waiting_confirmation(session_id) if session.get("status") == "waiting_user" else None
+    return WorkflowSnapshotV1.from_internal(
+        session=_snapshot_session(session),
+        decision=_snapshot_decision(plan),
+        confirmation=_confirmation_v1(confirmation),
+        outputs=_snapshot_outputs(legacy_artifacts_by_key),
+        artifacts_by_key=artifacts_by_key,
+        artifacts=public_artifacts,
+    )
+
+
+def _workflow_response_v1(session: dict[str, Any]) -> WorkflowResponseV1:
+    return WorkflowResponseV1.from_internal(
+        session_id=str(session.get("session_id") or ""),
+        status=str(session.get("status") or ""),
+        content=[{"text": str(session.get("final_answer") or "")}],
+        error_text=session.get("error_text"),
+    )
+
+
+def _confirmation_v1(confirmation: dict[str, Any] | None) -> WorkflowConfirmationV1 | None:
+    if not confirmation:
+        return None
+    return WorkflowConfirmationV1.from_internal(
+        confirmation_id=str(confirmation.get("confirmation_id") or ""),
+        status=str(confirmation.get("status") or "pending"),
+        request_text=str(confirmation.get("request_text") or ""),
+        preview=confirmation.get("preview_json") or {},
+        step_id=confirmation.get("step_id"),
+        user_response=confirmation.get("user_response"),
+        interaction_kind="confirm",
+        options=[],
+        created_at=_string_or_none(confirmation.get("created_at")),
+        decided_at=_string_or_none(confirmation.get("decided_at")),
+        expires_at=_string_or_none(confirmation.get("expires_at")),
+    )
 
 
 # 这个函数读取 API 请求中的 content[0].text。
@@ -296,6 +504,28 @@ def _artifact_full(artifact: dict[str, Any]) -> dict[str, Any]:
         "createdAt": artifact.get("created_at"),
         "expiresAt": artifact.get("expires_at"),
     }
+
+
+def _artifact_v1(artifact: dict[str, Any]) -> WorkflowArtifactV1:
+    return WorkflowArtifactV1.from_internal(
+        artifact_id=str(artifact.get("artifact_id") or ""),
+        session_id=str(artifact.get("session_id") or ""),
+        source_step_id=artifact.get("source_step_id"),
+        artifact_key=str(artifact.get("artifact_key") or ""),
+        content_text=str(artifact.get("content_text") or ""),
+        data=artifact.get("data_json") or {},
+        schema_data=artifact.get("schema_json") or {},
+        created_at=_string_or_none(artifact.get("created_at")),
+        expires_at=_string_or_none(artifact.get("expires_at")),
+    )
+
+
+def _string_or_none(value: Any) -> str | None:
+    return None if value is None else str(value)
+
+
+def _log_deprecated(route: str) -> None:
+    LOGGER.warning("deprecated third workflow route used: %s; migrate caller to /v1", route)
 
 
 # 这个函数压缩 artifact，避免追踪接口默认返回过大的上下文。

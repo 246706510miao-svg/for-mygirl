@@ -1,0 +1,26 @@
+{
+  "session": {
+    "sessionId": "session_draft",
+    "status": "success",
+    "originalInput": "今天完成了晨间拉伸",
+    "metadata": {}
+  },
+  "decision": null,
+  "confirmation": null,
+  "outputs": {
+    "draft": {
+      "title": "今日记录",
+      "recordDate": "2026-07-18",
+      "summary": "今天完成了晨间拉伸",
+      "score": 80,
+      "tags": [
+        "运动"
+      ],
+      "suggestion": "",
+      "previewText": "今天完成了晨间拉伸",
+      "source": "rule"
+    }
+  },
+  "artifactsByKey": {},
+  "artifacts": []
+}

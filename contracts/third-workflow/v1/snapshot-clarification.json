@@ -1,0 +1,20 @@
+{
+  "session": {
+    "sessionId": "session_clarify",
+    "status": "waiting_user",
+    "originalInput": "记录两件事",
+    "metadata": {}
+  },
+  "decision": null,
+  "confirmation": {
+    "confirmationId": "confirmation_clarify",
+    "status": "pending",
+    "requestText": "两件事分别是什么？",
+    "preview": {},
+    "interactionKind": "clarify",
+    "options": []
+  },
+  "outputs": {},
+  "artifactsByKey": {},
+  "artifacts": []
+}
