@@ -224,7 +224,7 @@ public class BusinessRepository {
 
     // 这个函数读取会话最近一次 workflow 跟踪任务。
     public Map<String, Object> latestWorkflowTask(String sessionId) {
-        return queryOne("SELECT * FROM RECORD_WORKFLOW_TASK WHERE session_id = ? ORDER BY created_at DESC LIMIT 1", sessionId);
+        return queryOne("SELECT * FROM RECORD_WORKFLOW_TASK WHERE session_id = ? ORDER BY task_sequence DESC LIMIT 1", sessionId);
     }
 
     // 这个函数扫描需要继续查询 third 状态的任务。
@@ -234,7 +234,7 @@ public class BusinessRepository {
                 SELECT * FROM RECORD_WORKFLOW_TASK
                 WHERE status IN ('submitted', 'running')
                   AND third_session_id IS NOT NULL
-                ORDER BY created_at ASC
+                ORDER BY task_sequence ASC
                 LIMIT ?
                 """,
                 Math.max(1, limit)

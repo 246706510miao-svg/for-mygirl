@@ -34,5 +34,6 @@ app:
   third-base-url: ${THIRD_BASE_URL:http://127.0.0.1:8001}
   third-poll-times: ${THIRD_POLL_TIMES:60}
   third-poll-interval-ms: ${THIRD_POLL_INTERVAL_MS:500}
+  record-workflow-scheduling-enabled: ${BACKEND_RECORD_WORKFLOW_SCHEDULING_ENABLED:true}
   news-focus-cron: ${BACKEND_NEWS_FOCUS_CRON:0 30 7 * * *}
   news-focus-run-on-startup: ${BACKEND_NEWS_FOCUS_RUN_ON_STARTUP:false}

@@ -1,6 +1,6 @@
 import type { ApiResponse, AuthResult, IdentityContext, Role } from "../types/api";
 
-const API_BASE_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL || "");
+const API_BASE_URL = normalizeApiBaseUrl(import.meta.env?.VITE_API_BASE_URL || "");
 const SUCCESS_CODES = new Set(["OK", "CREATED"]);
 export type ClientRole = "user" | "partner" | "ops";
 const LEGACY_AUTH_TOKEN_KEY = "for-mygirl.authToken";

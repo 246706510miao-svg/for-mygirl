@@ -1,5 +1,6 @@
 import { apiRequest, newClientId, type ClientRole } from "../../shared/api/client";
 import type { ConfirmRecordResult, NewsFocus, PageResult, PendingThirdConfirmation, RecordDisplay, RecordSession, RecordSessionDetail, SendMessageResult, ThirdInteractionResponse, UserHome } from "../../shared/types/api";
+import { buildResumeRecordConfirmRequest } from "./interactionRequest";
 
 // 这个函数读取用户首页和最近记录。
 export async function fetchRecordHome(role: ClientRole) {
@@ -59,19 +60,8 @@ export function confirmRecordDraft(role: ClientRole, sessionId: string, draftId:
 
 // 这个函数回答或处理 third 当前等待中的交互。
 export function resumeRecordConfirm(role: ClientRole, sessionId: string, confirmation: PendingThirdConfirmation, response: ThirdInteractionResponse, content = "") {
-  return apiRequest<ConfirmRecordResult>(`/api/record-sessions/${sessionId}/confirm/resume`, {
-    method: "POST",
-    role,
-    body: JSON.stringify({
-      clientConfirmId: confirmation.clientConfirmId,
-      draftId: confirmation.draftId,
-      thirdSessionId: confirmation.thirdSessionId,
-      confirmationId: confirmation.confirmationId,
-      response,
-      content,
-      approved: response === "approve"
-    })
-  });
+  const request = buildResumeRecordConfirmRequest(sessionId, confirmation, response, content);
+  return apiRequest<ConfirmRecordResult>(request.path, { ...request.options, role });
 }
 
 // 这个函数取消当前尚未完成的记录会话。
