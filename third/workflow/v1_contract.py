@@ -126,6 +126,11 @@ class FeishuTableCheckV1Request(CamelModel):
     private_metadata: WorkflowPrivateMetadata = Field(default_factory=WorkflowPrivateMetadata)
 
 
+class FeishuTableResolveV1Request(CamelModel):
+    table_url: str
+    private_metadata: WorkflowPrivateMetadata = Field(default_factory=WorkflowPrivateMetadata)
+
+
 class WorkflowResponseV1(CamelModel):
     session_id: str
     status: WorkflowStatus
@@ -237,3 +242,13 @@ class FeishuTableCheckV1Response(CamelModel):
     table_name: str | None = None
     field_count: int = 0
     field_names: list[str] = Field(default_factory=list)
+
+
+class FeishuTableResolveV1Response(CamelModel):
+    status: str
+    error_code: str | None = None
+    message: str
+    source_type: str | None = None
+    app_token: str | None = None
+    table_id: str | None = None
+    view_id: str | None = None

@@ -168,6 +168,10 @@ export function FeishuTablePanel({
 
           {localError && <p className="field-error feishu-table-panel__error">{localError}</p>}
 
+          <p className="feishu-table-panel__url-help">
+            支持飞书 Base 或 Wiki 多维表格链接。请从具体数据表视图复制链接，并确认其中包含 table=tbl...；Wiki 链接还需要应用具备 wiki:node:read 和目标节点阅读权限。
+          </p>
+
           {selected && (
             <form className="feishu-form" onSubmit={saveCurrentTable}>
               <label>
@@ -176,7 +180,7 @@ export function FeishuTablePanel({
               </label>
               <label>
                 当前表 URL
-                <input value={editTableUrl} disabled={busy || locked} onChange={(event) => setEditTableUrl(event.target.value)} placeholder="https://xxx.feishu.cn/base/app...?table=tbl...&view=vew..." />
+                <input value={editTableUrl} disabled={busy || locked} onChange={(event) => setEditTableUrl(event.target.value)} placeholder="https://xxx.feishu.cn/base/... 或 /wiki/...?table=tbl..." />
               </label>
               <label>
                 当前字段映射
@@ -195,7 +199,7 @@ export function FeishuTablePanel({
             </label>
             <label>
               表 URL
-              <input value={tableUrl} disabled={busy || locked} onChange={(event) => setTableUrl(event.target.value)} placeholder="https://xxx.feishu.cn/base/app...?table=tbl...&view=vew..." />
+              <input value={tableUrl} disabled={busy || locked} onChange={(event) => setTableUrl(event.target.value)} placeholder="https://xxx.feishu.cn/base/... 或 /wiki/...?table=tbl..." />
             </label>
             <label>
               字段映射

@@ -239,6 +239,90 @@ class ThirdWorkflowClientTest {
     }
 
     @Test
+    void tableResolveSerializesAccountOnlyMetadataAndReturnsLocation() {
+        WorkflowPrivateMetadata privateMetadata = new WorkflowPrivateMetadata(
+                new FeishuPrivateMetadata(
+                        null,
+                        new FeishuAccountMetadata(true, "cli_test", "secret", "", "open_id"),
+                        null
+                )
+        );
+        server.expect(requestTo("http://third.test/v1/feishu/table-resolve"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(content().json(
+                        """
+                        {
+                          "tableUrl": "https://example.feishu.cn/wiki/wik_xxx?table=tbl_xxx",
+                          "privateMetadata": {
+                            "feishu": {
+                              "configId": null,
+                              "account": {
+                                "enabled": true,
+                                "appId": "cli_test",
+                                "appSecret": "secret",
+                                "tenantAccessToken": "",
+                                "userIdType": "open_id"
+                              },
+                              "table": null
+                            }
+                          }
+                        }
+                        """,
+                        false
+                ))
+                .andRespond(withSuccess(
+                        """
+                        {
+                          "status":"ok",
+                          "errorCode":null,
+                          "message":"飞书多维表格 URL 解析成功。",
+                          "sourceType":"wiki",
+                          "appToken":"app_real",
+                          "tableId":"tbl_xxx",
+                          "viewId":""
+                        }
+                        """,
+                        MediaType.APPLICATION_JSON
+                ));
+
+        FeishuTableResolveResponse response = client.resolveFeishuTable(
+                "https://example.feishu.cn/wiki/wik_xxx?table=tbl_xxx",
+                privateMetadata
+        );
+
+        assertEquals("app_real", response.appToken());
+        assertEquals("tbl_xxx", response.tableId());
+        server.verify();
+    }
+
+    @Test
+    void tableResolvePreservesStructuredBusinessError() {
+        server.expect(requestTo("http://third.test/v1/feishu/table-resolve"))
+                .andRespond(withSuccess(
+                        """
+                        {
+                          "status":"error",
+                          "errorCode":"FEISHU_WIKI_NOT_BITABLE",
+                          "message":"该 Wiki 链接指向的不是飞书多维表格。",
+                          "sourceType":null,
+                          "appToken":null,
+                          "tableId":null,
+                          "viewId":null
+                        }
+                        """,
+                        MediaType.APPLICATION_JSON
+                ));
+
+        ApiException exception = assertThrows(
+                ApiException.class,
+                () -> client.resolveFeishuTable("https://example.feishu.cn/wiki/wik_xxx?table=tbl_xxx", WorkflowPrivateMetadata.empty())
+        );
+
+        assertEquals("FEISHU_WIKI_NOT_BITABLE", exception.getCode());
+        server.verify();
+    }
+
+    @Test
     void allWorkflowStateFixturesDeserialize() throws Exception {
         Map<String, String> fixtures = new LinkedHashMap<>();
         for (String name : List.of("queued", "running", "waiting", "success", "failed", "cancelled")) {

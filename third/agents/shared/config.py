@@ -205,8 +205,8 @@ def _with_private_feishu_config(config: ThirdServiceConfig, private_metadata: di
         return config
     account = _dict_value(feishu.get("account"))
     table = _dict_value(feishu.get("table"))
-    if not table:
-        return config
+    has_private_account = bool(account)
+    has_private_table = bool(table)
 
     field_name_map = table.get("field_name_map") or table.get("fieldNameMap") or {}
     if not isinstance(field_name_map, dict):
@@ -216,16 +216,28 @@ def _with_private_feishu_config(config: ThirdServiceConfig, private_metadata: di
     has_table_location = bool(_text_value(table, "app_token", "appToken") and _text_value(table, "table_id", "tableId"))
     return replace(
         config,
-        feishu_app_id=_text_value(account, "app_id", "appId") or config.feishu_app_id,
-        feishu_app_secret=_text_value(account, "app_secret", "appSecret") or config.feishu_app_secret,
-        feishu_tenant_access_token=_text_value(account, "tenant_access_token", "tenantAccessToken") or config.feishu_tenant_access_token,
-        feishu_app_token=_text_value(table, "app_token", "appToken") or config.feishu_app_token,
-        feishu_table_id=_text_value(table, "table_id", "tableId") or config.feishu_table_id,
-        feishu_table_name=_text_value(table, "table_name", "tableName", "display_name", "displayName") or config.feishu_table_name,
-        feishu_view_id=_text_value(table, "view_id", "viewId") or config.feishu_view_id,
-        feishu_user_id_type=_text_value(account, "user_id_type", "userIdType") or config.feishu_user_id_type,
+        feishu_app_id=_text_value(account, "app_id", "appId") if has_private_account else config.feishu_app_id,
+        feishu_app_secret=_text_value(account, "app_secret", "appSecret") if has_private_account else config.feishu_app_secret,
+        feishu_tenant_access_token=_text_value(account, "tenant_access_token", "tenantAccessToken") if has_private_account else config.feishu_tenant_access_token,
+        feishu_app_token=_text_value(table, "app_token", "appToken") if has_private_table else config.feishu_app_token,
+        feishu_table_id=_text_value(table, "table_id", "tableId") if has_private_table else config.feishu_table_id,
+        feishu_table_name=(
+            _text_value(table, "table_name", "tableName", "display_name", "displayName") or config.feishu_table_name
+            if has_private_table
+            else config.feishu_table_name
+        ),
+        feishu_view_id=_text_value(table, "view_id", "viewId") if has_private_table else config.feishu_view_id,
+        feishu_user_id_type=(
+            _text_value(account, "user_id_type", "userIdType") or "open_id"
+            if has_private_account
+            else config.feishu_user_id_type
+        ),
         feishu_use_real=account_enabled and table_enabled and has_table_location,
-        feishu_field_name_map={str(key): str(value) for key, value in field_name_map.items() if key and value},
+        feishu_field_name_map=(
+            {str(key): str(value) for key, value in field_name_map.items() if key and value}
+            if has_private_table
+            else config.feishu_field_name_map
+        ),
     )
 
 

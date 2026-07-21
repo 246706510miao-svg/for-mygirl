@@ -21,6 +21,33 @@ class CompatibilityApiTests(unittest.TestCase):
     def tearDown(self) -> None:
         reset_mock_state()
 
+    def test_table_resolve_matches_the_shared_v1_contract(self) -> None:
+        repository = InMemoryTaskRepository()
+        executor = RollingTaskExecutor(repository=repository, planner=ScriptedPlanner([]))
+        client = TestClient(create_app(executor=executor, repository=repository))
+
+        response = client.post(
+            "/v1/feishu/table-resolve",
+            json={
+                "tableUrl": "https://example.feishu.cn/base/app_xxx?table=tbl_xxx&view=vew_xxx",
+                "privateMetadata": {},
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {
+                "status": "ok",
+                "errorCode": None,
+                "message": "飞书多维表格 URL 解析成功。",
+                "sourceType": "base",
+                "appToken": "app_xxx",
+                "tableId": "tbl_xxx",
+                "viewId": "vew_xxx",
+            },
+        )
+
     def test_draft_generate_preserves_backend_workflow_contract(self) -> None:
         repository = InMemoryTaskRepository()
         executor = RollingTaskExecutor(repository=repository, planner=ScriptedPlanner([]))

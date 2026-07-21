@@ -7,6 +7,7 @@ import com.formygirl.thirdclient.ThirdWorkflowContracts.FeishuPrivateMetadata;
 import com.formygirl.thirdclient.ThirdWorkflowContracts.FeishuPublicMetadata;
 import com.formygirl.thirdclient.ThirdWorkflowContracts.FeishuTableCheckResponse;
 import com.formygirl.thirdclient.ThirdWorkflowContracts.FeishuTableMetadata;
+import com.formygirl.thirdclient.ThirdWorkflowContracts.FeishuTableResolveResponse;
 import com.formygirl.thirdclient.ThirdWorkflowContracts.WorkflowPrivateMetadata;
 import com.formygirl.thirdclient.ThirdWorkflowClient;
 import java.util.LinkedHashMap;
@@ -20,14 +21,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class FeishuConfigService {
     private final FeishuConfigRepository repository;
     private final FeishuSecretCodec secretCodec;
-    private final FeishuTableUrlParser urlParser;
     private final ThirdWorkflowClient thirdClient;
     private final JsonSupport json;
 
-    public FeishuConfigService(FeishuConfigRepository repository, FeishuSecretCodec secretCodec, FeishuTableUrlParser urlParser, ThirdWorkflowClient thirdClient, JsonSupport json) {
+    public FeishuConfigService(FeishuConfigRepository repository, FeishuSecretCodec secretCodec, ThirdWorkflowClient thirdClient, JsonSupport json) {
         this.repository = repository;
         this.secretCodec = secretCodec;
-        this.urlParser = urlParser;
         this.thirdClient = thirdClient;
         this.json = json;
     }
@@ -58,14 +57,15 @@ public class FeishuConfigService {
     @Transactional
     public Map<String, Object> createTable(String userId, TableInput input) {
         Map<String, Object> account = requireAccount(userId);
-        FeishuTableUrlParser.ParsedTableUrl parsed = urlParser.parse(input.tableUrl());
-        String displayName = displayName(input.displayName(), parsed.tableId());
+        String tableUrl = input.tableUrl() == null ? "" : input.tableUrl().trim();
+        FeishuTableLocation location = resolveTableLocation(tableUrl, account);
+        String displayName = displayName(input.displayName(), location.tableId());
         Map<String, Object> row = repository.insertTable(
                 userId,
                 String.valueOf(account.get("id")),
                 displayName,
-                input.tableUrl().trim(),
-                parsed,
+                tableUrl,
+                location,
                 fieldNameMap(input.fieldNameMap()),
                 input.enabled()
         );
@@ -75,10 +75,11 @@ public class FeishuConfigService {
     @Transactional
     public Map<String, Object> updateTable(String userId, String tableId, TableInput input) {
         Map<String, Object> current = requireTable(userId, tableId);
+        Map<String, Object> account = requireAccount(userId);
         String nextUrl = input.tableUrl() == null || input.tableUrl().isBlank() ? String.valueOf(current.get("table_url")) : input.tableUrl().trim();
-        FeishuTableUrlParser.ParsedTableUrl parsed = urlParser.parse(nextUrl);
+        FeishuTableLocation location = resolveTableLocation(nextUrl, account);
         String displayName = displayName(input.displayName(), String.valueOf(current.get("display_name")));
-        Map<String, Object> row = repository.updateTable(userId, tableId, displayName, nextUrl, parsed, fieldNameMap(input.fieldNameMap()), input.enabled());
+        Map<String, Object> row = repository.updateTable(userId, tableId, displayName, nextUrl, location, fieldNameMap(input.fieldNameMap()), input.enabled());
         return tableDto(row);
     }
 
@@ -172,6 +173,24 @@ public class FeishuConfigService {
             throw new ApiException(HttpStatus.NOT_FOUND, "FEISHU_TABLE_NOT_FOUND", "飞书表配置不存在");
         }
         return table;
+    }
+
+    private FeishuTableLocation resolveTableLocation(String tableUrl, Map<String, Object> account) {
+        WorkflowPrivateMetadata privateMetadata = new WorkflowPrivateMetadata(
+                new FeishuPrivateMetadata(
+                        null,
+                        new FeishuAccountMetadata(
+                                boolValue(account.get("enabled"), true),
+                                stringValue(account.get("app_id")),
+                                secretCodec.decrypt(stringValue(account.get("app_secret_cipher"))),
+                                secretCodec.decrypt(stringValue(account.get("tenant_access_token_cipher"))),
+                                stringValue(account.get("user_id_type"))
+                        ),
+                        null
+                )
+        );
+        FeishuTableResolveResponse resolved = thirdClient.resolveFeishuTable(tableUrl, privateMetadata);
+        return new FeishuTableLocation(resolved.appToken(), resolved.tableId(), resolved.viewId());
     }
 
     private Map<String, Object> accountDto(Map<String, Object> row) {

@@ -42,6 +42,8 @@ THIRD_FEISHU_FIELD_NAME_MAP={}
 
 说明：`THIRD_FEISHU_FIELD_NAME_MAP` 用于把用户常用语义字段映射到真实飞书字段名，例如 `{"标题":"事项名称"}`。真实飞书写入时，未映射且不在当前表字段列表中的字段会被拒绝，避免写入错误列。
 
+用户表配置支持 `https://<tenant>.feishu.cn/base/<app_token>?table=<table_id>` 和 `https://<tenant>.feishu.cn/wiki/<node_token>?table=<table_id>`。两种链接都必须来自具体数据表视图并带 `table` 参数；Wiki 链接由 `POST /v1/feishu/table-resolve` 调用知识库节点接口换取真实 `app_token`。飞书应用需开通 `wiki:node:read`，并拥有目标 Wiki 节点阅读权限。
+
 LLM 配置：
 
 ```env

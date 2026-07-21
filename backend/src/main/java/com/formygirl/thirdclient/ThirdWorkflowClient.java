@@ -143,6 +143,39 @@ public class ThirdWorkflowClient {
         }
     }
 
+    // 这个函数让 third 统一解析 Base/Wiki 多维表格 URL，并返回可持久化的真实表定位信息。
+    public FeishuTableResolveResponse resolveFeishuTable(String tableUrl, WorkflowPrivateMetadata privateMetadata) {
+        try {
+            FeishuTableResolveResponse result = restClient.post()
+                    .uri(properties.getThirdBaseUrl() + "/v1/feishu/table-resolve")
+                    .body(new FeishuTableResolveRequest(
+                            tableUrl,
+                            privateMetadata == null ? WorkflowPrivateMetadata.empty() : privateMetadata
+                    ))
+                    .retrieve()
+                    .body(FeishuTableResolveResponse.class);
+            if (result == null || isBlank(result.status()) || result.message() == null) {
+                throw contractMismatch("feishu table-resolve", null);
+            }
+            if (!"ok".equals(result.status())) {
+                String errorCode = isBlank(result.errorCode()) ? "FEISHU_WIKI_RESOLVE_FAILED" : result.errorCode();
+                throw new ApiException(HttpStatus.BAD_REQUEST, errorCode, result.message());
+            }
+            if (isBlank(result.sourceType()) || isBlank(result.appToken()) || isBlank(result.tableId()) || result.viewId() == null) {
+                throw contractMismatch("feishu table-resolve", null);
+            }
+            return result;
+        } catch (RestClientResponseException exception) {
+            throw serviceUnavailable("飞书表 URL 解析");
+        } catch (ResourceAccessException exception) {
+            throw serviceUnavailable("飞书表 URL 解析");
+        } catch (ApiException exception) {
+            throw exception;
+        } catch (RestClientException | IllegalArgumentException exception) {
+            throw contractMismatch("feishu table-resolve", exception);
+        }
+    }
+
     // 这个函数提交 workflow。
     public WorkflowResponse invoke(String text, WorkflowMetadata metadata, WorkflowPrivateMetadata privateMetadata) {
         try {

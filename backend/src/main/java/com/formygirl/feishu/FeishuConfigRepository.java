@@ -91,7 +91,7 @@ public class FeishuConfigRepository {
         return queryOne("SELECT * FROM USER_FEISHU_TABLE WHERE user_id = ? AND enabled = TRUE ORDER BY updated_at DESC LIMIT 1", userId);
     }
 
-    public Map<String, Object> insertTable(String userId, String accountId, String displayName, String tableUrl, FeishuTableUrlParser.ParsedTableUrl parsed, Map<String, Object> fieldNameMap, boolean enabled) {
+    public Map<String, Object> insertTable(String userId, String accountId, String displayName, String tableUrl, FeishuTableLocation location, Map<String, Object> fieldNameMap, boolean enabled) {
         boolean makeDefault = tables(userId).isEmpty();
         if (makeDefault) {
             clearDefault(userId);
@@ -108,10 +108,10 @@ public class FeishuConfigRepository {
                 accountId,
                 displayName,
                 tableUrl,
-                parsed.appToken(),
-                parsed.tableId(),
+                location.appToken(),
+                location.tableId(),
                 displayName,
-                blankToNull(parsed.viewId()),
+                blankToNull(location.viewId()),
                 makeDefault,
                 enabled,
                 json.stringify(fieldNameMap),
@@ -121,7 +121,7 @@ public class FeishuConfigRepository {
         return table(userId, id);
     }
 
-    public Map<String, Object> updateTable(String userId, String tableId, String displayName, String tableUrl, FeishuTableUrlParser.ParsedTableUrl parsed, Map<String, Object> fieldNameMap, boolean enabled) {
+    public Map<String, Object> updateTable(String userId, String tableId, String displayName, String tableUrl, FeishuTableLocation location, Map<String, Object> fieldNameMap, boolean enabled) {
         jdbcTemplate.update(
                 """
                 UPDATE USER_FEISHU_TABLE
@@ -130,10 +130,10 @@ public class FeishuConfigRepository {
                 """,
                 displayName,
                 tableUrl,
-                parsed.appToken(),
-                parsed.tableId(),
+                location.appToken(),
+                location.tableId(),
                 displayName,
-                blankToNull(parsed.viewId()),
+                blankToNull(location.viewId()),
                 enabled,
                 json.stringify(fieldNameMap),
                 Timestamp.valueOf(LocalDateTime.now()),

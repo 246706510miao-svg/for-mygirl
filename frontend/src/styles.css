@@ -1740,6 +1740,13 @@ summary:focus-visible {
   margin: 9px 2px 0;
 }
 
+.feishu-table-panel__url-help {
+  margin: 0 2px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
 .draft-panel,
 .third-confirm-panel {
   margin-bottom: 12px;

@@ -10,10 +10,13 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 
 from third.Tool.field_context import load_table_fields_context
+from third.Tool.feishu_table_resolver import resolve_response
 from third.agents.shared.config import load_config, private_metadata_context
 from third.workflow.v1_contract import (
     FeishuTableCheckV1Request,
     FeishuTableCheckV1Response,
+    FeishuTableResolveV1Request,
+    FeishuTableResolveV1Response,
     InvokeWorkflowV1Request,
     ResumeWorkflowV1Request,
     WorkflowArtifactV1,
@@ -153,6 +156,12 @@ def create_compat_router(
             field_count=len(names),
             field_names=names,
         )
+
+    @router.post("/v1/feishu/table-resolve", response_model=FeishuTableResolveV1Response)
+    def resolve_feishu_table_v1(request: FeishuTableResolveV1Request) -> FeishuTableResolveV1Response:
+        with private_metadata_context(request.private_metadata.to_internal_dict()):
+            result = resolve_response(request.table_url, load_config())
+        return FeishuTableResolveV1Response.from_internal(**result)
 
     @router.get("/v1/workflows/{task_id}/artifacts", response_model=WorkflowArtifactsV1)
     def workflow_artifacts_v1(task_id: str) -> WorkflowArtifactsV1:

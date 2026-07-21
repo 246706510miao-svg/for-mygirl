@@ -76,6 +76,18 @@ class FeishuBitableClient:
             return [record] if record else []
         return self.search_records(request)
 
+    # 这个方法把知识库节点 token 解析成节点真实资源信息；URL 解析和资源类型校验由上层处理。
+    def get_wiki_node(self, node_token: str) -> dict[str, Any]:
+        url = _with_query(
+            "https://open.feishu.cn/open-apis/wiki/v2/spaces/get_node",
+            {"token": node_token},
+        )
+        response = self._get_json(url, with_auth=True)
+        node = response.get("data", {}).get("node")
+        if not isinstance(node, dict):
+            raise FeishuClientError(f"飞书知识库节点响应缺少 node：{response}")
+        return node
+
     # 这个方法调用飞书查询记录接口，支持 field_names、filter、sort 和分页。
     def search_records(self, request: dict[str, Any]) -> list[dict[str, Any]]:
         app_token = request["app_token"]

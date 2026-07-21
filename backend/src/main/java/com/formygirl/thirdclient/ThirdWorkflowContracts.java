@@ -180,6 +180,13 @@ public final class ThirdWorkflowContracts {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
+    public record FeishuTableResolveRequest(
+            String tableUrl,
+            WorkflowPrivateMetadata privateMetadata
+    ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public record WorkflowResponse(
             String sessionId,
             WorkflowStatus status,
@@ -290,6 +297,18 @@ public final class ThirdWorkflowContracts {
             String tableName,
             int fieldCount,
             List<String> fieldNames
+    ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record FeishuTableResolveResponse(
+            String status,
+            String errorCode,
+            String message,
+            String sourceType,
+            String appToken,
+            String tableId,
+            String viewId
     ) {
     }
 }

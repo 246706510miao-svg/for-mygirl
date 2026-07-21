@@ -14,10 +14,13 @@ try:
     from .storage.repository import now
     from .agents.shared.config import load_config, private_metadata_context
     from .Tool.field_context import load_table_fields_context
+    from .Tool.feishu_table_resolver import resolve_response
     from .workflow.api_schema import FeishuTableCheckRequest, InvokeWorkflowRequest, ResumeWorkflowRequest, WorkflowResponse
     from .workflow.v1_contract import (
         FeishuTableCheckV1Request,
         FeishuTableCheckV1Response,
+        FeishuTableResolveV1Request,
+        FeishuTableResolveV1Response,
         InvokeWorkflowV1Request,
         ResumeWorkflowV1Request,
         WorkflowArtifactV1,
@@ -34,10 +37,13 @@ except ImportError:
     from storage.repository import now
     from agents.shared.config import load_config, private_metadata_context
     from Tool.field_context import load_table_fields_context
+    from Tool.feishu_table_resolver import resolve_response
     from workflow.api_schema import FeishuTableCheckRequest, InvokeWorkflowRequest, ResumeWorkflowRequest, WorkflowResponse
     from workflow.v1_contract import (
         FeishuTableCheckV1Request,
         FeishuTableCheckV1Response,
+        FeishuTableResolveV1Request,
+        FeishuTableResolveV1Response,
         InvokeWorkflowV1Request,
         ResumeWorkflowV1Request,
         WorkflowArtifactV1,
@@ -235,6 +241,13 @@ def internal_feishu_table_check_v1(request: FeishuTableCheckV1Request) -> Feishu
         field_count=len(names),
         field_names=names,
     )
+
+
+@app.post("/v1/feishu/table-resolve", response_model=FeishuTableResolveV1Response)
+def internal_feishu_table_resolve_v1(request: FeishuTableResolveV1Request) -> FeishuTableResolveV1Response:
+    with private_metadata_context(request.private_metadata.to_internal_dict()):
+        result = resolve_response(request.table_url, load_config())
+    return FeishuTableResolveV1Response.from_internal(**result)
 
 
 @app.get("/v1/workflows/{session_id}/timeline", response_model=WorkflowTimelineV1)
