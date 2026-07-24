@@ -409,7 +409,10 @@ def _schema_risk_level(input_text: str) -> str:
 
 # 这个函数检查文本里是否有字段删除关键词。
 def _looks_like_field_delete(input_text: str) -> bool:
-    return "字段" in input_text and any(keyword in input_text for keyword in ("删除", "移除", "清理"))
+    schema_words = ("字段", "表头", "列", "列名")
+    return any(word in input_text for word in schema_words) and any(
+        keyword in input_text for keyword in ("删除", "移除", "清理")
+    )
 
 
 # 这个函数从查询文本里提取字段名。

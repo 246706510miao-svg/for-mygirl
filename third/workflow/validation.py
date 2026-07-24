@@ -179,7 +179,7 @@ def _normalize_schema_change_request(
         errors.append("字段变更至少需要一个 action。")
         raw_actions = []
 
-    normalized_actions, action_errors = _normalize_schema_actions(raw_actions, original_input, table_fields)
+    normalized_actions, action_errors = _normalize_schema_actions(raw_actions, table_fields)
     errors.extend(action_errors)
     request["actions"] = normalized_actions
     request["validation_errors"] = _dedupe_keep_order(errors)
@@ -215,7 +215,6 @@ def _schema_change_configuration_error(config: Any, table_fields: dict[str, Any]
 
 def _normalize_schema_actions(
     raw_actions: list[Any],
-    original_input: str,
     table_fields: dict[str, Any],
 ) -> tuple[list[dict[str, Any]], list[str]]:
     normalized: list[dict[str, Any]] = []
@@ -236,7 +235,7 @@ def _normalize_schema_actions(
         elif action == "update_field":
             normalized_action, action_errors = _normalize_update_field_action(canonical_action, fields_by_name, fields_by_id, planned_names)
         elif action == "delete_field":
-            normalized_action, action_errors = _normalize_delete_field_action(canonical_action, original_input, fields_by_name, fields_by_id, planned_names)
+            normalized_action, action_errors = _normalize_delete_field_action(canonical_action, fields_by_name, fields_by_id, planned_names)
         else:
             normalized_action, action_errors = None, [f"第 {index} 个字段变更 action 不受支持：{raw_action_name}"]
         if action_errors:
@@ -317,7 +316,6 @@ def _normalize_update_field_action(
 
 def _normalize_delete_field_action(
     raw_action: dict[str, Any],
-    original_input: str,
     fields_by_name: dict[str, dict[str, Any]],
     fields_by_id: dict[str, dict[str, Any]],
     planned_names: set[str],
@@ -327,8 +325,6 @@ def _normalize_delete_field_action(
     if not source:
         errors.append("删除字段必须提供存在的 field_id、source_field_name 或 field_name。")
         return None, errors
-    if not _explicit_field_delete_intent(original_input):
-        errors.append("删除字段必须来自用户明确的删除字段意图。")
     if errors:
         return None, errors
     field_name = str(source.get("field_name") or "")
@@ -431,10 +427,6 @@ def _field_definitions_by_name(table_fields: dict[str, Any]) -> dict[str, dict[s
         if field_name:
             definitions[str(field_name)] = field
     return definitions
-
-
-def _explicit_field_delete_intent(input_text: str) -> bool:
-    return "字段" in input_text and any(keyword in input_text for keyword in ("删除", "移除", "清理"))
 
 
 def _field_type_name(field_type: Any) -> str:

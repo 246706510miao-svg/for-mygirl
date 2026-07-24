@@ -41,17 +41,39 @@ def run_tool_ChangeFeishuBitableFields(payload: dict[str, Any]) -> dict[str, lis
     actions = request.get("actions") or []
     executed: list[dict[str, Any]] = []
     error: str | None = None
+    failed_action: dict[str, Any] | None = None
+    failed_action_index: int | None = None
     backend = "mock"
+    real_write = config.feishu_use_real or request.get("mock") is False
 
-    try:
-        for action in actions:
+    for index, action in enumerate(actions, start=1):
+        try:
             executed.append(_execute_action(action, request, config))
-        if config.feishu_use_real or request.get("mock") is False:
-            backend = "feishu"
+        except FeishuClientError as exc:
+            failed_action = _safe_action(action)
+            failed_action_index = index
+            error = str(exc)
+            break
+
+    if not error and real_write:
+        try:
             _refresh_real_field_cache(config, request)
-    except FeishuClientError as exc:
-        backend = "feishu_error" if config.feishu_use_real or request.get("mock") is False else "mock_error"
-        error = str(exc)
+        except FeishuClientError as exc:
+            error = f"字段变更已执行，但刷新字段缓存失败：{exc}"
+
+    if real_write:
+        backend = "feishu_error" if error else "feishu"
+    elif error:
+        backend = "mock_error"
+
+    planned_action_count = len(actions)
+    executed_action_count = len(executed)
+    remaining_action_count = (
+        max(planned_action_count - int(failed_action_index or planned_action_count), 0)
+        if error
+        else 0
+    )
+    partial_success = bool(error and executed_action_count)
 
     result = {
         "type": "tool_result",
@@ -63,11 +85,17 @@ def run_tool_ChangeFeishuBitableFields(payload: dict[str, Any]) -> dict[str, lis
         "original_input": original_input,
         "request": _safe_schema_request(request),
         "actions": executed,
-        "action_count": len(executed),
+        "action_count": executed_action_count,
+        "planned_action_count": planned_action_count,
+        "executed_action_count": executed_action_count,
+        "failed_action_index": failed_action_index,
+        "failed_action": failed_action,
+        "remaining_action_count": remaining_action_count,
+        "partial_success": partial_success,
         "table_fields": _current_table_fields(config, request),
         "read_at": now_iso(),
-        "summary": _summary(executed, backend, error),
-        "warnings": [],
+        "summary": _summary(executed_action_count, planned_action_count, remaining_action_count, backend, error),
+        "warnings": ["部分字段变更已经生效，系统不会自动回滚或重试已执行动作。"] if partial_success else [],
     }
     if error:
         result["error"] = error
@@ -154,9 +182,27 @@ def _safe_schema_request(request: dict[str, Any]) -> dict[str, Any]:
     return safe_request
 
 
-def _summary(actions: list[dict[str, Any]], backend: str, error: str | None) -> str:
+def _safe_action(action: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: action.get(key)
+        for key in ("action", "field_id", "source_field_name", "field_name", "field_type", "type", "reason")
+        if action.get(key) is not None
+    }
+
+
+def _summary(
+    executed_action_count: int,
+    planned_action_count: int,
+    remaining_action_count: int,
+    backend: str,
+    error: str | None,
+) -> str:
     if error:
-        suffix = f"，已执行 {len(actions)} 个动作。" if actions else ""
-        return f"字段变更失败：{error}{suffix}"
+        if executed_action_count:
+            return (
+                f"字段变更部分完成：已执行 {executed_action_count}/{planned_action_count} 个动作，随后失败：{error}；"
+                f"另有 {remaining_action_count} 个动作未执行。已完成动作不会自动回滚。"
+            )
+        return f"字段变更失败：{error}"
     source = "真实飞书多维表格" if backend == "feishu" else "mock 飞书表"
-    return f"已在{source}执行 {len(actions)} 个字段变更动作。"
+    return f"已在{source}执行 {executed_action_count} 个字段变更动作。"

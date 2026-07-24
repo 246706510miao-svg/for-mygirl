@@ -224,8 +224,36 @@ class RecordServiceTest {
         assertEquals("THIRD_CONTRACT_MISMATCH", exception.getCode());
     }
 
+    @Test
+    void failedSchemaConfirmationWithoutDraftStaysFailedAndReturnsPermissionMessage() {
+        Map<String, Object> task = Map.of(
+                "id", "task_schema",
+                "session_id", "session_1",
+                "trigger_type", "resume",
+                "client_action_id", "confirmation_1",
+                "third_session_id", "third_schema",
+                "request_id", "request_1"
+        );
+        String errorText = "飞书应用或当前表格没有执行该操作的权限，请检查应用权限和表格协作者权限后重试。";
+        when(repository.requireSession("session_1")).thenReturn(Map.of(
+                "id", "session_1",
+                "user_id", "person_1",
+                "status", "active"
+        ));
+        when(thirdClient.get("third_schema")).thenReturn(workflowResponse("third_schema", WorkflowStatus.FAILED, errorText));
+
+        service.processWorkflowTask(task);
+
+        verify(repository).insertMessage("session_1", "ai", "text", errorText, null, null, "third_schema", "request_1");
+        verify(repository).updateWorkflowTaskStatus("task_schema", "failed", errorText);
+    }
+
     private WorkflowResponse workflowResponse(String sessionId, WorkflowStatus status) {
-        return new WorkflowResponse(sessionId, status, List.of(new ContentPart("")), null);
+        return workflowResponse(sessionId, status, null);
+    }
+
+    private WorkflowResponse workflowResponse(String sessionId, WorkflowStatus status, String errorText) {
+        return new WorkflowResponse(sessionId, status, List.of(new ContentPart("")), errorText);
     }
 
     private WorkflowSnapshot waitingSnapshot(String sessionId, String confirmationId, String question, InteractionKind kind) {

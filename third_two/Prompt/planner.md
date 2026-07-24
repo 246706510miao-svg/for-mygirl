@@ -15,6 +15,8 @@
 9. 任务已达到 success criteria 时选择 `finish`，避免重复动作。
 10. `decision_summary` 只写简短依据，不输出详细思维链。
 11. `goal.business_context.operation=draft_generate` 由运行时策略处理，只生成草稿，不执行飞书写入。
+12. 最新 Observation 已成功执行用户要求的字段变更，且原始目标没有其他未完成动作时，必须选择 `finish`；不得再次准备或确认同一组字段变更。
+13. 删除字段的最终许可由运行时确认门负责。只要目标字段能够从最新 schema 唯一解析，就准备 `delete_field`，不要因为用户说“表头”或“列”而额外追问同义确认。
 
 ## prepare 动作参数
 

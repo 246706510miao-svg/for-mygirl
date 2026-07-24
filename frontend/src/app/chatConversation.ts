@@ -48,13 +48,18 @@ export function conversationMessagesFromDetail(detail: RecordSessionDetail): Cha
       content: "正在思考…",
       pending: true
     });
-  } else if (detail.latestWorkflowTask?.status === "failed" && messages[messages.length - 1]?.content !== "这次没有顺利完成，请再试一次。") {
-    messages.push({
-      id: `error-${detail.latestWorkflowTask.id}`,
-      type: "ai",
-      content: "这次没有顺利完成，请再试一次。",
-      error: true
-    });
+  } else if (detail.latestWorkflowTask?.status === "failed") {
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage && lastMessage.type !== "user") {
+      lastMessage.error = true;
+    } else {
+      messages.push({
+        id: `error-${detail.latestWorkflowTask.id}`,
+        type: "ai",
+        content: "这次没有顺利完成，请再试一次。",
+        error: true
+      });
+    }
   }
   return messages;
 }

@@ -79,3 +79,27 @@ test("shows a short in-conversation error instead of the raw backend exception",
     { id: "error-task_failed", type: "ai", content: "这次没有顺利完成，请再试一次。", error: true }
   ]);
 });
+
+test("keeps a specific permission failure and does not append a generic duplicate", () => {
+  const errorText = "飞书应用或当前表格没有执行该操作的权限，请检查应用权限和表格协作者权限后重试。";
+  const detail = {
+    session: { id: "session_1", status: "active" },
+    messages: [
+      { id: "message_1", sessionId: "session_1", sender: "user", inputType: "text", content: "确认执行", sequenceNo: 1 },
+      { id: "message_2", sessionId: "session_1", sender: "ai", inputType: "text", content: errorText, sequenceNo: 2 }
+    ],
+    latestWorkflowTask: {
+      id: "task_failed",
+      sessionId: "session_1",
+      triggerType: "resume",
+      clientActionId: "confirmation_1",
+      status: "failed",
+      errorText
+    }
+  } satisfies RecordSessionDetail;
+
+  assert.deepEqual(conversationMessagesFromDetail(detail), [
+    { id: "message_1", type: "user", content: "确认执行" },
+    { id: "message_2", type: "ai", content: errorText, error: true }
+  ]);
+});

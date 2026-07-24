@@ -510,8 +510,8 @@ public class RecordService {
             repository.updateWorkflowTaskStatus(String.valueOf(task.get("id")), "completed", null);
             return;
         }
-        String errorText = textOrDefault(third.errorText(), thirdStatus);
-        repository.insertMessage(sessionId, "ai", "text", "这次没有顺利完成，请再试一次。", null, null, thirdSessionId, requestId);
+        String errorText = workflowFailureMessage(third);
+        repository.insertMessage(sessionId, "ai", "text", errorText, null, null, thirdSessionId, requestId);
         repository.updateWorkflowTaskStatus(String.valueOf(task.get("id")), "failed", errorText);
     }
 
@@ -559,8 +559,19 @@ public class RecordService {
         String requestId = String.valueOf(task.get("request_id"));
         Map<String, Object> draft = draftId == null ? Map.of() : repository.draft(draftId);
         if (draft.isEmpty()) {
-            repository.insertMessage(sessionId, "ai", "text", thirdAnswer(third), null, null, thirdSessionId, requestId);
-            repository.updateWorkflowTaskStatus(String.valueOf(task.get("id")), "completed", null);
+            if (third.status() == WorkflowStatus.SUCCESS) {
+                repository.insertMessage(sessionId, "ai", "text", thirdAnswer(third), null, null, thirdSessionId, requestId);
+                repository.updateWorkflowTaskStatus(String.valueOf(task.get("id")), "completed", null);
+                return;
+            }
+            if (third.status() == WorkflowStatus.CANCELLED) {
+                repository.insertMessage(sessionId, "ai", "text", "已取消本次操作。", null, null, thirdSessionId, requestId);
+                repository.updateWorkflowTaskStatus(String.valueOf(task.get("id")), "cancelled", null);
+                return;
+            }
+            String errorText = workflowFailureMessage(third);
+            repository.insertMessage(sessionId, "ai", "text", errorText, null, null, thirdSessionId, requestId);
+            repository.updateWorkflowTaskStatus(String.valueOf(task.get("id")), "failed", errorText);
             return;
         }
         completeConfirm(repository.requireSession(sessionId), draft, String.valueOf(task.get("client_action_id")), third, requestId);
@@ -747,6 +758,20 @@ public class RecordService {
             return "这次没有顺利完成，请再试一次。";
         }
         return "已经处理好了。";
+    }
+
+    // 这个函数只把用户可处理的权限或部分执行信息带回对话，其余内部异常继续使用通用提示。
+    private String workflowFailureMessage(WorkflowResponse third) {
+        String error = textOrDefault(third.errorText(), "").trim();
+        if (error.isBlank()) {
+            return "这次没有顺利完成，请再试一次。";
+        }
+        String lowered = error.toLowerCase(Locale.ROOT);
+        boolean permissionFailure = List.of("permission", "forbidden", "http 401", "http 403", "无权限", "权限不足", "没有执行该操作的权限")
+                .stream()
+                .anyMatch(lowered::contains);
+        boolean partialFailure = error.contains("部分完成") || error.contains("不会自动回滚");
+        return permissionFailure || partialFailure ? error : "这次没有顺利完成，请再试一次。";
     }
 
     // 这个函数读取当前会话绑定的飞书表配置快照。

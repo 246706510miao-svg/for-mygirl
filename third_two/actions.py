@@ -140,7 +140,13 @@ class ActionDispatcher:
         if operation == "change_fields":
             actions = explicit.get("actions") if isinstance(explicit.get("actions"), list) else []
             if not actions:
-                data = {"operation": operation, "request": {"actions": []}}
+                request = {"actions": []}
+                data = {
+                    "operation": operation,
+                    "request": request,
+                    "validation_errors": ["字段变更至少需要一个 action。"],
+                    "preview": _schema_change_preview(request),
+                }
                 return Observation(
                     action_id=decision.action_id,
                     action_name=decision.action_name,
@@ -160,7 +166,12 @@ class ActionDispatcher:
                     table_fields,
                 )
             public_request = _public_request(normalized)
-            data = {"operation": operation, "request": public_request, "validation_errors": errors}
+            data = {
+                "operation": operation,
+                "request": public_request,
+                "validation_errors": errors,
+                "preview": _schema_change_preview(public_request),
+            }
             if errors:
                 return Observation(
                     action_id=decision.action_id,
@@ -331,6 +342,10 @@ def _observation_from_tool(decision: ActionDecision, result: dict[str, Any], art
     summary = str(result.get("summary") or error or "动作已执行。")
     if error:
         status, error_code, recoverable = _classify_tool_error(error)
+        if result.get("partial_success"):
+            status, error_code, recoverable = "terminal_error", "tool_partial_failure", False
+        if error_code == "tool_permission_denied" or _is_permission_error(error):
+            summary = _permission_error_summary(result)
     elif artifact_key == "candidate_records" and int(result.get("record_count") or 0) == 0:
         status, error_code, recoverable = "no_match", "records_not_found", True
     else:
@@ -349,6 +364,8 @@ def _observation_from_tool(decision: ActionDecision, result: dict[str, Any], art
 
 def _classify_tool_error(error: str) -> tuple[str, str, bool]:
     lowered = error.lower()
+    if _is_permission_error(error):
+        return "terminal_error", "tool_permission_denied", False
     if any(word in lowered for word in ("timeout", "timed out", "connection", "502", "503", "504")):
         return "retryable_error", "tool_transport_error", True
     if any(word in error for word in ("没有找到", "不存在", "没有候选")):
@@ -356,6 +373,26 @@ def _classify_tool_error(error: str) -> tuple[str, str, bool]:
     if any(word in error for word in ("必须提供", "请提供", "字段", "定位条件", "多条记录")):
         return "needs_input", "tool_input_invalid", True
     return "terminal_error", "tool_error", False
+
+
+def _is_permission_error(error: str) -> bool:
+    lowered = error.lower()
+    return any(
+        marker in lowered
+        for marker in ("permission", "forbidden", "http 401", "http 403", "无权限", "权限不足", "没有权限")
+    )
+
+
+def _permission_error_summary(result: dict[str, Any]) -> str:
+    if result.get("partial_success"):
+        executed = int(result.get("executed_action_count") or 0)
+        planned = int(result.get("planned_action_count") or executed)
+        remaining = int(result.get("remaining_action_count") or 0)
+        return (
+            f"字段变更部分完成：已执行 {executed}/{planned} 个动作，随后飞书拒绝了操作。"
+            f"请检查应用权限和当前表格的协作者权限；另有 {remaining} 个动作未执行，已完成动作不会自动回滚。"
+        )
+    return "飞书应用或当前表格没有执行该操作的权限，请检查应用权限和表格协作者权限后重试。"
 
 
 def _json_content(payload: dict[str, Any]) -> dict[str, list[dict[str, str]]]:
@@ -381,3 +418,35 @@ def _candidate_summaries(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
         {"record_id": record.get("record_id"), "fields": deepcopy(record.get("fields") or {})}
         for record in records[:10]
     ]
+
+
+def _schema_change_preview(request: dict[str, Any]) -> dict[str, Any]:
+    actions = []
+    for index, action in enumerate(request.get("actions") or [], start=1):
+        if not isinstance(action, dict):
+            continue
+        actions.append(
+            {
+                "sequence": index,
+                "action": action.get("action"),
+                "field_id": action.get("field_id"),
+                "source_field_name": action.get("source_field_name"),
+                "field_name": action.get("field_name"),
+                "field_type": action.get("field_type") or action.get("type"),
+                "property": deepcopy(action.get("property") or {}),
+                "reason": action.get("reason") or "",
+            }
+        )
+    delete_field_names = [
+        str(action.get("field_name") or "")
+        for action in actions
+        if action.get("action") == "delete_field" and action.get("field_name")
+    ]
+    return {
+        "operation": "change_fields",
+        "action_count": len(actions),
+        "actions": actions,
+        "delete_field_names": delete_field_names,
+        "requires_careful_review": bool(delete_field_names),
+        "warning": "删除字段会同时移除该列已有数据，执行后不会自动回滚。" if delete_field_names else None,
+    }

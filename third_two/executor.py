@@ -206,10 +206,13 @@ class RollingTaskExecutor:
 
     def _wait_for_confirmation(self, state: TaskState, decision: ActionDecision, execution_hash: str) -> TaskState:
         prepared = self.repository.get_latest_artifact(state.task_id, "prepared_operation")
-        preview = (prepared or {}).get("data") or {"action_name": decision.action_name, "arguments": decision.arguments}
+        prepared_data = (prepared or {}).get("data") or {}
+        preview = prepared_data.get("preview") if isinstance(prepared_data.get("preview"), dict) else prepared_data
+        if not preview:
+            preview = {"action_name": decision.action_name, "arguments": decision.arguments}
         interaction = InteractionRequest(
             kind="confirm",
-            question=_confirmation_question(decision.action_name),
+            question=_confirmation_question(decision.action_name, preview),
             options=["approve", "modify", "cancel"],
             pending_decision=decision.to_dict(),
             decision_hash=execution_hash,
@@ -269,6 +272,15 @@ class RollingTaskExecutor:
         if prepared_data.get("operation") != expected_operation:
             return f"执行 {decision.action_name} 前必须先生成对应的 prepared_operation。"
         request = prepared_data.get("request") if isinstance(prepared_data.get("request"), dict) else {}
+        validation_errors = prepared_data.get("validation_errors")
+        if not isinstance(validation_errors, list):
+            validation_errors = request.get("validation_errors") if isinstance(request.get("validation_errors"), list) else []
+        if validation_errors:
+            return f"执行 {decision.action_name} 前必须先解决 payload 校验错误：{'；'.join(str(item) for item in validation_errors)}"
+        if decision.action_name == "change_fields":
+            actions = request.get("actions") if isinstance(request.get("actions"), list) else []
+            if not actions:
+                return "执行 change_fields 前必须先准备至少一个合法字段变更 action。"
         if decision.action_name in {"update_record", "delete_record"}:
             if not request.get("record_id") and not state.facts.get("selected_record_id"):
                 return f"执行 {decision.action_name} 前必须先通过 match_record 确定唯一 record_id。"
@@ -287,7 +299,11 @@ class RollingTaskExecutor:
         return state
 
 
-def _confirmation_question(action_name: str) -> str:
+def _confirmation_question(action_name: str, preview: dict[str, Any] | None = None) -> str:
+    delete_field_names = (preview or {}).get("delete_field_names")
+    if action_name == "change_fields" and isinstance(delete_field_names, list) and delete_field_names:
+        names = "、".join(str(item) for item in delete_field_names if str(item).strip())
+        return f"确认删除字段“{names}”并执行其余字段变更吗？删除字段会移除该列及其所有数据。"
     labels = {
         "create_record": "新增飞书记录",
         "update_record": "更新飞书记录",

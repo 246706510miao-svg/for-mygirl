@@ -367,9 +367,10 @@ def _write_payload(by_key: dict[str, dict[str, Any]]) -> dict[str, Any] | None:
     if not prepared:
         return None
     request = prepared.get("request") if isinstance(prepared.get("request"), dict) else {}
+    prepared_preview = prepared.get("preview") if isinstance(prepared.get("preview"), dict) else None
     return {
         **deepcopy(prepared),
-        "preview": {
+        "preview": deepcopy(prepared_preview) if prepared_preview else {
             "operation": prepared.get("operation"),
             "fields": deepcopy(request.get("fields") or {}),
             "record_id": request.get("record_id"),

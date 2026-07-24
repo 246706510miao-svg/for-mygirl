@@ -261,7 +261,10 @@ def _looks_like_write_to_feishu(value: Any) -> bool:
 
 def _looks_like_field_delete(value: Any) -> bool:
     text = str(value or "")
-    return "字段" in text and any(keyword in text for keyword in ("删除", "移除", "清理"))
+    schema_words = ("字段", "表头", "列", "列名")
+    return any(word in text for word in schema_words) and any(
+        keyword in text for keyword in ("删除", "移除", "清理")
+    )
 
 
 # 这个函数把启用的 Agent 提示词目录转换为 prompt_ref 到 agent_name 的索引。

@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from third.Tool import mock_repository
 from third.Tool import tool_ChangeFeishuBitableFields as schema_tool
-from third.Tool.feishu_client import FeishuBitableClient
+from third.Tool.feishu_client import FeishuBitableClient, FeishuClientError
 from third.agents.workflowagent import agent as workflowagent
 from third.workflow import agent_runner, validation
 from third.workflow.plan_validator import PlanValidationError, validate_workflow_plan
@@ -166,6 +166,32 @@ class WorkflowRegistrySchemaTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "存在"):
                 validation.run_validation_node(missing_delete)
 
+    def test_schema_validation_accepts_table_header_delete_with_final_confirmation_boundary(self) -> None:
+        table_fields = {
+            "source": "mock",
+            "table_name": "test",
+            "field_names": ["附件", "单选", "文本"],
+            "fields": [
+                {"field_id": "field_attachment", "field_name": "附件", "type": 17, "property": {}},
+                {"field_id": "field_single", "field_name": "单选", "type": 3, "property": {}},
+                {"field_id": "field_text", "field_name": "文本", "type": 1, "property": {}},
+            ],
+        }
+        original_input = "把附件、单选这两个表头删除掉，把文本表头换成内容"
+        actions = [
+            {"action": "delete_field", "field_name": "附件"},
+            {"action": "delete_field", "field_name": "单选"},
+            {"action": "update_field", "source_field_name": "文本", "new_field_name": "内容"},
+        ]
+
+        normalized, errors = validation._normalize_schema_change_request({"actions": actions}, original_input, FakeConfig(), table_fields)
+        plan = build_plan_from_template("change_schema", original_input)
+
+        self.assertEqual(errors, [])
+        self.assertEqual([item["action"] for item in normalized["actions"]], ["delete_field", "delete_field", "update_field"])
+        self.assertEqual(plan["risk_level"], "delete")
+        self.assertTrue(plan["requires_confirmation"])
+
     def test_schema_tool_changes_mock_fields(self) -> None:
         context = _schema_validation_context(
             [{"action": "create_field", "field_name": "情绪", "field_type": "text", "property": {}, "reason": "记录心情"}],
@@ -229,6 +255,40 @@ class WorkflowRegistrySchemaTests(unittest.TestCase):
         self.assertEqual(data["backend"], "feishu")
         self.assertEqual(request["app_token"], "app_test")
         self.assertEqual(request["table_id"], "tbl_test")
+
+    def test_schema_tool_reports_partial_permission_failure_without_retrying_completed_actions(self) -> None:
+        config = FakeConfig()
+        config.feishu_use_real = True
+        actions = [
+            {"action": "delete_field", "field_id": "field_attachment", "field_name": "附件"},
+            {"action": "delete_field", "field_id": "field_single", "field_name": "单选"},
+            {"action": "update_field", "field_id": "field_text", "field_name": "内容", "type": 1},
+        ]
+        payload = {
+            "content": [{"text": json.dumps({"original_input": "删除表头", "schema_change_request": {"actions": actions}}, ensure_ascii=False)}]
+        }
+        first_result = {"action": "delete_field", "field": {"field_id": "field_attachment", "field_name": "附件"}, "reason": ""}
+
+        with (
+            patch.object(schema_tool, "load_config", return_value=config),
+            patch.object(
+                schema_tool,
+                "_execute_real_action",
+                side_effect=[first_result, FeishuClientError("飞书 HTTP 403：permission denied")],
+            ) as execute,
+            patch.object(schema_tool, "_refresh_real_field_cache") as refresh,
+        ):
+            result = schema_tool.run_tool_ChangeFeishuBitableFields(payload)
+
+        data = json.loads(result["content"][0]["text"])
+        self.assertEqual(execute.call_count, 2)
+        refresh.assert_not_called()
+        self.assertEqual(data["planned_action_count"], 3)
+        self.assertEqual(data["executed_action_count"], 1)
+        self.assertEqual(data["failed_action_index"], 2)
+        self.assertEqual(data["remaining_action_count"], 1)
+        self.assertTrue(data["partial_success"])
+        self.assertIn("不会自动回滚", data["summary"])
 
     def test_real_field_update_keeps_required_field_type(self) -> None:
         client = FeishuBitableClient(FakeConfig())
