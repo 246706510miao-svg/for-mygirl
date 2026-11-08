@@ -14,6 +14,7 @@ import { RoleScreen } from "../pages/RoleScreen";
 import { ChatScreen } from "../pages/ChatScreen";
 import { RecordsScreen } from "../pages/RecordsScreen";
 import { RewardsScreen } from "../pages/RewardsScreen";
+import { StatsScreen } from "../pages/StatsScreen";
 import { CareScreen } from "../pages/CareScreen";
 import { ApiRequestError, newClientId, type ClientRole } from "../shared/api/client";
 import type { ConfirmRecordResult, FeishuAccount, FeishuTableConfig, IdentityContext, PendingThirdConfirmation, PointSummary, RecordDisplay, RecordDraft, RecordSession, RecordSessionDetail, RecordWorkflowTask, RewardItem, RewardRedemption, ThirdInteractionResponse, UserHome } from "../shared/types/api";
@@ -21,7 +22,7 @@ import type { FieldKey } from "../components/records/recordFields";
 import { recordConversationState } from "./recordSessionState";
 import { appendOptimisticTurn, conversationMessagesFromDetail, replacePendingWithError, replacePendingWithMessage, type ChatMessageItem } from "./chatConversation";
 
-type Screen = "home" | "profile" | "chat" | "userRecent" | "rewards" | "care";
+type Screen = "home" | "profile" | "chat" | "userRecent" | "rewards" | "care" | "stats";
 
 interface MobileSnapshot {
   context: IdentityContext;
@@ -620,6 +621,7 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
     { key: "chat", label: "记录", onSelect: () => setScreen("chat") },
     { key: "records", label: "日常", onSelect: () => setScreen("userRecent") },
     { key: "home", label: "首页", onSelect: () => setScreen("home") },
+    { key: "stats", label: "统计", onSelect: () => setScreen("stats") },
     { key: "rewards", label: "心意", onSelect: () => setScreen("rewards") },
     { key: "profile", label: "我的", onSelect: () => setScreen("profile") }
   ];
@@ -693,6 +695,9 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
       )}
       {screen === "rewards" && (
         <RewardsScreen points={points} rewards={rewards} redemptions={redemptions} tabs={userTabs} busy={busy} onBack={() => setScreen("home")} onRedeem={redeem} />
+      )}
+      {screen === "stats" && (
+        <StatsScreen role={role} tabs={userTabs} />
       )}
       {screen === "care" && (
         <CareScreen points={points} records={adminRecords} rewards={rewards} redemptions={redemptions} busy={busy} onBack={leaveCareMode} onAddReward={submitReward} onSaveComment={submitComment} />

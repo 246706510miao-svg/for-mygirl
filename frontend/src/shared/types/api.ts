@@ -304,3 +304,26 @@ export interface RewardRedemptionList {
   ownerUserId: string;
   items: RewardRedemption[];
 }
+
+export interface StatsCalendar {
+  ownerUserId: string;
+  year: number;
+  month: number;
+  checkinDates: string[];
+  recordDates: string[];
+  checkedInToday: boolean;
+}
+
+export interface DailyPoint {
+  date: string;
+  points: number;
+}
+
+export interface StatsSummary {
+  ownerUserId: string;
+  streakDays: number;
+  totalPoints: number;
+  monthRecordCount: number;
+  monthCheckinCount: number;
+  dailyPoints: DailyPoint[];
+}
