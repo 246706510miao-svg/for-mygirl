@@ -1,4 +1,4 @@
-import { ArrowRight, Gift, Heart, MessageCircle, NotebookText, Sparkles } from "lucide-react";
+import { ArrowRight, CalendarCheck, Gift, Heart, MessageCircle, NotebookText, Sparkles } from "lucide-react";
 import { MobileAppShell, type MobileTabItem } from "../components/layout/MobileAppShell";
 import { PageTransition } from "../components/motion/PageTransition";
 import { Pressable } from "../components/ui/Pressable";
@@ -18,6 +18,7 @@ interface HomeScreenProps {
   onChat: () => void;
   onUserRecent: () => void;
   onRewards: () => void;
+  onStats: () => void;
 }
 
 // 这个页面只承载用户自己的首页；照顾者活动从个人页独立进入。
@@ -32,7 +33,8 @@ export function HomeScreen({
   onCheckIn,
   onChat,
   onUserRecent,
-  onRewards
+  onRewards,
+  onStats
 }: HomeScreenProps) {
   const balance = points?.currentUser.balance ?? 0;
   const checkedIn = Boolean(points?.currentUser.checkedInToday);
@@ -92,6 +94,11 @@ export function HomeScreen({
             <Pressable className="shortcut-card" onClick={onChat}>
               <span className="shortcut-card__icon"><MessageCircle size={19} /></span>
               <span><b>和 CCC 聊聊</b><small>把今天的碎片整理成记录</small></span>
+              <ArrowRight size={17} />
+            </Pressable>
+            <Pressable className="shortcut-card" onClick={onStats}>
+              <span className="shortcut-card__icon"><CalendarCheck size={19} /></span>
+              <span><b>打卡统计</b><small>看看连续坚持了多少天</small></span>
               <ArrowRight size={17} />
             </Pressable>
           </div>

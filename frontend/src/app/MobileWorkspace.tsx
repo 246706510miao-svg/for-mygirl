@@ -641,6 +641,7 @@ export function MobileWorkspace({ role, onLogout }: MobileWorkspaceProps) {
           onChat={() => setScreen("chat")}
           onUserRecent={() => setScreen("userRecent")}
           onRewards={() => setScreen("rewards")}
+          onStats={() => setScreen("stats")}
         />
       )}
       {screen === "profile" && (

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { CalendarCheck, Flame, NotebookText, RefreshCw, TrendingUp } from "lucide-react";
+import { CalendarCheck, ChevronLeft, ChevronRight, Flame, NotebookText, RefreshCw, TrendingUp } from "lucide-react";
 import { MobileAppShell, type MobileTabItem } from "../components/layout/MobileAppShell";
 import { PageTransition } from "../components/motion/PageTransition";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -24,19 +24,29 @@ function daysInMonth(year: number, month: number) {
   return new Date(year, month, 0).getDate();
 }
 
+// 这个函数返回本地时区的今天日期文本，避免使用 UTC 导致凌晨日期偏移。
+function localToday() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
 // 这个页面展示打卡日历、连续签到和最近 14 天积分趋势。
 export function StatsScreen({ role, tabs }: StatsScreenProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [calendar, setCalendar] = useState<StatsCalendar | null>(null);
   const [summary, setSummary] = useState<StatsSummary | null>(null);
+  const [cursor, setCursor] = useState(() => {
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth() + 1 };
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
       const [calendarData, summaryData] = await Promise.all([
-        fetchStatsCalendar(role),
+        fetchStatsCalendar(role, cursor.year, cursor.month),
         fetchStatsSummary(role)
       ]);
       setCalendar(calendarData);
@@ -46,7 +56,15 @@ export function StatsScreen({ role, tabs }: StatsScreenProps) {
     } finally {
       setLoading(false);
     }
-  }, [role]);
+  }, [role, cursor.year, cursor.month]);
+
+  // 这个函数切换查看的月份，只改游标并由上面的 effect 重新拉取。
+  function shiftMonth(delta: number) {
+    setCursor((previous) => {
+      const next = new Date(previous.year, previous.month - 1 + delta, 1);
+      return { year: next.getFullYear(), month: next.getMonth() + 1 };
+    });
+  }
 
   useEffect(() => {
     void load();
@@ -80,8 +98,10 @@ export function StatsScreen({ role, tabs }: StatsScreenProps) {
     ...Array.from({ length: offset }, () => null),
     ...Array.from({ length: totalDays }, (_, index) => index + 1)
   ];
-  const todayText = new Date().toISOString().slice(0, 10);
+  const todayText = localToday();
   const maxPoints = Math.max(1, ...summary.dailyPoints.map((item) => item.points));
+  const nowDate = new Date();
+  const isCurrentMonth = calendar.year === nowDate.getFullYear() && calendar.month === nowDate.getMonth() + 1;
 
   return (
     <MobileAppShell activeTab="stats" tabs={tabs}>
@@ -91,15 +111,36 @@ export function StatsScreen({ role, tabs }: StatsScreenProps) {
             <p>{calendar.year} 年 {calendar.month} 月</p>
             <h1>坚持的痕迹</h1>
           </div>
-          <button
-            type="button"
-            className="avatar-button"
-            onClick={() => void load()}
-            aria-label="刷新统计"
-            style={{ border: "none", cursor: "pointer" }}
-          >
-            <RefreshCw size={16} />
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <button
+              type="button"
+              className="avatar-button"
+              onClick={() => shiftMonth(-1)}
+              aria-label="上一个月"
+              style={{ border: "none", cursor: "pointer" }}
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <button
+              type="button"
+              className="avatar-button"
+              onClick={() => shiftMonth(1)}
+              aria-label="下一个月"
+              disabled={isCurrentMonth}
+              style={{ border: "none", cursor: isCurrentMonth ? "not-allowed" : "pointer", opacity: isCurrentMonth ? 0.4 : 1 }}
+            >
+              <ChevronRight size={16} />
+            </button>
+            <button
+              type="button"
+              className="avatar-button"
+              onClick={() => void load()}
+              aria-label="刷新统计"
+              style={{ border: "none", cursor: "pointer" }}
+            >
+              <RefreshCw size={16} />
+            </button>
+          </div>
         </header>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
@@ -123,7 +164,7 @@ export function StatsScreen({ role, tabs }: StatsScreenProps) {
         <section className="home-card" style={{ marginTop: 14 }}>
           <div className="home-card__eyebrow">
             <CalendarCheck size={18} />
-            <span>{calendar.year} 年 {calendar.month} 月 · 签到 {summary.monthCheckinCount} 次</span>
+            <span>{calendar.year} 年 {calendar.month} 月 · 签到 {calendar.checkinDates.length} 次</span>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, marginTop: 10 }}>
             {WEEKDAY_LABELS.map((label) => (

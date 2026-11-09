@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
-import { Home, MessageCircle, NotebookText, Gift, UserRound } from "lucide-react";
+import { Home, MessageCircle, NotebookText, Gift, UserRound, CalendarCheck } from "lucide-react";
 import { Pressable } from "../ui/Pressable";
 
-export type MobileTabKey = "home" | "chat" | "records" | "rewards" | "profile";
+export type MobileTabKey = "home" | "chat" | "records" | "rewards" | "profile" | "stats";
 
 export interface MobileTabItem {
   key: MobileTabKey;
@@ -22,7 +22,8 @@ const tabIcons: Record<MobileTabKey, ReactNode> = {
   chat: <MessageCircle size={22} />,
   records: <NotebookText size={22} />,
   rewards: <Gift size={22} />,
-  profile: <UserRound size={22} />
+  profile: <UserRound size={22} />,
+  stats: <CalendarCheck size={22} />
 };
 
 // 这个组件承载手机端暖色玻璃背景、安全区和底部导航。
