@@ -23,6 +23,7 @@
 | style | `src/main/java/com/formygirl/style` | 用户端背景、主题、风格配置；不进入飞书同步。 |
 | comment | `src/main/java/com/formygirl/comment` | 绑定用户对记录的评论和打分；只落本地业务库，不写飞书，并触发记录打分积分。 |
 | points | `src/main/java/com/formygirl/points` | 签到积分、记录打分积分、积分流水、奖品、兑换和兑换提示。 |
+| stats | `src/main/java/com/formygirl/stats` | 打卡日历与统计的只读聚合：签到日期、记录日期、连续签到、累计积分和逐日积分序列；只查 `POINT_LEDGER` 和 `DAILY_RECORD`，不写任何表。 |
 | sync | `src/main/java/com/formygirl/sync` | 飞书 payload、同步状态、失败保留、重试和重写入。 |
 | trace | `src/main/java/com/formygirl/trace` | 只读聚合 session、message、draft、record、display、sync 和 third workflow。 |
 | ops | `src/main/java/com/formygirl/ops` | 后台人员模块：全量记录、测试、追踪、重试、重写入。当前接口路径仍兼容 `/api/admin/*`。 |
@@ -41,6 +42,7 @@
 | 绑定用户最近记录 | `user/UserController.java` 的 `/api/bound-user/records/recent` |
 | 评论和打分 | `comment/CommentController.java` |
 | 签到、积分、奖品、兑换 | `points/PointController.java` |
+| 打卡日历与统计 | `stats/StatsController.java` 的 `/api/stats/*` 和 `/api/bound-user/stats/summary` |
 | 记录对话和确认 | `record/session/RecordSessionController.java` |
 | 独立后台运维 | `ops/OpsController.java`，仍兼容 `/api/admin/*` |
 
@@ -58,6 +60,7 @@
 | 背景或风格异常 | `style` | `relationship` |
 | 对方评论或打分异常 | `comment` | `relationship`、`record/display` |
 | 签到、积分或奖品异常 | `points` | `relationship`、`POINT_LEDGER` |
+| 统计数字或日历不对 | `stats` | `points`、`POINT_LEDGER.source_key`、`DAILY_RECORD.record_date` |
 | 奖品兑换后仍显示 | `points` | `REWARD_ITEM.status`、`REWARD_REDEMPTION` |
 | 后台人员测试能力 | `ops` | `trace`、`sync` |
 | 今日热门没有更新 | `newsfocus`、`NEWS_FOCUS_RUN` | `third-two-api`、`third/news_focus`、既有 LLM 出口 |

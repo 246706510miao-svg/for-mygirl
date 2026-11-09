@@ -22,6 +22,7 @@
 | features/relationship | `src/features/relationship` | 当前登录人、视角切换、用户绑定和授权范围。                         |
 | features/comment      | `src/features/comment`      | 绑定管理员对记录评论和打分，只走本地业务库，不进飞书。             |
 | features/points       | `src/features/points`       | 签到积分、记录打分积分、奖品、兑换和兑换记录。                     |
+| features/stats        | `src/features/stats`、`src/pages/StatsScreen.tsx` | 打卡统计页：月历打卡视图、指标卡和 14 天积分趋势；只读消费 `/api/stats/*`。 |
 | features/ops          | `src/features/ops`          | 后台人员页面：全量记录、详情、追踪、重试、后续重写入。             |
 | styles                | `src/styles.css`            | 当前基础样式。后续组件复杂后再拆模块样式。                         |
 
@@ -37,6 +38,7 @@
 | 用户绑定或授权异常         | `features/relationship`    | 后端 `relationship`                                            |
 | 评论或打分异常             | `features/comment/api.ts`  | 后端 `comment`、`points`                                      |
 | 签到、积分、奖品或兑换异常 | `features/points/api.ts`   | 后端 `points`、`relationship`                                 |
+| 统计页数字或日历异常 | `features/stats/api.ts` | 后端 `stats`、`POINT_LEDGER`、`DAILY_RECORD` |
 | 后台记录、追踪、重试异常   | `features/ops/api.ts`      | 后端 `ops`、`trace`、`sync`                                |
 | 今日热门卡片或抽屉异常     | `features/newsfocus/DailyFocusCard.tsx` | `shared/types/api.ts`、`GET /api/user/home` |
 

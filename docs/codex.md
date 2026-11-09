@@ -30,6 +30,7 @@
 | 背景风格 | `style` | `features/style` | `USER_STYLE` |
 | 记录评论和打分 | `comment` | `features/comment` | `RECORD_COMMENT` |
 | 积分、奖品和兑换 | `points` | `features/points` | `POINT_ACCOUNT`、`POINT_LEDGER`、`REWARD_*` |
+| 打卡日历与统计 | `stats` | `features/stats` | 只读聚合 `POINT_LEDGER`、`DAILY_RECORD`，不新增表 |
 | 后台人员 | `ops` | `features/ops` | `OPS_AUDIT_LOG` 和被操作业务表 |
 
 ## 后续新增功能方式
@@ -52,6 +53,7 @@
 | [future/模板.md](future/模板.md) | 新功能文档模板。 |
 | [future/01-优化mvp功能.md](future/01-优化mvp功能.md) | 当前手机端双向绑定 MVP，实现两个普通用户、绑定管理员视角、积分奖品、评论打分和兑换记录。 |
 | [future/03-每日信息焦点.md](future/03-每日信息焦点.md) | 四类 RSS 信息焦点的快照、规则、两日历史、接口和排查入口。 |
+| [future/04-打卡日历与统计.md](future/04-打卡日历与统计.md) | 打卡统计功能：月历打卡视图、连续签到、积分趋势的只读聚合设计与接口。 |
 
 ### 实现工程
 
@@ -93,6 +95,7 @@
 - 评论没显示：`features/comment` -> `backend comment` -> `RECORD_COMMENT`，不要查飞书。
 - 背景风格异常：`features/style` -> `backend style` -> `USER_STYLE`。
 - 积分、奖品或兑换异常：`features/points` -> `backend points` -> `POINT_LEDGER` / `REWARD_*`。
+- 统计页数字或日历不对：`features/stats` -> `backend stats` -> `POINT_LEDGER.source_key` / `DAILY_RECORD.record_date`，统计为只读聚合，不查飞书。
 - 后台重试或重写入异常：`features/ops` -> `backend ops` -> `trace` -> `sync` -> `thirdclient`。
 - 新接口返回 `No static resource ...`：优先读 [运行与刷新.md](运行与刷新.md)，确认 Docker 后端镜像是否重新 build、Flyway 是否跑到当前版本。
 - 今日热门异常：`NEWS_FOCUS_RUN`、`NEWS_FOCUS_SEEN` -> `third/news_focus` 的 Redis 来源快照/健康状态 -> `third-two-api /internal/news-focus/generate`；不要通过抓取原文或付费搜索排查。
